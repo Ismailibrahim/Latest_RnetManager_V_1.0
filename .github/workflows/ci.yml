@@ -58,7 +58,11 @@ jobs:
       - name: 📄 Generate .env
         run: |
           cp .env.example .env || true
-          echo "NEXT_PUBLIC_API_URL=/api/v1" >> .env
+          if grep -q '^NEXT_PUBLIC_API_URL=' .env; then
+            sed -i 's|^NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=/api/v1|' .env
+          else
+            echo "NEXT_PUBLIC_API_URL=/api/v1" >> .env
+          fi
 
       - name: 📦 Install deps
         run: npm ci
