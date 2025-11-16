@@ -1,0 +1,31 @@
+# Root ignores
+.DS_Store
+Thumbs.db
+
+# Node / frontend artifacts
+**/node_modules/
+**/.next/
+**/npm-debug.log*
+**/yarn-error.log
+**/pnpm-debug.log
+
+# PHP / backend artifacts
+**/vendor/
+**/storage/*.key
+
+# Environment & local overrides
+.env
+**/.env
+**/.env.local
+**/.env.*.local
+env/*.local
+
+# Logs
+**/storage/logs/*.log
+**/logs/
+
+# IDE & tooling
+.idea/
+.vscode/
+*.code-workspace
+

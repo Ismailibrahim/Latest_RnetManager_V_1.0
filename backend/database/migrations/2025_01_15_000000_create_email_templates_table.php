@@ -1,0 +1,41 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('email_templates', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('landlord_id')->constrained('landlords')->cascadeOnDelete();
+            $table->string('name');
+            $table->enum('type', ['rent_due', 'rent_received', 'maintenance_request', 'lease_expiry', 'security_deposit', 'system'])->nullable();
+            $table->string('subject');
+            $table->text('body_html')->nullable();
+            $table->text('body_text')->nullable();
+            $table->json('variables')->nullable(); // Available variables for this template
+            $table->boolean('is_default')->default(false);
+            $table->timestamps();
+
+            $table->index('landlord_id', 'idx_email_templates_landlord');
+            $table->index('type', 'idx_email_templates_type');
+            $table->index('is_default', 'idx_email_templates_default');
+            $table->index(['landlord_id', 'type', 'is_default'], 'idx_email_templates_landlord_type_default');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('email_templates');
+    }
+};
+

@@ -1,0 +1,68 @@
+name: 🚀 Deploy to VPS via SSH
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔑 Set up SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: 🔍 Verify SSH connection
+        run: |
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "echo '✅ SSH connection successful'"
+
+      - name: 🚀 Deploy to VPS
+        run: |
+          ssh -o StrictHostKeyChecking=no \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          set -e
+          
+          APP_DIR=${{ secrets.APP_DIRECTORY || '/var/www/webapp' }}
+          
+          echo "📂 Navigating to $APP_DIR"
+          cd "$APP_DIR" || exit 1
+          
+          echo "🔄 Pulling latest code from main branch..."
+          git fetch --all
+          git reset --hard origin/main
+          
+          echo "📦 Backend setup..."
+          cd backend
+          composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
+          php artisan migrate --force
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache
+          php artisan optimize
+          
+          echo "🎨 Frontend setup..."
+          cd ../frontend
+          npm ci
+          npm run build
+          
+          echo "🔄 Restarting services..."
+          sudo systemctl restart nginx || true
+          sudo systemctl restart php8.2-fpm || sudo systemctl restart php8.3-fpm || true
+          
+          echo "✅ Deployment complete!"
+          EOF
+
+      - name: ✅ Deployment status
+        run: |
+          echo "🎉 Deployment workflow completed successfully!"
+          echo "Check your VPS at: ${{ secrets.SSH_HOST }}"
+
