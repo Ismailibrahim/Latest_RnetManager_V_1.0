@@ -22,6 +22,9 @@ RentApplicaiton/
    ```powershell
    cd backend
    composer install
+   # Copy env and configure MySQL
+   copy ..\env\backend.env.example .env
+   # Set DB_CONNECTION=mysql and configure DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME, DB_PASSWORD
    php artisan serve
    ```
 
@@ -35,6 +38,15 @@ RentApplicaiton/
 3. **Environment Variables**
    - Duplicate `env/backend.env.example` → `backend/.env`.
    - Duplicate `env/frontend.env.example` → `frontend/.env.local`.
+   - Database is MySQL. Example:
+     ```
+     DB_CONNECTION=mysql
+     DB_HOST=127.0.0.1
+     DB_PORT=3306
+     DB_DATABASE=rentapp
+     DB_USERNAME=root
+     DB_PASSWORD=
+     ```
 
 ## Next Steps
 
