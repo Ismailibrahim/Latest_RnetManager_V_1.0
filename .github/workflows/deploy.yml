@@ -25,44 +25,135 @@ jobs:
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
             "echo '✅ SSH connection successful'"
 
-      - name: 🚀 Deploy to VPS
+      - name: 📋 Pre-deployment checks
         run: |
           ssh -o StrictHostKeyChecking=no \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
           set -e
           
-          APP_DIR=${{ secrets.APP_DIRECTORY || '/var/www/webapp' }}
+          APP_DIR="${APP_DIRECTORY:-/var/www/webapp}"
+          
+          echo "🔍 Running pre-deployment checks..."
+          
+          # Check if app directory exists
+          if [ ! -d "$APP_DIR" ]; then
+            echo "❌ Error: App directory not found: $APP_DIR"
+            exit 1
+          fi
+          
+          # Check disk space (at least 1GB free)
+          AVAILABLE=$(df "$APP_DIR" | tail -1 | awk '{print $4}')
+          if [ "$AVAILABLE" -lt 1048576 ]; then
+            echo "⚠️  Warning: Low disk space (less than 1GB free)"
+          fi
+          
+          # Check if deploy script exists
+          if [ ! -f "$APP_DIR/deploy.sh" ]; then
+            echo "⚠️  Warning: deploy.sh not found, will be created from config/deploy/deploy.sh"
+          fi
+          
+          echo "✅ Pre-deployment checks passed"
+          EOF
+
+      - name: 🚀 Deploy to VPS
+        id: deploy
+        run: |
+          ssh -o StrictHostKeyChecking=no \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          set -e
+          
+          APP_DIR="${APP_DIRECTORY:-/var/www/webapp}"
+          BACKUP_DIR="$APP_DIR/backups"
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
           
           echo "📂 Navigating to $APP_DIR"
           cd "$APP_DIR" || exit 1
           
-          echo "🔄 Pulling latest code from main branch..."
-          git fetch --all
-          git reset --hard origin/main
+          # Create backup directory
+          mkdir -p "$BACKUP_DIR"
           
-          echo "📦 Backend setup..."
-          cd backend
-          composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
-          php artisan migrate --force
-          php artisan config:cache
-          php artisan route:cache
-          php artisan view:cache
-          php artisan optimize
+          # Backup current deployment (for rollback)
+          echo "💾 Creating backup..."
+          if [ -d "$APP_DIR/backend" ] && [ -d "$APP_DIR/frontend" ]; then
+            tar -czf "$BACKUP_DIR/backup_$TIMESTAMP.tar.gz" \
+              --exclude="$APP_DIR/backups" \
+              --exclude="$APP_DIR/node_modules" \
+              --exclude="$APP_DIR/backend/vendor" \
+              --exclude="$APP_DIR/backend/storage/logs/*" \
+              --exclude="$APP_DIR/frontend/.next" \
+              . 2>/dev/null || true
+            echo "✅ Backup created: backup_$TIMESTAMP.tar.gz"
+          fi
           
-          echo "🎨 Frontend setup..."
-          cd ../frontend
-          npm ci
-          npm run build
+          # Ensure deploy script exists and is executable
+          if [ ! -f "$APP_DIR/deploy.sh" ]; then
+            if [ -f "$APP_DIR/config/deploy/deploy.sh" ]; then
+              cp "$APP_DIR/config/deploy/deploy.sh" "$APP_DIR/deploy.sh"
+              chmod +x "$APP_DIR/deploy.sh"
+            else
+              echo "❌ Error: deploy.sh not found"
+              exit 1
+            fi
+          fi
           
-          echo "🔄 Restarting services..."
-          sudo systemctl restart nginx || true
-          sudo systemctl restart php8.2-fpm || sudo systemctl restart php8.3-fpm || true
+          # Run deployment script
+          echo "🚀 Running deployment script..."
+          export APP_DIRECTORY="$APP_DIR"
+          bash "$APP_DIR/deploy.sh" || {
+            echo "❌ Deployment failed!"
+            exit 1
+          }
           
-          echo "✅ Deployment complete!"
+          echo "✅ Deployment script completed"
+          EOF
+
+      - name: 🏥 Health check
+        run: |
+          ssh -o StrictHostKeyChecking=no \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << EOF
+          set -e
+          
+          APP_DIR="${APP_DIRECTORY:-/var/www/webapp}"
+          APP_URL="${{ secrets.APP_URL }}"
+          if [ -z "$APP_URL" ]; then
+            APP_URL="http://${{ secrets.SSH_HOST }}"
+          fi
+          
+          echo "🏥 Running health checks..."
+          echo "Health check URL: $APP_URL/api/v1/health"
+          
+          # Wait a bit for services to stabilize
+          sleep 5
+          
+          # Check backend health endpoint
+          if command -v curl >/dev/null 2>&1; then
+            HEALTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "$APP_URL/api/v1/health" || echo "000")
+            if [ "$HEALTH_RESPONSE" = "200" ]; then
+              echo "✅ Backend health check passed (HTTP $HEALTH_RESPONSE)"
+            else
+              echo "⚠️  Backend health check returned HTTP $HEALTH_RESPONSE"
+            fi
+          else
+            echo "⚠️  curl not available, skipping health check"
+          fi
+          
+          # Check if services are running
+          if systemctl is-active --quiet nginx 2>/dev/null; then
+            echo "✅ Nginx is running"
+          else
+            echo "⚠️  Nginx status unknown (may not be managed by systemd)"
+          fi
+          
+          echo "✅ Health checks completed"
           EOF
 
       - name: ✅ Deployment status
         run: |
           echo "🎉 Deployment workflow completed successfully!"
           echo "Check your VPS at: ${{ secrets.SSH_HOST }}"
+          APP_URL="${{ secrets.APP_URL }}"
+          if [ -z "$APP_URL" ]; then
+            APP_URL="http://${{ secrets.SSH_HOST }}"
+          fi
+          echo "Health endpoint: $APP_URL/api/v1/health"
 

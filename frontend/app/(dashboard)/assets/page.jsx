@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -133,7 +133,7 @@ function buildSuggestedAssetName({
   return baseName;
 }
 
-export default function AssetsPage() {
+function AssetsPageContent() {
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1579,6 +1579,14 @@ function AssetRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+export default function AssetsPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-slate-500">Loading assets…</div>}>
+      <AssetsPageContent />
+    </Suspense>
   );
 }
 

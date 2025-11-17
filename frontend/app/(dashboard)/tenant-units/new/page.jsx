@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -42,7 +42,7 @@ const initialFormState = {
   status: "active",
 };
 
-export default function NewTenantUnitPage() {
+function NewTenantUnitPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [form, setForm] = useState(() => ({ ...initialFormState }));
@@ -1336,6 +1336,14 @@ function Hint({ children, icon }) {
       {icon}
       <span>{children}</span>
     </p>
+  );
+}
+
+export default function NewTenantUnitPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-slate-500">Loading tenant unit form…</div>}>
+      <NewTenantUnitPageContent />
+    </Suspense>
   );
 }
 

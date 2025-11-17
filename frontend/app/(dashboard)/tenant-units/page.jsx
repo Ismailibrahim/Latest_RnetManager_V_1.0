@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -31,7 +31,7 @@ const statusOptions = [
   { label: "Pending", value: "pending" },
 ];
 
-export default function TenantUnitsPage() {
+function TenantUnitsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tenantId = searchParams.get("tenantId") ?? "";
@@ -870,5 +870,10 @@ function formatDateRange(start, end) {
   return `${startLabel} → ${endLabel}`;
 }
 
-
-
+export default function TenantUnitsPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm	text-slate-500">Loading tenant units…</div>}>
+      <TenantUnitsPageContent />
+    </Suspense>
+  );
+}

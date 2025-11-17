@@ -223,3 +223,6 @@ docker compose exec backend php artisan migrate:status
 
 
 
+
+
+

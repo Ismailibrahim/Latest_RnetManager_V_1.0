@@ -410,7 +410,7 @@ cat ~/.ssh/github_actions_deploy
 
 ## PART 4: Nginx Configuration
 
-### Step 4.1: Create Nginx Configuration File
+### Step 4.1: Create Nginx Configuration File (PHP-FPM)
 
 **On your VPS:**
 
@@ -424,31 +424,36 @@ sudo nano /etc/nginx/sites-available/webapp
 server {
     listen 80;
     server_name your-domain.com www.your-domain.com;
-    
-    # Frontend - Next.js
+
+    client_max_body_size 20M;
+
+    root /var/www/webapp/backend/public;
+    index index.php index.html;
+
+    # Laravel routes
     location / {
-        root /var/www/webapp/frontend/.next;
-        try_files $uri $uri/ /index.html;
+        try_files $uri $uri/ /index.php?$query_string;
     }
-    
-    # Backend API
-    location /api {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
+
+    # PHP handling through PHP-FPM
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
     }
-    
-    # Static files
-    location /_next/static {
-        alias /var/www/webapp/frontend/.next/static;
-        expires 365d;
-        add_header Cache-Control "public, immutable";
+
+    # Block hidden files (.env, .git, etc.)
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+
+    # Public storage files
+    location /storage {
+        alias /var/www/webapp/backend/storage/app/public;
+        expires 30d;
+        add_header Cache-Control "public";
+        try_files $uri $uri/ /index.php?$query_string;
     }
 }
 ```
@@ -477,45 +482,14 @@ sudo systemctl reload nginx
 
 ### Step 4.3: Start Laravel Backend Server
 
-**For now, we'll use PHP's built-in server. Later you can set up a process manager:**
+Laravel is now served by PHP-FPM, so you do **not** need to run `php artisan serve`. Just restart PHP-FPM and Nginx whenever you deploy changes:
 
 ```bash
-cd /var/www/webapp/backend
-
-# Start server in background
-nohup php artisan serve --host=127.0.0.1 --port=8000 > /dev/null 2>&1 &
+sudo systemctl restart php8.2-fpm
+sudo systemctl restart nginx
 ```
 
-**Or use Supervisor (recommended for production):**
-
-```bash
-# Install Supervisor
-sudo apt install supervisor -y
-
-# Create supervisor config
-sudo nano /etc/supervisor/conf.d/rentapp-backend.conf
-```
-
-**Paste this:**
-
-```ini
-[program:rentapp-backend]
-command=php /var/www/webapp/backend/artisan serve --host=127.0.0.1 --port=8000
-directory=/var/www/webapp/backend
-autostart=true
-autorestart=true
-user=www-data
-redirect_stderr=true
-stdout_logfile=/var/www/webapp/backend/storage/logs/backend.log
-```
-
-**Save and reload:**
-
-```bash
-sudo supervisorctl reread
-sudo supervisorctl update
-sudo supervisorctl start rentapp-backend
-```
+If you plan to run the Next.js frontend on the same server, configure a separate Nginx server block for it (or deploy the frontend on a service like Vercel/Netlify). If you run `npm start` locally on the server, use Supervisor to keep that Node process alive (see optional step later in this guide).
 
 ---
 

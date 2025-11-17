@@ -57,7 +57,8 @@ Use this checklist while following the detailed guide: `DEPLOYMENT_STEP_BY_STEP.
 - [ ] Enabled site (`sudo ln -s`)
 - [ ] Tested Nginx config (`sudo nginx -t`)
 - [ ] Reloaded Nginx (`sudo systemctl reload nginx`)
-- [ ] Started backend server (PHP artisan serve or Supervisor)
+- [ ] Restarted PHP-FPM (`sudo systemctl restart php8.2-fpm`)
+- [ ] (Optional) Configured Supervisor for Node/queue workers
 
 ---
 

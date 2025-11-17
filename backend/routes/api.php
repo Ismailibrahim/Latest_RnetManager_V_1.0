@@ -30,6 +30,23 @@ use App\Http\Controllers\Api\V1\LandlordController;
 use App\Http\Controllers\Api\V1\VendorController;
 use Illuminate\Support\Facades\Route;
 
+// Simple health check endpoint (no version prefix for easier monitoring)
+Route::get('/health', function () {
+    try {
+        // Quick database check
+        \Illuminate\Support\Facades\DB::connection()->getPdo();
+        $dbHealthy = true;
+    } catch (\Exception $e) {
+        $dbHealthy = false;
+    }
+
+    return response()->json([
+        'status' => $dbHealthy ? 'healthy' : 'unhealthy',
+        'timestamp' => now()->toIso8601String(),
+        'database' => $dbHealthy ? 'connected' : 'disconnected',
+    ], $dbHealthy ? 200 : 503);
+})->middleware('throttle:60,1')->name('api.health');
+
 Route::prefix('v1')->group(function (): void {
     Route::get('/', function () {
         return response()->json([

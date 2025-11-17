@@ -1,0 +1,35 @@
+version: '3.8'
+
+# Production overrides for docker-compose.yml
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  backend:
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false
+    command: >
+      sh -c "composer install --no-dev --optimize-autoloader &&
+             php artisan config:cache &&
+             php artisan route:cache &&
+             php artisan view:cache &&
+             php artisan optimize &&
+             php artisan migrate --force &&
+             php artisan serve --host=0.0.0.0 --port=8000"
+    restart: always
+
+  frontend:
+    environment:
+      - NODE_ENV=production
+    command: >
+      sh -c "npm ci &&
+             npm run build &&
+             npm start"
+    restart: always
+
+  nginx:
+    restart: always
+    # Uncomment to use custom nginx config for production
+    # volumes:
+    #   - ./config/nginx/rentapp.prod.conf:/etc/nginx/nginx.conf:ro
+
