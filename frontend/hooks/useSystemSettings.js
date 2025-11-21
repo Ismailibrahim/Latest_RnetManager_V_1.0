@@ -331,6 +331,40 @@ export function useSystemSettings() {
     return data;
   }, [settings]);
 
+  const updateAutoInvoice = useCallback(async (autoInvoiceSettings) => {
+    const token = localStorage.getItem("auth_token");
+    if (!token) {
+      throw new Error("You must be signed in to update auto-invoice settings.");
+    }
+
+    const response = await fetch(
+      `${API_BASE_URL}/settings/system/auto-invoice`,
+      {
+        method: "PATCH",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(autoInvoiceSettings),
+      }
+    );
+
+    if (!response.ok) {
+      throw await handleApiError(response);
+    }
+
+    const data = await response.json();
+    if (settings) {
+      setSettings({
+        ...settings,
+        auto_invoice: data.auto_invoice,
+      });
+    }
+    invalidateCache(`${API_BASE_URL}/settings/system`);
+    return data;
+  }, [settings]);
+
   const refetch = useCallback(() => {
     return fetchSettings();
   }, [fetchSettings]);
@@ -347,6 +381,7 @@ export function useSystemSettings() {
     updateSystemPreferences,
     updateDocuments,
     updateTax,
+    updateAutoInvoice,
     refetch,
   };
 }

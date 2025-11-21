@@ -197,6 +197,14 @@ class LandlordSetting extends Model
                     'system' => ['enabled' => false, 'template_id' => null],
                 ],
             ],
+            'auto_invoice' => [
+                'enabled' => false,
+                'day_of_month' => 1, // 1-28, day of month to generate invoices
+                'time' => '09:00', // HH:MM format, time to run
+                'last_run_at' => null, // Last run timestamp
+                'last_run_status' => null, // 'success', 'failed', or null
+                'last_run_message' => null, // Last run message/error
+            ],
         ];
     }
 

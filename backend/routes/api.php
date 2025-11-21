@@ -233,6 +233,10 @@ Route::prefix('v1')->group(function (): void {
                 ->name('api.v1.settings.system.telegram.update');
             Route::post('/telegram/test', [SystemSettingsController::class, 'testTelegramConnection'])
                 ->name('api.v1.settings.system.telegram.test');
+            Route::get('/auto-invoice', [SystemSettingsController::class, 'getAutoInvoiceSettings'])
+                ->name('api.v1.settings.system.auto-invoice.show');
+            Route::patch('/auto-invoice', [SystemSettingsController::class, 'updateAutoInvoiceSettings'])
+                ->name('api.v1.settings.system.auto-invoice.update');
         });
 
         Route::apiResource('email-templates', EmailTemplateController::class)

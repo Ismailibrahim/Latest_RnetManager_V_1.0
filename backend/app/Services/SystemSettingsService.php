@@ -438,5 +438,28 @@ class SystemSettingsService
 
         return $this->updateSettings($landlordId, ['telegram' => $telegramSettings]);
     }
+
+    /**
+     * Get auto-invoice settings.
+     *
+     * @param  int  $landlordId  Landlord ID
+     * @return array<string, mixed>
+     */
+    public function getAutoInvoiceSettings(int $landlordId): array
+    {
+        return $this->getSetting($landlordId, 'auto_invoice', []);
+    }
+
+    /**
+     * Update auto-invoice settings.
+     *
+     * @param  int  $landlordId  Landlord ID
+     * @param  array<string, mixed>  $autoInvoiceSettings  Auto-invoice settings to update
+     * @return LandlordSetting
+     */
+    public function updateAutoInvoiceSettings(int $landlordId, array $autoInvoiceSettings): LandlordSetting
+    {
+        return $this->updateSettings($landlordId, ['auto_invoice' => $autoInvoiceSettings]);
+    }
 }
 

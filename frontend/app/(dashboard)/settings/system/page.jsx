@@ -10,6 +10,7 @@ import { PaymentTermsSettings } from "./components/PaymentTermsSettings";
 import { SystemPreferencesSettings } from "./components/SystemPreferencesSettings";
 import { DocumentSettings } from "./components/DocumentSettings";
 import { TaxSettings } from "./components/TaxSettings";
+import { AutoInvoiceSettings } from "./components/AutoInvoiceSettings";
 
 const TABS = [
   { id: "company", label: "Company Information", icon: Settings2 },
@@ -19,6 +20,7 @@ const TABS = [
   { id: "payment-terms", label: "Payment Terms", icon: Settings2 },
   { id: "system", label: "System Preferences", icon: Settings2 },
   { id: "documents", label: "Documents", icon: Settings2 },
+  { id: "auto-invoice", label: "Auto-Invoice", icon: Settings2 },
 ];
 
 export default function SystemSettingsPage() {
@@ -169,6 +171,12 @@ export default function SystemSettingsPage() {
           {activeTab === "documents" && (
             <DocumentSettings
               settings={settings?.documents}
+              onSuccess={handleSuccess}
+            />
+          )}
+          {activeTab === "auto-invoice" && (
+            <AutoInvoiceSettings
+              settings={settings?.auto_invoice}
               onSuccess={handleSuccess}
             />
           )}

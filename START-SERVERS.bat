@@ -1,35 +1,35 @@
 @echo off
-title RentApplication - Start Servers
-color 0A
-
-echo ========================================
-echo   RentApplication - Starting Servers
-echo ========================================
+echo Starting Rent V2 Application Servers...
 echo.
 
-REM Start Backend Server
-echo [1/2] Starting Backend Server (Laravel)...
-echo.
-start "Backend Server (Laravel)" cmd /k "cd /d C:\laragon\www\Rent_V2_Backend && php artisan serve"
-
-REM Wait a moment for backend to start
-timeout /t 3 /nobreak >nul
-
-REM Start Frontend Server
-echo [2/2] Starting Frontend Server (Next.js)...
-echo.
-start "Frontend Server (Next.js)" cmd /k "cd /d D:\Sandbox\Rent_V2\frontend && npm run dev"
+REM Check if Laragon is running (basic check)
+tasklist /FI "IMAGENAME eq laragon.exe" 2>NUL | find /I /N "laragon.exe">NUL
+if "%ERRORLEVEL%"=="0" (
+    echo Laragon is running
+) else (
+    echo WARNING: Laragon may not be running. Please start Laragon first!
+    echo.
+)
 
 echo.
-echo ========================================
-echo   Both servers are starting!
-echo ========================================
+echo Backend (Laravel) should be running via Laragon
+echo Backend URL: http://localhost:8000
 echo.
-echo Backend:  http://localhost:8000
-echo Frontend: http://localhost:3000
-echo.
-echo Server windows will open separately.
-echo Close this window when done.
-echo.
-timeout /t 5
 
+REM Start Frontend
+echo Starting Frontend (Next.js)...
+cd /d "D:\Sandbox\Rent_V2\frontend"
+
+if not exist "node_modules" (
+    echo Installing dependencies...
+    call npm install
+)
+
+echo.
+echo Starting Next.js development server...
+echo Frontend URL: http://localhost:3000
+echo.
+echo Press Ctrl+C to stop the server
+echo.
+
+call npm run dev

@@ -78,10 +78,11 @@ class SystemSettingsController extends Controller
                 'currency' => $settings['currency'] ?? [],
                 'invoice_numbering' => $settings['invoice_numbering'] ?? [],
                 'payment_terms' => $settings['payment_terms'] ?? [],
-            'system' => $settings['system'] ?? [],
-            'documents' => $settings['documents'] ?? [],
-            'tax' => $settings['tax'] ?? [],
-        ];
+                'system' => $settings['system'] ?? [],
+                'documents' => $settings['documents'] ?? [],
+                'tax' => $settings['tax'] ?? [],
+                'auto_invoice' => $settings['auto_invoice'] ?? [],
+            ];
         
         return response()->json($formattedSettings);
         } catch (QueryException $e) {
@@ -843,6 +844,51 @@ class SystemSettingsController extends Controller
                 'error' => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
+    }
+
+    /**
+     * Get auto-invoice settings.
+     */
+    public function getAutoInvoiceSettings(Request $request): JsonResponse
+    {
+        /** @var \App\Models\User $user */
+        $user = $request->user();
+
+        $this->authorize('viewAny', LandlordSetting::class);
+
+        $landlordId = $user->landlord_id;
+        $autoInvoiceSettings = $this->settingsService->getAutoInvoiceSettings($landlordId);
+
+        return response()->json([
+            'auto_invoice' => $autoInvoiceSettings,
+        ]);
+    }
+
+    /**
+     * Update auto-invoice settings.
+     */
+    public function updateAutoInvoiceSettings(Request $request): JsonResponse
+    {
+        /** @var \App\Models\User $user */
+        $user = $request->user();
+
+        $this->authorize('update', LandlordSetting::class);
+
+        $landlordId = $user->landlord_id;
+        
+        $validated = $request->validate([
+            'enabled' => ['sometimes', 'boolean'],
+            'day_of_month' => ['sometimes', 'integer', 'min:1', 'max:28'],
+            'time' => ['sometimes', 'string', 'regex:/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/'],
+        ]);
+
+        $this->settingsService->updateAutoInvoiceSettings($landlordId, $validated);
+        $autoInvoiceSettings = $this->settingsService->getAutoInvoiceSettings($landlordId);
+
+        return response()->json([
+            'message' => 'Auto-invoice settings updated successfully.',
+            'auto_invoice' => $autoInvoiceSettings,
+        ]);
     }
 }
 

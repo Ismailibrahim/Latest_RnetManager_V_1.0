@@ -17,10 +17,13 @@ Schedule::command('queue:work --stop-when-empty')
     ->withoutOverlapping()
     ->runInBackground();
 
-// Example: Daily rent invoice generation (uncomment and implement when ready)
-// Schedule::command('rent:generate-invoices')
-//     ->daily()
-//     ->at('09:00');
+// Auto-rent invoice generation - runs daily to check if invoices should be generated
+// The command will check each landlord's settings and generate invoices if configured date matches
+Schedule::command('rent:generate-auto-invoices')
+    ->daily()
+    ->at('00:01') // Run at 12:01 AM to catch any configured times
+    ->withoutOverlapping()
+    ->runInBackground();
 
 // Example: Check for lease expiries (uncomment and implement when ready)
 // Schedule::command('leases:check-expiry')
