@@ -1,0 +1,48 @@
+========================================
+  QUICK FIX FOR 404 ERROR
+========================================
+
+I've restarted your server with proper network access.
+
+WAIT 10 SECONDS for the server to start, then try again on your phone:
+
+  http://192.168.1.225:3000
+
+========================================
+WHAT I DID:
+========================================
+
+1. Stopped the old server (PID 49852)
+2. Started new server with network binding (HOST=0.0.0.0)
+
+========================================
+IF STILL GETTING 404:
+========================================
+
+1. Check the terminal window - look for:
+   "Network: http://192.168.1.225:3000"
+   
+   If you DON'T see this, the server isn't bound to network.
+
+2. Try the login page directly:
+   http://192.168.1.225:3000/login
+
+3. Make sure firewall is configured:
+   Run ALLOW-MOBILE-ACCESS.bat as Administrator
+
+4. Verify your IP hasn't changed:
+   Run GET-MY-IP.bat
+
+========================================
+MANUAL RESTART (if needed):
+========================================
+
+Open PowerShell in frontend folder:
+  cd D:\Sandbox\Rent_V2\frontend
+  $env:HOST = "0.0.0.0"
+  npm run dev
+
+Look for "Network: http://192.168.1.225:3000" in output.
+
+========================================
+

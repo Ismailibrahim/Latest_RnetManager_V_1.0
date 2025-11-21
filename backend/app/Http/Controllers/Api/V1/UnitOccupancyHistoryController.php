@@ -68,9 +68,15 @@ class UnitOccupancyHistoryController extends Controller
             ->setStatusCode(201);
     }
 
-    public function show(UnitOccupancyHistory $unitOccupancyHistory)
+    public function show(Request $request, UnitOccupancyHistory $unitOccupancyHistory)
     {
         $this->authorize('view', $unitOccupancyHistory);
+
+        // Ensure unit occupancy history's unit belongs to authenticated user's landlord (defense in depth)
+        $unitOccupancyHistory->load('unit');
+        if (! $unitOccupancyHistory->unit || $unitOccupancyHistory->unit->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this unit occupancy history.');
+        }
 
         $unitOccupancyHistory->load(['unit:id,unit_number,property_id', 'tenant:id,full_name', 'tenantUnit:id,tenant_id,unit_id,lease_start,lease_end,status']);
 

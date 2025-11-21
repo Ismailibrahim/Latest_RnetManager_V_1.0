@@ -1,0 +1,20 @@
+========================================
+  IMPORTANT: RESTART BACKEND SERVER
+========================================
+
+I just fixed the CORS configuration in your backend .env file.
+
+The CORS settings now include port 3000 (where your frontend runs):
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost,http://127.0.0.1
+
+⚠️ YOU MUST RESTART THE BACKEND SERVER FOR THIS CHANGE TO TAKE EFFECT!
+
+Steps:
+1. Go to the terminal window running "php artisan serve"
+2. Press Ctrl+C to stop the server
+3. Run: php artisan serve (to start it again)
+
+After restarting, refresh your frontend page - it should work!
+
+========================================
+

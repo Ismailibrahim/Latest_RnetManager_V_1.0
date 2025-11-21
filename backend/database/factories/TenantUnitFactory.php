@@ -35,6 +35,8 @@ class TenantUnitFactory extends Factory
             'security_deposit_paid' => fake()->randomFloat(2, 8000, 50000),
             'advance_rent_months' => fake()->numberBetween(0, 2),
             'advance_rent_amount' => fake()->randomFloat(2, 0, 50000),
+            'advance_rent_used' => 0,
+            'advance_rent_collected_date' => null,
             'notice_period_days' => fake()->numberBetween(15, 90),
             'lock_in_period_months' => fake()->numberBetween(0, 12),
             'status' => fake()->randomElement(['active', 'ended', 'cancelled']),

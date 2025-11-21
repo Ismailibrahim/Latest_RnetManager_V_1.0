@@ -788,11 +788,30 @@ export default function TenantDetailsPage({ params }) {
                                 Deposit:{" "}
                                 <span className="font-semibold">
                                   {formatCurrency(lease?.security_deposit_paid)}
-                                </span>{" "}
-                                · Advance rent:{" "}
-                                <span className="font-semibold">
-                                  {formatCurrency(lease?.advance_rent_amount)}
                                 </span>
+                                {lease?.advance_rent_amount > 0 ? (
+                                  <>
+                                    {" "}
+                                    · Advance rent:{" "}
+                                    <span className="font-semibold">
+                                      {formatCurrency(lease?.advance_rent_amount)}
+                                    </span>
+                                    {lease?.advance_rent_months ? (
+                                      <span className="text-slate-400">
+                                        {" "}
+                                        ({lease.advance_rent_months} month
+                                        {lease.advance_rent_months !== 1 ? "s" : ""})
+                                      </span>
+                                    ) : null}
+                                    {lease?.advance_rent_remaining > 0 ? (
+                                      <span className="ml-1 text-emerald-600">
+                                        ({formatCurrency(lease.advance_rent_remaining)} remaining)
+                                      </span>
+                                    ) : lease?.advance_rent_used > 0 ? (
+                                      <span className="ml-1 text-amber-600">(Fully used)</span>
+                                    ) : null}
+                                  </>
+                                ) : null}
                               </p>
                             </li>
                           );

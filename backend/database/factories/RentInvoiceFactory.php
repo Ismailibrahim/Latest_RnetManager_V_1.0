@@ -26,6 +26,8 @@ class RentInvoiceFactory extends Factory
             'due_date' => (clone $invoiceDate)->modify('+7 days'),
             'rent_amount' => fake()->randomFloat(2, 8000, 25000),
             'late_fee' => fake()->randomFloat(2, 0, 1000),
+            'advance_rent_applied' => 0,
+            'is_advance_covered' => false,
             'status' => fake()->randomElement(['generated', 'sent', 'paid', 'overdue', 'cancelled']),
             'paid_date' => fake()->optional()->dateTimeBetween($invoiceDate, 'now'),
             'payment_method' => fake()->optional()->randomElement(['cash', 'bank_transfer', 'upi', 'card', 'cheque']),

@@ -60,14 +60,20 @@ class PropertyController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Property $property)
+    public function show(Request $request, Property $property)
     {
         $this->authorize('view', $property);
+
+        // Ensure property belongs to authenticated user's landlord (defense in depth)
+        if ($property->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this property.');
+        }
 
         $property->loadCount('units');
         $property->load([
             'landlord:id,company_name',
             'units' => fn ($query) => $query
+                ->where('landlord_id', $request->user()->landlord_id)
                 ->orderBy('unit_number')
                 ->with('unitType:id,name'),
         ]);
@@ -80,6 +86,13 @@ class PropertyController extends Controller
      */
     public function update(UpdatePropertyRequest $request, Property $property)
     {
+        $this->authorize('update', $property);
+
+        // Ensure property belongs to authenticated user's landlord (defense in depth)
+        if ($property->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this property.');
+        }
+
         $validated = $request->validated();
 
         if (! empty($validated)) {

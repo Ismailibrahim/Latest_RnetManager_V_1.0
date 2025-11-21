@@ -7,6 +7,7 @@ use App\Http\Requests\StoreAssetRequest;
 use App\Http\Requests\UpdateAssetRequest;
 use App\Http\Resources\AssetResource;
 use App\Models\Asset;
+use App\Models\Unit;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -55,6 +56,22 @@ class AssetController extends Controller
     {
         $data = $request->validated();
 
+        // Verify unit belongs to authenticated user's landlord
+        if (isset($data['unit_id'])) {
+            $unit = Unit::where('id', $data['unit_id'])
+                ->where('landlord_id', $request->user()->landlord_id)
+                ->first();
+
+            if (! $unit) {
+                return response()->json([
+                    'message' => 'The selected unit does not belong to your landlord account.',
+                    'errors' => [
+                        'unit_id' => ['Invalid unit selected.'],
+                    ],
+                ], 422);
+            }
+        }
+
         $asset = Asset::create($data);
         $asset->load(['assetType:id,name,category', 'unit:id,unit_number,property_id', 'tenant:id,full_name']);
 
@@ -63,9 +80,15 @@ class AssetController extends Controller
             ->setStatusCode(201);
     }
 
-    public function show(Asset $asset)
+    public function show(Request $request, Asset $asset)
     {
         $this->authorize('view', $asset);
+
+        // Ensure asset's unit belongs to authenticated user's landlord (defense in depth)
+        $asset->load('unit');
+        if (! $asset->unit || $asset->unit->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this asset.');
+        }
 
         $asset->load(['assetType:id,name,category', 'unit:id,unit_number,property_id', 'tenant:id,full_name']);
 
@@ -74,7 +97,31 @@ class AssetController extends Controller
 
     public function update(UpdateAssetRequest $request, Asset $asset)
     {
+        $this->authorize('update', $asset);
+
+        // Ensure current asset's unit belongs to authenticated user's landlord
+        $asset->load('unit');
+        if (! $asset->unit || $asset->unit->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this asset.');
+        }
+
         $validated = $request->validated();
+
+        // If unit_id is being updated, verify the new unit belongs to the same landlord
+        if (isset($validated['unit_id']) && $validated['unit_id'] !== $asset->unit_id) {
+            $unit = Unit::where('id', $validated['unit_id'])
+                ->where('landlord_id', $request->user()->landlord_id)
+                ->first();
+
+            if (! $unit) {
+                return response()->json([
+                    'message' => 'The selected unit does not belong to your landlord account.',
+                    'errors' => [
+                        'unit_id' => ['Invalid unit selected.'],
+                    ],
+                ], 422);
+            }
+        }
 
         if (! empty($validated)) {
             $asset->update($validated);

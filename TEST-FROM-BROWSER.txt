@@ -1,0 +1,52 @@
+========================================
+  TEST ACCESS FROM YOUR LAPTOP BROWSER
+========================================
+
+Open your web browser and try these URLs:
+
+1. FRONTEND:
+   http://192.168.1.225:3000
+   
+   Expected: Should show your app login page
+   If it works: Frontend is accessible from network!
+
+2. BACKEND API:
+   http://192.168.1.225:8000/api/v1
+   
+   Expected: Should show JSON response (API status)
+   If it works: Backend is accessible from network!
+
+========================================
+WHAT THIS TELLS US:
+========================================
+
+✅ If BOTH work in browser:
+   - Configuration is correct
+   - Servers are accessible
+   - Should work on phone too!
+
+❌ If Frontend doesn't work:
+   - Check if frontend server is running
+   - Verify port 3000 is accessible
+   - Check firewall
+
+❌ If Backend doesn't work:
+   - Check if backend is running with --host=0.0.0.0
+   - Verify port 8000 is accessible
+   - Check firewall
+
+❌ If Frontend loads but login fails:
+   - Check browser console (F12) for errors
+   - Look for CORS errors
+   - Verify .env.local has correct API URL
+
+========================================
+CURRENT STATUS:
+========================================
+
+✅ Frontend server: Running on 0.0.0.0:3000
+✅ Backend server: Running on 0.0.0.0:8000
+✅ Frontend .env.local: NEXT_PUBLIC_API_URL=http://192.168.1.225:8000/api/v1
+
+========================================
+

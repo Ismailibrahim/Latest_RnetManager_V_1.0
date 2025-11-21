@@ -1,0 +1,59 @@
+========================================
+  CRITICAL FIX FOR "FAILED TO FETCH"
+========================================
+
+I've fixed the .env.local file. Now you MUST do these steps:
+
+========================================
+STEP 1: RESTART FRONTEND (REQUIRED!)
+========================================
+
+The frontend server MUST be restarted to use the new API URL!
+
+1. Find terminal running "npm run dev"
+2. Press Ctrl+C to stop it
+3. Restart:
+   cd D:\Sandbox\Rent_V2\frontend
+   npm run dev
+
+THIS IS CRITICAL - Without restart, it will still use localhost!
+
+========================================
+STEP 2: UPDATE BACKEND CORS
+========================================
+
+The backend needs to allow requests from your phone.
+
+Option A: Use the script (double-click):
+  update-backend-cors.bat
+
+Option B: Manual update:
+1. Open: C:\laragon\www\Rent_V2_Backend\.env
+2. Find: CORS_ALLOWED_ORIGINS
+3. Change to:
+   CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://192.168.1.225:3000
+4. Save file
+
+Then restart backend (in Laragon Terminal):
+   cd C:\laragon\www\Rent_V2_Backend
+   php artisan serve --host=0.0.0.0 --port=8000
+
+========================================
+STEP 3: TEST
+========================================
+
+1. Make sure both servers restarted
+2. On phone: http://192.168.1.225:3000
+3. Try login
+4. Should work now!
+
+========================================
+WHAT WAS FIXED:
+========================================
+
+✅ Frontend .env.local - API URL corrected
+✅ Created CORS update script
+✅ Backend is running on network (0.0.0.0:8000)
+
+========================================
+

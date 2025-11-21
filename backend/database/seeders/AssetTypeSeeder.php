@@ -16,13 +16,12 @@ class AssetTypeSeeder extends Seeder
             ['name' => 'Water Heater', 'category' => 'appliance'],
             ['name' => 'Microwave', 'category' => 'appliance'],
             ['name' => 'Television', 'category' => 'electronic'],
-            ['name' => 'Sofa', 'category' => 'furniture'],
-            ['name' => 'Bed', 'category' => 'furniture'],
-            ['name' => 'Dining Table', 'category' => 'furniture'],
-            ['name' => 'Wardrobe', 'category' => 'furniture'],
-            ['name' => 'Fan', 'category' => 'fixture'],
-            ['name' => 'Light', 'category' => 'fixture'],
-            ['name' => 'Curtains', 'category' => 'other'],
+          
+          
+           
+      
+          
+          
         ];
 
         foreach ($types as $type) {

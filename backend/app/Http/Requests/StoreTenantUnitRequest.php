@@ -33,8 +33,6 @@ class StoreTenantUnitRequest extends FormRequest
             'lease_end' => ['required', 'date', 'after:lease_start'],
             'monthly_rent' => ['required', 'numeric', 'min:0'],
             'security_deposit_paid' => ['required', 'numeric', 'min:0'],
-            'advance_rent_months' => ['nullable', 'integer', 'min:0'],
-            'advance_rent_amount' => ['nullable', 'numeric', 'min:0'],
             'notice_period_days' => ['nullable', 'integer', 'min:0'],
             'lock_in_period_months' => ['nullable', 'integer', 'min:0'],
             'lease_document_path' => ['nullable', 'string', 'max:500'],

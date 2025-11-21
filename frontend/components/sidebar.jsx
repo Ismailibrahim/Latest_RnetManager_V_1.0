@@ -7,6 +7,7 @@ import {
   Building2,
   Home,
   Users,
+  Users2,
   Layers,
   Wallet,
   Wrench,
@@ -20,43 +21,53 @@ import {
   CreditCard,
   FileText,
   CircleDollarSign,
+  LineChart,
+  BarChart,
 } from "lucide-react";
 import clsx from "clsx";
 
 const navigation = [
   { name: "Overview", href: "/", icon: Home },
+  { name: "Snapshot", href: "/snapshot", icon: LineChart },
   { name: "Properties", href: "/properties", icon: Building2 },
-  { name: "Owners", href: "/owners/new", icon: Users },
   { name: "Units", href: "/units", icon: Layers },
+  { name: "Owners", href: "/owners", icon: Users2 },
+  { name: "Tenants", href: "/tenants", icon: Users2 },
   { name: "Tenant Assignments", href: "/tenant-units", icon: FileText },
-  { name: "Tenants", href: "/tenants", icon: Users },
   { name: "Finances", href: "/finances", icon: Wallet },
-  { name: "Unified Payments", href: "/unified-payments", icon: ArrowLeftRight },
   { name: "Collect Payment", href: "/payments/collect", icon: CircleDollarSign },
+  { name: "Unified Payments", href: "/unified-payments", icon: ArrowLeftRight },
   { name: "Rent Invoices", href: "/rent-invoices", icon: Receipt },
-  { name: "Maintenance", href: "/maintenance", icon: Wrench },
-  { name: "Maintenance Invoices", href: "/maintenance-invoices", icon: ClipboardPlus },
   { name: "Deposit Refunds", href: "/security-deposit-refunds", icon: ShieldCheck },
   { name: "Payment Methods", href: "/payment-methods", icon: CreditCard },
+  { name: "Maintenance", href: "/maintenance", icon: Wrench },
+  { name: "Maintenance Invoices", href: "/maintenance-invoices", icon: ClipboardPlus },
   { name: "Assets", href: "/assets", icon: Boxes },
   { name: "Asset Types", href: "/asset-types", icon: Layers3 },
   { name: "Vendors", href: "/vendors", icon: ShieldCheck },
+  { name: "Reports", href: "/reports", icon: BarChart },
   { name: "Notifications", href: "/notifications", icon: Bell },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }) {
   const pathname = usePathname();
 
+  const handleLinkClick = () => {
+    if (onNavigate) {
+      onNavigate();
+    }
+  };
+
   return (
-    <aside className="hidden min-h-screen border-r border-slate-200 bg-white px-5 py-6 text-slate-700 shadow-sm lg:flex lg:flex-col">
+    <aside className="flex min-h-screen flex-col overflow-y-auto border-r border-slate-200 bg-white px-5 py-6 text-slate-700 shadow-sm">
       <div className="mb-8 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white font-semibold shadow">
           RA
         </div>
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            RentApplicaiton
+            RENTAPPLICATION
           </p>
           <p className="text-sm font-semibold text-slate-900">
             Management Suite
@@ -73,6 +84,7 @@ export function Sidebar() {
             <Link
               key={item.name}
               href={item.href}
+              onClick={handleLinkClick}
               className={clsx(
                 "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
                 active
@@ -101,6 +113,7 @@ export function Sidebar() {
         </p>
         <Link
           href="/settings/billing"
+          onClick={handleLinkClick}
           className="mt-3 inline-flex items-center justify-center rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white"
         >
           Manage Subscription

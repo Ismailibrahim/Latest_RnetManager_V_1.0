@@ -1,0 +1,46 @@
+========================================
+  SERVERS RESTARTED - READY TO TEST!
+========================================
+
+✅ WHAT I JUST DID:
+========================================
+
+1. Stopped all Node processes (frontend)
+2. Started Backend with network access
+3. Started Frontend with network access
+4. Removed lock files
+
+========================================
+TEST NOW:
+========================================
+
+1. On your LAPTOP browser:
+   → http://192.168.1.225:3000
+   → Should see your app!
+
+2. On your PHONE:
+   → http://192.168.1.225:3000
+   → Try logging in!
+
+========================================
+IF STILL GETTING "FAILED TO FETCH":
+========================================
+
+1. Wait 10 seconds for servers to fully start
+2. Check browser console (F12) for errors
+3. Verify .env.local is correct (should show your IP)
+4. Make sure backend CORS includes your IP
+
+========================================
+VERIFY SERVERS:
+========================================
+
+Run this to check:
+  netstat -ano | findstr ":3000 :8000" | findstr LISTENING
+
+Should show:
+  - 0.0.0.0:3000 (frontend)
+  - 0.0.0.0:8000 (backend)
+
+========================================
+

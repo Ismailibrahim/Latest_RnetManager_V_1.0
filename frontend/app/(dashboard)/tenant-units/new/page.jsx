@@ -33,8 +33,6 @@ const initialFormState = {
   leaseDurationYears: "",
   monthlyRent: "",
   securityDepositPaid: "",
-  advanceRentMonths: "",
-  advanceRentAmount: "",
   noticePeriodDays: "",
   lockInPeriodMonths: "",
   leaseDocumentPath: "",
@@ -57,8 +55,6 @@ function NewTenantUnitPageContent() {
   });
   const [rentManuallyEdited, setRentManuallyEdited] = useState(false);
   const [securityDepositManuallyEdited, setSecurityDepositManuallyEdited] =
-    useState(false);
-  const [advanceRentManuallyEdited, setAdvanceRentManuallyEdited] =
     useState(false);
 
   const leaseDocumentInputRef = useRef(null);
@@ -220,7 +216,6 @@ function NewTenantUnitPageContent() {
     if (name === "unitId") {
       setRentManuallyEdited(false);
       setSecurityDepositManuallyEdited(false);
-      setAdvanceRentManuallyEdited(false);
     }
 
     if (name === "monthlyRent") {
@@ -229,14 +224,6 @@ function NewTenantUnitPageContent() {
 
     if (name === "securityDepositPaid") {
       setSecurityDepositManuallyEdited(true);
-    }
-
-    if (name === "advanceRentMonths") {
-      setAdvanceRentManuallyEdited(false);
-    }
-
-    if (name === "advanceRentAmount") {
-      setAdvanceRentManuallyEdited(true);
     }
 
     if (name === "leaseEnd") {
@@ -409,52 +396,6 @@ function NewTenantUnitPageContent() {
   ]);
 
   useEffect(() => {
-    if (advanceRentManuallyEdited) {
-      return;
-    }
-
-    setForm((previous) => {
-      const monthsValue = Number(previous.advanceRentMonths);
-
-      if (!Number.isFinite(monthsValue) || monthsValue <= 0) {
-        if (previous.advanceRentAmount === "") {
-          return previous;
-        }
-
-        return {
-          ...previous,
-          advanceRentAmount: "",
-        };
-      }
-
-      const rentValue = Number(previous.monthlyRent);
-
-      if (!Number.isFinite(rentValue) || rentValue <= 0) {
-        if (previous.advanceRentAmount === "") {
-          return previous;
-        }
-
-        return {
-          ...previous,
-          advanceRentAmount: "",
-        };
-      }
-
-      const computed = rentValue * monthsValue;
-      const nextValue = String(computed);
-
-      if (previous.advanceRentAmount === nextValue) {
-        return previous;
-      }
-
-      return {
-        ...previous,
-        advanceRentAmount: nextValue,
-      };
-    });
-  }, [form.monthlyRent, form.advanceRentMonths, advanceRentManuallyEdited]);
-
-  useEffect(() => {
     if (!leaseEndAuto) {
       return;
     }
@@ -542,7 +483,6 @@ function NewTenantUnitPageContent() {
       setLeaseEndAuto(false);
       setRentManuallyEdited(false);
       setSecurityDepositManuallyEdited(false);
-      setAdvanceRentManuallyEdited(false);
       setUnitDefaults({
         rent: null,
         deposit: null,
@@ -826,58 +766,6 @@ function NewTenantUnitPageContent() {
 
           <div className="grid gap-5 md:grid-cols-2">
             <Fieldset>
-              <Label htmlFor="advanceRentMonths">Advance rent (months)</Label>
-              <Input
-                id="advanceRentMonths"
-                name="advanceRentMonths"
-                type="number"
-                min="0"
-                step="1"
-                placeholder="1"
-                value={form.advanceRentMonths}
-                onChange={handleChange}
-                disabled={disableSubmit}
-                aria-describedby={
-                  validationErrors.advance_rent_months
-                    ? "advanceMonths-error"
-                    : undefined
-                }
-              />
-              {validationErrors.advance_rent_months ? (
-                <FieldError id="advanceMonths-error">
-                  {firstError(validationErrors.advance_rent_months)}
-                </FieldError>
-              ) : null}
-            </Fieldset>
-
-            <Fieldset>
-              <Label htmlFor="advanceRentAmount">Advance rent amount (MVR)</Label>
-              <Input
-                id="advanceRentAmount"
-                name="advanceRentAmount"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="25000"
-                value={form.advanceRentAmount}
-                onChange={handleChange}
-                disabled={disableSubmit}
-                aria-describedby={
-                  validationErrors.advance_rent_amount
-                    ? "advanceAmount-error"
-                    : undefined
-                }
-              />
-              {validationErrors.advance_rent_amount ? (
-                <FieldError id="advanceAmount-error">
-                  {firstError(validationErrors.advance_rent_amount)}
-                </FieldError>
-              ) : null}
-            </Fieldset>
-          </div>
-
-  <div className="grid gap-5 md:grid-cols-2">
-            <Fieldset>
               <Label htmlFor="noticePeriodDays">Notice period (days)</Label>
               <Input
                 id="noticePeriodDays"
@@ -1134,8 +1022,6 @@ function buildFormData(form) {
     "security_deposit_paid",
     form.securityDepositPaid,
   );
-  appendOptionalNumeric(formData, "advance_rent_months", form.advanceRentMonths);
-  appendOptionalNumeric(formData, "advance_rent_amount", form.advanceRentAmount);
   appendOptionalNumeric(formData, "notice_period_days", form.noticePeriodDays);
   appendOptionalNumeric(
     formData,
@@ -1266,8 +1152,6 @@ function nameToApiKey(name) {
     leaseDurationYears: "lease_duration_years",
     monthlyRent: "monthly_rent",
     securityDepositPaid: "security_deposit_paid",
-    advanceRentMonths: "advance_rent_months",
-    advanceRentAmount: "advance_rent_amount",
     noticePeriodDays: "notice_period_days",
     lockInPeriodMonths: "lock_in_period_months",
     leaseDocumentPath: "lease_document_path",

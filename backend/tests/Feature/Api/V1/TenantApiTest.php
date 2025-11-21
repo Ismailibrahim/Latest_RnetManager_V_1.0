@@ -39,6 +39,7 @@ class TenantApiTest extends TestCase
             'full_name' => 'Adam Ismail',
             'email' => 'adam@example.com',
             'phone' => '7700001',
+            'id_proof_number' => 'A123456',
             'status' => 'active',
         ];
 

@@ -77,9 +77,14 @@ class UnitController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Unit $unit)
+    public function show(Request $request, Unit $unit)
     {
         $this->authorize('view', $unit);
+
+        // Ensure unit belongs to authenticated user's landlord (defense in depth)
+        if ($unit->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this unit.');
+        }
 
         $unit->load(['unitType:id,name', 'property:id,name']);
         $unit->loadCount('assets');
@@ -92,7 +97,30 @@ class UnitController extends Controller
      */
     public function update(UpdateUnitRequest $request, Unit $unit)
     {
+        $this->authorize('update', $unit);
+
+        // Ensure unit belongs to authenticated user's landlord (defense in depth)
+        if ($unit->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this unit.');
+        }
+
         $validated = $request->validated();
+
+        // If property_id is being updated, verify it belongs to the same landlord
+        if (isset($validated['property_id']) && $validated['property_id'] !== $unit->property_id) {
+            $property = Property::where('id', $validated['property_id'])
+                ->where('landlord_id', $request->user()->landlord_id)
+                ->first();
+
+            if (! $property) {
+                return response()->json([
+                    'message' => 'The selected property does not belong to your landlord account.',
+                    'errors' => [
+                        'property_id' => ['Invalid property selected.'],
+                    ],
+                ], 422);
+            }
+        }
 
         if (! empty($validated)) {
             $validated['landlord_id'] = $request->user()->landlord_id;

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api\V1;
 
 use App\Models\Landlord;
+use App\Models\PaymentMethod;
 use App\Models\Property;
 use App\Models\RentInvoice;
 use App\Models\Tenant;
@@ -49,6 +50,10 @@ class RentInvoiceApiTest extends TestCase
             'unit_id' => $unit->id,
             'status' => 'active',
         ]);
+
+        // Create payment methods for testing
+        PaymentMethod::create(['name' => 'bank_transfer', 'is_active' => true]);
+        PaymentMethod::create(['name' => 'cash', 'is_active' => true]);
 
         Sanctum::actingAs($user);
 
@@ -148,5 +153,52 @@ class RentInvoiceApiTest extends TestCase
 
         $this->getJson("/api/v1/rent-invoices/{$foreignInvoice->id}")
             ->assertForbidden();
+    }
+
+    public function test_owner_can_bulk_generate_rent_invoices(): void
+    {
+        ['user' => $user, 'tenantUnit' => $tenantUnit] = $this->setupContext();
+
+        // Create another active tenant unit
+        $tenant2 = Tenant::factory()->create(['landlord_id' => $user->landlord_id]);
+        $property = Property::factory()->create(['landlord_id' => $user->landlord_id]);
+        $unitType = UnitType::factory()->create();
+        $unit2 = Unit::factory()->create([
+            'landlord_id' => $user->landlord_id,
+            'property_id' => $property->id,
+            'unit_type_id' => $unitType->id,
+        ]);
+        $tenantUnit2 = TenantUnit::factory()->create([
+            'landlord_id' => $user->landlord_id,
+            'tenant_id' => $tenant2->id,
+            'unit_id' => $unit2->id,
+            'status' => 'active',
+            'monthly_rent' => 15000,
+        ]);
+
+        // Ensure tenant units have monthly rent
+        $tenantUnit->update(['monthly_rent' => 12000]);
+
+        $payload = [
+            'invoice_date' => '2025-01-01',
+            'due_date' => '2025-01-05',
+            'late_fee' => 0,
+            'status' => 'generated',
+            'skip_existing' => true,
+        ];
+
+        $response = $this->postJson('/api/v1/rent-invoices/bulk-generate', $payload);
+
+        $response->assertCreated()
+            ->assertJsonStructure([
+                'message',
+                'created',
+                'skipped',
+                'failed',
+                'invoices',
+            ]);
+
+        $responseData = $response->json();
+        $this->assertGreaterThanOrEqual(1, $responseData['created'], 'At least one invoice should be created');
     }
 }

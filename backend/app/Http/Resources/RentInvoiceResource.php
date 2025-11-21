@@ -24,6 +24,8 @@ class RentInvoiceResource extends JsonResource
             'due_date' => $this->due_date?->toDateString(),
             'rent_amount' => (float) $this->rent_amount,
             'late_fee' => (float) $this->late_fee,
+            'advance_rent_applied' => (float) ($this->advance_rent_applied ?? 0),
+            'is_advance_covered' => (bool) ($this->is_advance_covered ?? false),
             'status' => $this->status,
             'paid_date' => $this->paid_date?->toDateString(),
             'payment_method' => $this->payment_method,

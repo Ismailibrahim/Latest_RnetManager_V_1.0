@@ -14,18 +14,30 @@ class AssetPolicy extends BaseLandlordPolicy
         return $asset->unit?->landlord_id === $user->landlord_id;
     }
 
-    public function view(User $user, Model $asset): bool
+    public function view(User $user, ?Model $asset): bool
     {
+        if (! $asset) {
+            return false;
+        }
+
         return $user->is_active && $this->sameAssetLandlord($user, $asset);
     }
 
-    public function update(User $user, Model $asset): bool
+    public function update(User $user, ?Model $asset): bool
     {
+        if (! $asset) {
+            return false;
+        }
+
         return $user->is_active && $this->canManage($user) && $this->sameAssetLandlord($user, $asset);
     }
 
-    public function delete(User $user, Model $asset): bool
+    public function delete(User $user, ?Model $asset): bool
     {
+        if (! $asset) {
+            return false;
+        }
+
         return $user->is_active && $this->canDelete($user) && $this->sameAssetLandlord($user, $asset);
     }
 }

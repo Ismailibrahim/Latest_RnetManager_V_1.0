@@ -60,6 +60,18 @@ class AssetTypeController extends Controller
     {
         $this->authorize('delete', $assetType);
 
+        // Check if there are any assets using this asset type
+        $assetsCount = $assetType->assets()->count();
+        
+        if ($assetsCount > 0) {
+            return response()->json([
+                'message' => 'Cannot delete asset type. This type is currently being used by ' . $assetsCount . ' asset(s). Please remove or reassign these assets before deleting the type.',
+                'errors' => [
+                    'asset_type_id' => ['This asset type cannot be deleted because it is in use.'],
+                ],
+            ], 422);
+        }
+
         $assetType->delete();
 
         return response()->noContent();

@@ -304,7 +304,7 @@ export function Topbar() {
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <Sidebar />
+        <Sidebar onNavigate={() => setOpen(false)} />
       </div>
 
       {open ? (

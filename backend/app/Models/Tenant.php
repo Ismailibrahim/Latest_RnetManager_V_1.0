@@ -2,14 +2,17 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToLandlord;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Auth;
 
 class Tenant extends Model
 {
     use HasFactory;
+    use BelongsToLandlord;
 
     protected $fillable = [
         'landlord_id',
@@ -26,6 +29,19 @@ class Tenant extends Model
         'id_proof_document_id',
         'status',
     ];
+
+    /**
+     * The "booted" method of the model.
+     */
+    protected static function booted(): void
+    {
+        static::addGlobalScope('landlord', function ($query) {
+            $landlordId = Auth::user()?->landlord_id;
+            if ($landlordId !== null) {
+                $query->where('landlord_id', $landlordId);
+            }
+        });
+    }
 
     public function landlord(): BelongsTo
     {

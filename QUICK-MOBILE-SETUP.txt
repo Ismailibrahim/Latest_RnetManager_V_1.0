@@ -1,0 +1,72 @@
+========================================
+  MOBILE ACCESS - QUICK SETUP
+========================================
+
+YOUR IP ADDRESS: 192.168.1.225
+
+========================================
+STEP 1: Configure Firewall (ONE TIME)
+========================================
+
+Right-click "ALLOW-MOBILE-ACCESS.bat" 
+→ Select "Run as administrator"
+→ This allows your phone to connect
+
+OR manually run in PowerShell (as Admin):
+  netsh advfirewall firewall add rule name="Next.js Dev Server" dir=in action=allow protocol=TCP localport=3000
+  netsh advfirewall firewall add rule name="Laravel Backend" dir=in action=allow protocol=TCP localport=8000
+
+========================================
+STEP 2: Start Servers with Network Access
+========================================
+
+Option A: Use the network script
+  Double-click: START-SERVERS-NETWORK.bat
+
+Option B: Manual start
+
+  Backend (in Laragon Terminal):
+    cd C:\laragon\www\Rent_V2_Backend
+    php artisan serve --host=0.0.0.0 --port=8000
+
+  Frontend (in PowerShell):
+    cd D:\Sandbox\Rent_V2\frontend
+    npm run dev -- -H 0.0.0.0
+
+========================================
+STEP 3: Access from Your Phone
+========================================
+
+1. Make sure phone is on SAME Wi-Fi network
+2. Open phone browser
+3. Go to: http://192.168.1.225:3000
+
+That's it! You should see your app.
+
+========================================
+TROUBLESHOOTING
+========================================
+
+Can't access?
+→ Run ALLOW-MOBILE-ACCESS.bat as Admin
+→ Check both devices on same Wi-Fi
+→ Try: http://192.168.1.225:3000
+
+IP changed?
+→ Run GET-MY-IP.bat to find new IP
+
+Port in use?
+→ Run restart-for-mobile.ps1 (stops old, starts new)
+
+========================================
+FILES CREATED FOR YOU
+========================================
+
+✓ MOBILE_ACCESS_GUIDE.md - Full guide
+✓ START-SERVERS-NETWORK.bat - Start with network
+✓ GET-MY-IP.bat - Find your IP
+✓ ALLOW-MOBILE-ACCESS.bat - Configure firewall
+✓ restart-for-mobile.ps1 - Restart servers
+
+========================================
+

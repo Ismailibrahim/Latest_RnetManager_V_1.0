@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CalendarClock,
+  CalendarRange,
   CheckCircle2,
   CircleDollarSign,
   Clock4,
@@ -17,6 +18,7 @@ import {
   RefreshCcw,
   Search,
   Send,
+  Trash2,
   TrendingUp,
   X,
 } from "lucide-react";
@@ -38,12 +40,12 @@ const statusFilters = [
 const initialFormState = {
   tenant_unit_id: "",
   invoice_number: "",
-  invoice_date: formatDateInput(new Date()),
-  due_date: formatDateInput(addDays(new Date(), 5)),
+  billing_month: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`,
+  invoice_date: formatDateInput(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
+  due_date: formatDateInput(addDays(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 5)),
   rent_amount: "",
   late_fee: "",
   status: "generated",
-  payment_method: "",
   paid_date: "",
 };
 
@@ -71,26 +73,33 @@ export default function RentInvoicesPage() {
 
   const [flashMessage, setFlashMessage] = useState(null);
   const [updatingInvoiceId, setUpdatingInvoiceId] = useState(null);
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState(null);
   const [previewInvoice, setPreviewInvoice] = useState(null);
   const previewRef = useRef(null);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [bulkFormOpen, setBulkFormOpen] = useState(false);
+  const [bulkFormValues, setBulkFormValues] = useState(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    return {
+      billing_month: `${year}-${month}`,
+      invoice_date: formatDateInput(new Date(year, today.getMonth(), 1)),
+      due_date: formatDateInput(addDays(new Date(year, today.getMonth(), 1), 5)),
+      late_fee: "",
+      status: "generated",
+      skip_existing: true,
+    };
+  });
+  const [bulkFormErrors, setBulkFormErrors] = useState({});
+  const [bulkFormSubmitting, setBulkFormSubmitting] = useState(false);
+  const [bulkFormApiError, setBulkFormApiError] = useState(null);
+  const [bulkResult, setBulkResult] = useState(null);
 
-  const {
-    options: activePaymentMethodOptions,
-    methods: paymentMethods,
-    labels: paymentMethodLabels,
-    loading: paymentMethodsLoading,
-    error: paymentMethodsError,
-    refresh: refreshPaymentMethods,
-  } = usePaymentMethods({ onlyActive: true });
-
-  const paymentMethodOptionsWithPlaceholder = useMemo(
-    () => [{ value: "", label: "Select method", data: null }, ...activePaymentMethodOptions],
-    [activePaymentMethodOptions],
-  );
+  const { labels: paymentMethodLabels } = usePaymentMethods({ onlyActive: true });
 
   useEffect(() => {
     let isMounted = true;
@@ -391,6 +400,22 @@ export default function RentInvoicesPage() {
     setFormValues((previous) => {
       const next = { ...previous, [name]: value };
 
+      if (name === "billing_month" && value) {
+        const [year, month] = value.split("-");
+        if (year && month) {
+          const invoiceDate = new Date(Number(year), Number(month) - 1, 1);
+          next.invoice_date = formatDateInput(invoiceDate);
+          next.due_date = formatDateInput(addDays(invoiceDate, 5));
+        }
+      }
+
+      if (name === "invoice_date" && value) {
+        const invoiceDate = new Date(value);
+        if (!Number.isNaN(invoiceDate.getTime())) {
+          next.billing_month = `${invoiceDate.getFullYear()}-${String(invoiceDate.getMonth() + 1).padStart(2, "0")}`;
+        }
+      }
+
       if (name === "tenant_unit_id") {
         const unitId = Number(value);
         const unit = tenantUnitMap.get(unitId);
@@ -471,6 +496,72 @@ export default function RentInvoicesPage() {
       setFormApiError(err.message);
     } finally {
       setFormSubmitting(false);
+    }
+  };
+
+  const handleBulkFormSubmit = async (event) => {
+    event.preventDefault();
+
+    if (bulkFormSubmitting) {
+      return;
+    }
+
+    setBulkFormSubmitting(true);
+    setBulkFormErrors({});
+    setBulkFormApiError(null);
+    setBulkResult(null);
+
+    try {
+      const token = localStorage.getItem("auth_token");
+
+      if (!token) {
+        throw new Error("You must be logged in before generating bulk invoices.");
+      }
+
+      const payload = {
+        invoice_date: bulkFormValues.invoice_date || null,
+        due_date: bulkFormValues.due_date || null,
+        late_fee: bulkFormValues.late_fee ? Number(bulkFormValues.late_fee) : 0,
+        status: bulkFormValues.status || "generated",
+        skip_existing: bulkFormValues.skip_existing ?? true,
+      };
+
+      const response = await fetch(`${API_BASE_URL}/rent-invoices/bulk-generate`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.status === 422) {
+        const validationPayload = await response.json();
+        setBulkFormErrors(validationPayload?.errors ?? {});
+        throw new Error(validationPayload?.message ?? "Validation failed.");
+      }
+
+      if (!response.ok) {
+        const apiPayload = await response.json().catch(() => ({}));
+        const message =
+          apiPayload?.message ??
+          `Unable to create bulk invoices (HTTP ${response.status}).`;
+        throw new Error(message);
+      }
+
+      const result = await response.json();
+      setBulkResult(result);
+
+      // Refresh invoices list
+      setRefreshKey((value) => value + 1);
+      setFlashMessage(
+        `Bulk generation completed: ${result.created} created, ${result.skipped} skipped, ${result.failed} failed.`
+      );
+    } catch (err) {
+      setBulkFormApiError(err.message);
+    } finally {
+      setBulkFormSubmitting(false);
     }
   };
 
@@ -585,6 +676,51 @@ export default function RentInvoicesPage() {
       setFlashMessage(err.message);
     } finally {
       setUpdatingInvoiceId(null);
+    }
+  };
+
+  const handleDeleteInvoice = async (invoiceId) => {
+    if (!invoiceId || deletingInvoiceId) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this invoice? This action cannot be undone.",
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingInvoiceId(invoiceId);
+    try {
+      const token = localStorage.getItem("auth_token");
+
+      if (!token) {
+        throw new Error("You must be logged in before deleting an invoice.");
+      }
+
+      const response = await fetch(`${API_BASE_URL}/rent-invoices/${invoiceId}`, {
+        method: "DELETE",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok && response.status !== 204) {
+        const apiPayload = await response.json().catch(() => ({}));
+        const message =
+          apiPayload?.message ??
+          `Unable to delete invoice (HTTP ${response.status}).`;
+        throw new Error(message);
+      }
+
+      setInvoices((previous) => previous.filter((item) => item.id !== invoiceId));
+      setFlashMessage("Invoice deleted. You can now create a new one.");
+    } catch (err) {
+      setFlashMessage(err.message);
+    } finally {
+      setDeletingInvoiceId(null);
     }
   };
 
@@ -759,6 +895,14 @@ export default function RentInvoicesPage() {
           </button>
           <button
             type="button"
+            onClick={() => setBulkFormOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/10"
+          >
+            <FileText size={16} />
+            Bulk generate
+          </button>
+          <button
+            type="button"
             onClick={openCreateForm}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90"
           >
@@ -836,19 +980,6 @@ export default function RentInvoicesPage() {
           <p className="mt-3 text-xs text-red-500">
             {tenantUnitsError} — tenant options may be limited.
           </p>
-        ) : null}
-        {paymentMethodsError ? (
-          <div className="mt-3 flex items-center justify-between rounded-xl border border-red-200 bg-red-50/80 px-4 py-3 text-xs text-red-600">
-            <span>{paymentMethodsError}</span>
-            <button
-              type="button"
-              onClick={refreshPaymentMethods}
-              className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100"
-            >
-              <RefreshCcw size={12} />
-              Retry
-            </button>
-          </div>
         ) : null}
       </section>
 
@@ -946,6 +1077,7 @@ export default function RentInvoicesPage() {
                     const isPaid = status === "paid";
                     const isOverdue = status === "overdue";
                     const updating = updatingInvoiceId === item.id;
+                    const deleting = deletingInvoiceId === item.id;
                     return (
                       <div className="flex flex-wrap items-center gap-2">
                         <button
@@ -959,6 +1091,24 @@ export default function RentInvoicesPage() {
                           <Eye size={14} />
                           View
                         </button>
+                        {isGenerated && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteInvoice(item.id);
+                            }}
+                            disabled={deleting}
+                            className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:border-red-300 hover:text-red-700 disabled:cursor-not-allowed disabled:border-red-100 disabled:text-red-300"
+                          >
+                            {deleting ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={14} />
+                            )}
+                            Delete
+                          </button>
+                        )}
                         {(isGenerated || isOverdue) && (
                           <button
                             type="button"
@@ -1014,6 +1164,8 @@ export default function RentInvoicesPage() {
                   onMarkSent={() => handleMarkAsSent(invoice.id)}
                   onMarkPaid={() => handleMarkAsPaid(invoice.id)}
                   updating={updatingInvoiceId === invoice.id}
+                  onDelete={() => handleDeleteInvoice(invoice.id)}
+                  deleting={deletingInvoiceId === invoice.id}
                 />
               )}
               onRowClick={(invoice) => {
@@ -1082,10 +1234,28 @@ export default function RentInvoicesPage() {
           onSubmit={handleFormSubmit}
           tenantUnitOptions={tenantUnitOptions}
           tenantUnitsLoading={tenantUnitsLoading}
-          paymentMethodOptions={paymentMethodOptionsWithPlaceholder}
-          paymentMethodsLoading={paymentMethodsLoading}
-          paymentMethodError={paymentMethodsError}
-          onRefreshPaymentMethods={refreshPaymentMethods}
+          tenantUnitMap={tenantUnitMap}
+        />
+      ) : null}
+
+      {bulkFormOpen ? (
+        <BulkInvoiceFormDialog
+          values={bulkFormValues}
+          errors={bulkFormErrors}
+          submitting={bulkFormSubmitting}
+          apiError={bulkFormApiError}
+          result={bulkResult}
+          onClose={() => {
+            setBulkFormOpen(false);
+            setBulkFormApiError(null);
+            setBulkFormErrors({});
+            setBulkResult(null);
+          }}
+          onChange={(name, value) => {
+            setBulkFormErrors((prev) => ({ ...prev, [name]: undefined }));
+            setBulkFormValues((prev) => ({ ...prev, [name]: value }));
+          }}
+          onSubmit={handleBulkFormSubmit}
         />
       ) : null}
     </div>
@@ -1098,7 +1268,9 @@ function InvoiceRow({
   onView,
   onMarkSent,
   onMarkPaid,
+  onDelete,
   updating,
+  deleting,
 }) {
   const tenantUnit =
     invoice?.tenant_unit ??
@@ -1153,7 +1325,11 @@ function InvoiceRow({
         {formatCurrency(amount)}
       </td>
       <td className="px-3 py-3">
-        <StatusBadge status={status} />
+        <StatusBadge
+          status={status}
+          isAdvanceCovered={invoice?.is_advance_covered ?? false}
+          advanceRentApplied={invoice?.advance_rent_applied ?? 0}
+        />
       </td>
       <td className="px-3 py-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -1201,6 +1377,21 @@ function InvoiceRow({
               Paid
             </span>
           ) : null}
+          {isGenerated ? (
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={deleting}
+              className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:border-red-300 hover:text-red-700 disabled:cursor-not-allowed disabled:border-red-100 disabled:text-red-300"
+            >
+              {deleting ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Trash2 size={14} />
+              )}
+              Delete
+            </button>
+          ) : null}
         </div>
       </td>
     </tr>
@@ -1213,7 +1404,9 @@ function InvoiceCard({
   onView,
   onMarkSent,
   onMarkPaid,
+  onDelete,
   updating,
+  deleting,
 }) {
   const tenantUnit =
     invoice?.tenant_unit ??
@@ -1250,7 +1443,11 @@ function InvoiceCard({
             Created {formatDisplayDate(invoice?.created_at ?? invoice?.invoice_date)}
           </p>
         </div>
-        <StatusBadge status={status} />
+        <StatusBadge
+          status={status}
+          isAdvanceCovered={invoice?.is_advance_covered ?? false}
+          advanceRentApplied={invoice?.advance_rent_applied ?? 0}
+        />
       </div>
 
       <dl className="grid gap-3 text-sm text-slate-600">
@@ -1318,6 +1515,21 @@ function InvoiceCard({
             Paid
           </span>
         )}
+        {isGenerated && (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={deleting}
+            className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:border-red-300 hover:text-red-700 disabled:cursor-not-allowed disabled:border-red-100 disabled:text-red-300"
+          >
+            {deleting ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Trash2 size={14} />
+            )}
+            Delete
+          </button>
+        )}
       </div>
     </article>
   );
@@ -1333,11 +1545,67 @@ function InvoiceFormDialog({
   onSubmit,
   tenantUnitOptions,
   tenantUnitsLoading,
-  paymentMethodOptions,
-  paymentMethodsLoading,
-  paymentMethodError,
-  onRefreshPaymentMethods,
+  tenantUnitMap,
 }) {
+  const selectedTenantUnit = useMemo(() => {
+    if (!values.tenant_unit_id) {
+      return null;
+    }
+    return tenantUnitMap?.get(Number(values.tenant_unit_id)) ?? null;
+  }, [values.tenant_unit_id, tenantUnitMap]);
+
+  const advanceRentInfo = useMemo(() => {
+    if (!selectedTenantUnit || !values.invoice_date) {
+      return null;
+    }
+
+    const invoiceDate = new Date(values.invoice_date);
+    if (Number.isNaN(invoiceDate.getTime())) {
+      return null;
+    }
+
+    const leaseStart = selectedTenantUnit.lease_start
+      ? new Date(selectedTenantUnit.lease_start)
+      : null;
+    if (!leaseStart || Number.isNaN(leaseStart.getTime())) {
+      return null;
+    }
+
+    const advanceMonths = selectedTenantUnit.advance_rent_months ?? 0;
+    if (advanceMonths <= 0) {
+      return null;
+    }
+
+    const coverageEnd = new Date(leaseStart);
+    coverageEnd.setMonth(coverageEnd.getMonth() + advanceMonths);
+
+    const isCovered = invoiceDate >= leaseStart && invoiceDate <= coverageEnd;
+    const remaining = selectedTenantUnit.advance_rent_remaining ?? 0;
+    const invoiceAmount = Number(values.rent_amount ?? 0) + Number(values.late_fee ?? 0);
+
+    return {
+      isCovered,
+      remaining,
+      invoiceAmount,
+      canFullyCover: isCovered && remaining >= invoiceAmount,
+      canPartiallyCover: isCovered && remaining > 0 && remaining < invoiceAmount,
+    };
+  }, [selectedTenantUnit, values.invoice_date, values.rent_amount, values.late_fee]);
+
+  const billingMonthValue = useMemo(() => {
+    if (values.billing_month) {
+      return values.billing_month;
+    }
+
+    if (values.invoice_date) {
+      const parsed = new Date(values.invoice_date);
+      if (!Number.isNaN(parsed.getTime())) {
+        return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
+      }
+    }
+
+    return "";
+  }, [values.billing_month, values.invoice_date]);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 py-8">
       <div className="relative w-full max-w-2xl rounded-3xl border border-slate-200 bg-white p-6 shadow-xl">
@@ -1376,24 +1644,6 @@ function InvoiceFormDialog({
           </div>
         ) : null}
 
-        {paymentMethodError ? (
-          <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50/80 px-4 py-3 text-xs text-red-600">
-            <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="font-semibold">Payment methods unavailable</p>
-              <p className="mt-1 text-[11px] leading-relaxed">{paymentMethodError}</p>
-            </div>
-            <button
-              type="button"
-              onClick={onRefreshPaymentMethods}
-              className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-600 transition hover:bg-red-100"
-            >
-              <RefreshCcw size={12} />
-              Retry
-            </button>
-          </div>
-        ) : null}
-
         <form onSubmit={onSubmit} className="space-y-4">
           <FormField
             label="Tenant unit"
@@ -1421,6 +1671,82 @@ function InvoiceFormDialog({
             </select>
           </FormField>
 
+          {advanceRentInfo && advanceRentInfo.isCovered ? (
+            <div
+              className={`rounded-xl border p-4 ${
+                advanceRentInfo.canFullyCover
+                  ? "border-blue-200 bg-blue-50/80"
+                  : advanceRentInfo.canPartiallyCover
+                    ? "border-amber-200 bg-amber-50/80"
+                    : "border-slate-200 bg-slate-50/80"
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <CheckCircle2
+                  size={18}
+                  className={`mt-0.5 flex-shrink-0 ${
+                    advanceRentInfo.canFullyCover
+                      ? "text-blue-600"
+                      : "text-amber-600"
+                  }`}
+                />
+                <div className="flex-1">
+                  <p
+                    className={`text-sm font-semibold ${
+                      advanceRentInfo.canFullyCover
+                        ? "text-blue-900"
+                        : "text-amber-900"
+                    }`}
+                  >
+                    {advanceRentInfo.canFullyCover
+                      ? "✓ This invoice will be automatically paid with advance rent"
+                      : advanceRentInfo.canPartiallyCover
+                        ? "⚠ Partial advance rent will be applied"
+                        : "ℹ Invoice date is within advance rent period"}
+                  </p>
+                  {advanceRentInfo.remaining > 0 ? (
+                    <p className="mt-1 text-xs text-slate-600">
+                      {advanceRentInfo.canFullyCover ? (
+                        <>Advance rent available: {formatCurrency(advanceRentInfo.remaining)}</>
+                      ) : (
+                        <>
+                          {formatCurrency(advanceRentInfo.remaining)} available. Invoice amount:{" "}
+                          {formatCurrency(advanceRentInfo.invoiceAmount)}. Remaining due:{" "}
+                          {formatCurrency(
+                            advanceRentInfo.invoiceAmount - advanceRentInfo.remaining
+                          )}
+                        </>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-xs text-amber-700">
+                      No advance rent remaining. Invoice will be generated normally.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : selectedTenantUnit &&
+            selectedTenantUnit.advance_rent_amount > 0 &&
+            selectedTenantUnit.advance_rent_remaining > 0 &&
+            values.invoice_date ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+              <div className="flex items-start gap-3">
+                <CalendarRange size={18} className="mt-0.5 flex-shrink-0 text-slate-500" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-slate-900">
+                    Advance rent available but invoice date outside coverage period
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    This lease has {formatCurrency(selectedTenantUnit.advance_rent_remaining)}{" "}
+                    advance rent remaining, but the invoice date falls outside the advance rent
+                    coverage period (months 1-{selectedTenantUnit.advance_rent_months}).
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField
               label="Invoice number"
@@ -1440,6 +1766,27 @@ function InvoiceFormDialog({
             </FormField>
 
             <FormField
+              label="Billing month"
+              htmlFor="billing_month"
+              required
+              hint="Sets invoice date to the 1st and due date 5 days later"
+              error={errors?.billing_month}
+            >
+              <input
+                id="billing_month"
+                name="billing_month"
+                type="month"
+                value={billingMonthValue}
+                onChange={(event) => onChange("billing_month", event.target.value)}
+                required
+                disabled={submitting}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </FormField>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField
               label="Invoice date"
               htmlFor="invoice_date"
               required
@@ -1456,9 +1803,7 @@ function InvoiceFormDialog({
                 className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </FormField>
-          </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
             <FormField
               label="Due date"
               htmlFor="due_date"
@@ -1476,7 +1821,9 @@ function InvoiceFormDialog({
                 className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </FormField>
+          </div>
 
+          <div className="grid gap-4 sm:grid-cols-2">
             <FormField
               label="Rent amount (MVR)"
               htmlFor="rent_amount"
@@ -1497,9 +1844,7 @@ function InvoiceFormDialog({
                 className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </FormField>
-          </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
             <FormField
               label="Late fee (MVR)"
               htmlFor="late_fee"
@@ -1517,29 +1862,6 @@ function InvoiceFormDialog({
                 disabled={submitting}
                 className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
               />
-            </FormField>
-
-            <FormField
-              label="Payment method"
-              htmlFor="payment_method"
-              error={errors?.payment_method}
-            >
-              <select
-                id="payment_method"
-                name="payment_method"
-                value={values.payment_method}
-                onChange={(event) =>
-                  onChange("payment_method", event.target.value)
-                }
-                disabled={submitting || paymentMethodsLoading}
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {paymentMethodOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
             </FormField>
           </div>
 
@@ -1689,7 +2011,11 @@ function InvoicePreviewDialog({
                   {invoice?.invoice_number ?? "—"}
                 </p>
                 <div className="mt-2 inline-flex">
-                  <StatusBadge status={invoice?.status ?? "generated"} />
+                  <StatusBadge
+                    status={invoice?.status ?? "generated"}
+                    isAdvanceCovered={invoice?.is_advance_covered ?? false}
+                    advanceRentApplied={invoice?.advance_rent_applied ?? 0}
+                  />
                 </div>
               </div>
             </header>
@@ -1824,7 +2150,7 @@ function SummaryCard({ title, value, icon: Icon, tone = "default" }) {
   );
 }
 
-function StatusBadge({ status }) {
+function StatusBadge({ status, isAdvanceCovered = false, advanceRentApplied = 0 }) {
   const config = {
     generated: {
       label: "Generated",
@@ -1835,8 +2161,10 @@ function StatusBadge({ status }) {
       className: "bg-sky-100 text-sky-700",
     },
     paid: {
-      label: "Paid",
-      className: "bg-emerald-100 text-emerald-600",
+      label: isAdvanceCovered ? "Paid (Advance)" : "Paid",
+      className: isAdvanceCovered 
+        ? "bg-blue-100 text-blue-700" 
+        : "bg-emerald-100 text-emerald-600",
     },
     overdue: {
       label: "Overdue",
@@ -1851,11 +2179,18 @@ function StatusBadge({ status }) {
   const tone = config[status] ?? config.generated;
 
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${tone.className}`}
-    >
-      {tone.label}
-    </span>
+    <div className="inline-flex flex-col items-start gap-1">
+      <span
+        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${tone.className}`}
+      >
+        {tone.label}
+      </span>
+      {advanceRentApplied > 0 && (
+        <span className="text-[10px] text-blue-600 font-medium">
+          {isAdvanceCovered ? "✓ Fully paid with advance rent" : `+${formatCurrency(advanceRentApplied)} applied`}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -2025,7 +2360,6 @@ function buildInvoicePayload(values) {
     rent_amount: values.rent_amount ? Number(values.rent_amount) : null,
     late_fee: values.late_fee ? Number(values.late_fee) : 0,
     status: values.status ?? "generated",
-    payment_method: values.payment_method || null,
     paid_date: values.paid_date || null,
   };
 }
@@ -2062,4 +2396,278 @@ function summaryTone(tone) {
   return mapping[tone] ?? mapping.default;
 }
 
+function BulkInvoiceFormDialog({
+  values,
+  errors,
+  submitting,
+  apiError,
+  result,
+  onClose,
+  onChange,
+  onSubmit,
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 py-8">
+      <div className="relative w-full max-w-2xl rounded-3xl border border-slate-200 bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-5 top-5 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-700"
+        >
+          <X size={16} />
+        </button>
+
+        <div className="mb-6 space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+            Bulk invoice generation
+          </p>
+          <h2 className="text-2xl font-semibold text-slate-900">
+            Generate invoices for all tenants
+          </h2>
+          <p className="text-sm text-slate-600">
+            Create rent invoices for all active tenant units with the same billing details.
+            Each invoice will use the tenant unit's monthly rent amount.
+          </p>
+        </div>
+
+        {apiError ? (
+          <div className="mb-4 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50/80 p-3 text-sm text-red-600">
+            <AlertTriangle size={18} className="mt-0.5 flex-shrink-0" />
+            <p>{apiError}</p>
+          </div>
+        ) : null}
+
+        {result ? (
+          <div className="mb-4 space-y-3">
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
+              <p className="text-sm font-semibold text-emerald-900">
+                {result.message}
+              </p>
+            </div>
+
+            {result.created > 0 && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Created: {result.created} invoices
+                </p>
+              </div>
+            )}
+
+            {result.skipped > 0 && result.skipped_details?.length > 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 mb-2">
+                  Skipped: {result.skipped} invoices
+                </p>
+                <div className="max-h-32 overflow-y-auto space-y-1">
+                  {result.skipped_details.map((item, idx) => (
+                    <p key={idx} className="text-xs text-amber-700">
+                      {item.tenant_name} ({item.unit_number}): {item.reason}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {result.failed > 0 && result.failed_details?.length > 0 && (
+              <div className="rounded-xl border border-red-200 bg-red-50/80 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-red-700 mb-2">
+                  Failed: {result.failed} invoices
+                </p>
+                <div className="max-h-32 overflow-y-auto space-y-1">
+                  {result.failed_details.map((item, idx) => (
+                    <p key={idx} className="text-xs text-red-700">
+                      {item.tenant_name} ({item.unit_number}): {item.reason}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        <form onSubmit={onSubmit} className="space-y-4">
+          <FormField
+            label="Billing month"
+            htmlFor="bulk_billing_month"
+            required
+            hint="Select the month and year for which you're generating rent invoices"
+            error={errors?.billing_month || errors?.invoice_date}
+          >
+            <input
+              id="bulk_billing_month"
+              name="billing_month"
+              type="month"
+              value={values.billing_month}
+              onChange={(event) => {
+                const monthValue = event.target.value;
+                if (monthValue) {
+                  const [year, month] = monthValue.split("-");
+                  const invoiceDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+                  const dueDate = addDays(new Date(invoiceDate), 5);
+                  onChange("billing_month", monthValue);
+                  onChange("invoice_date", formatDateInput(invoiceDate));
+                  onChange("due_date", formatDateInput(dueDate));
+                }
+              }}
+              required
+              disabled={submitting}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+            />
+          </FormField>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField
+              label="Invoice date"
+              htmlFor="bulk_invoice_date"
+              required
+              hint="Automatically set to the 1st of the selected month"
+              error={errors?.invoice_date}
+            >
+              <input
+                id="bulk_invoice_date"
+                name="invoice_date"
+                type="date"
+                value={values.invoice_date}
+                onChange={(event) => onChange("invoice_date", event.target.value)}
+                required
+                disabled={submitting}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </FormField>
+
+            <FormField
+              label="Due date"
+              htmlFor="bulk_due_date"
+              required
+              hint="Automatically set to 5 days after invoice date"
+              error={errors?.due_date}
+            >
+              <input
+                id="bulk_due_date"
+                name="due_date"
+                type="date"
+                value={values.due_date}
+                onChange={(event) => onChange("due_date", event.target.value)}
+                required
+                disabled={submitting}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </FormField>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField
+              label="Late fee (MVR)"
+              htmlFor="bulk_late_fee"
+              hint="Applied to all invoices (optional)"
+              error={errors?.late_fee}
+            >
+              <input
+                id="bulk_late_fee"
+                name="late_fee"
+                type="number"
+                step="0.01"
+                min="0"
+                value={values.late_fee}
+                onChange={(event) => onChange("late_fee", event.target.value)}
+                placeholder="0.00"
+                disabled={submitting}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </FormField>
+
+            <FormField
+              label="Status"
+              htmlFor="bulk_status"
+              hint="Default status for all generated invoices"
+              error={errors?.status}
+            >
+              <select
+                id="bulk_status"
+                name="status"
+                value={values.status}
+                onChange={(event) => onChange("status", event.target.value)}
+                disabled={submitting}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="generated">Generated</option>
+                <option value="sent">Sent</option>
+                <option value="paid">Paid</option>
+                <option value="overdue">Overdue</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </FormField>
+          </div>
+
+          <FormField
+            label="Options"
+            htmlFor="bulk_skip_existing"
+            hint="Skip tenant units that already have an invoice for the selected invoice date"
+          >
+            <label className="flex items-center gap-2">
+              <input
+                id="bulk_skip_existing"
+                name="skip_existing"
+                type="checkbox"
+                checked={values.skip_existing}
+                onChange={(event) => onChange("skip_existing", event.target.checked)}
+                disabled={submitting}
+                className="rounded border-slate-300 text-primary focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              <span className="text-sm text-slate-700">
+                Skip existing invoices for this date
+              </span>
+            </label>
+          </FormField>
+
+          <div className="rounded-xl border border-blue-200 bg-blue-50/80 p-4">
+            <div className="flex items-start gap-3">
+              <FileText size={18} className="mt-0.5 flex-shrink-0 text-blue-600" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-blue-900">
+                  How it works
+                </p>
+                <p className="mt-1 text-xs text-blue-700">
+                  This will generate invoices for all active tenant units. Each invoice will use
+                  the tenant unit's monthly rent amount. Advance rent will be automatically
+                  applied if applicable.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {result ? "Close" : "Cancel"}
+            </button>
+            {!result && (
+              <button
+                type="submit"
+                disabled={submitting}
+                className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/60"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Generating…
+                  </>
+                ) : (
+                  <>
+                    <FileText size={16} />
+                    Generate for all tenants
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 

@@ -1,0 +1,39 @@
+========================================
+  IMPORTANT: IP ADDRESS INFORMATION
+========================================
+
+Your laptop has TWO IP addresses:
+
+1. 172.29.80.1  ← Virtual adapter (WSL/Hyper-V) - DON'T USE THIS
+2. 192.168.1.225 ← Wi-Fi adapter - USE THIS ONE!
+
+========================================
+WHICH IP TO USE ON YOUR PHONE:
+========================================
+
+Use: http://192.168.1.225:3000
+
+NOT: http://172.29.80.1:3000
+
+========================================
+WHY NEXT.JS SHOWS 172.29.80.1:
+========================================
+
+Next.js automatically detects network interfaces and may show
+the virtual adapter IP. This is normal, but you should still
+use your Wi-Fi IP (192.168.1.225) on your phone.
+
+========================================
+TO RESTART SERVER CLEANLY:
+========================================
+
+Run: .\clean-restart-frontend.ps1
+
+This will:
+- Stop all node processes
+- Remove lock files
+- Start server with network access
+- Show you the correct IP to use
+
+========================================
+

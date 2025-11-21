@@ -1,0 +1,39 @@
+========================================
+  URGENT: ACTION REQUIRED
+========================================
+
+I can see your phone IS connecting (192.168.1.118)!
+Both servers are running correctly.
+
+The ONLY thing missing is:
+========================================
+RESTART THE FRONTEND SERVER!
+========================================
+
+The .env.local file is now fixed, but the frontend
+server MUST be restarted to use it.
+
+STEPS:
+1. Find terminal running "npm run dev"
+2. Press Ctrl+C
+3. Run: cd frontend && npm run dev
+
+THEN test on your phone: http://192.168.1.225:3000
+
+========================================
+IF STILL NOT WORKING AFTER RESTART:
+========================================
+
+Update backend CORS:
+
+1. Open: C:\laragon\www\Rent_V2_Backend\.env
+2. Find: CORS_ALLOWED_ORIGINS
+3. Change to:
+   CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://192.168.1.225:3000
+
+4. Restart backend (in Laragon Terminal):
+   cd C:\laragon\www\Rent_V2_Backend
+   php artisan serve --host=0.0.0.0 --port=8000
+
+========================================
+

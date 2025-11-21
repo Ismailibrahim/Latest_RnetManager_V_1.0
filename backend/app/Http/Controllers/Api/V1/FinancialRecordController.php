@@ -65,9 +65,14 @@ class FinancialRecordController extends Controller
             ->setStatusCode(201);
     }
 
-    public function show(FinancialRecord $financialRecord)
+    public function show(Request $request, FinancialRecord $financialRecord)
     {
         $this->authorize('view', $financialRecord);
+
+        // Ensure financial record belongs to authenticated user's landlord (defense in depth)
+        if ($financialRecord->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this financial record.');
+        }
 
         $financialRecord->load([
             'tenantUnit.tenant:id,full_name',
@@ -80,6 +85,13 @@ class FinancialRecordController extends Controller
 
     public function update(UpdateFinancialRecordRequest $request, FinancialRecord $financialRecord)
     {
+        $this->authorize('update', $financialRecord);
+
+        // Ensure financial record belongs to authenticated user's landlord (defense in depth)
+        if ($financialRecord->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this financial record.');
+        }
+
         $validated = $request->validated();
 
         if (! empty($validated)) {

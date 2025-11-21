@@ -1,0 +1,67 @@
+========================================
+  FINAL FIX - STEP BY STEP
+========================================
+
+GOOD NEWS: Both servers are running and accessible!
+I can see your phone (192.168.1.118) is connecting to the frontend!
+
+========================================
+WHAT'S FIXED:
+========================================
+
+✅ Frontend .env.local - API URL set correctly
+✅ Backend running on 0.0.0.0:8000 (network accessible)
+✅ Frontend running on 0.0.0.0:3000 (network accessible)
+✅ Phone is connecting (I see connections from 192.168.1.118)
+
+========================================
+CRITICAL: RESTART FRONTEND NOW!
+========================================
+
+The frontend MUST be restarted to use the new .env.local!
+
+STEPS:
+1. Find the terminal running "npm run dev"
+2. Press Ctrl+C to stop it
+3. Run:
+   cd D:\Sandbox\Rent_V2\frontend
+   npm run dev
+
+This is REQUIRED - the .env.local changes won't work until restart!
+
+========================================
+IF LOGIN STILL FAILS AFTER RESTART:
+========================================
+
+Check CORS - Update backend .env file:
+
+Location: C:\laragon\www\Rent_V2_Backend\.env
+
+Add or update this line:
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://192.168.1.225:3000
+
+Then restart backend:
+cd C:\laragon\www\Rent_V2_Backend
+php artisan serve --host=0.0.0.0 --port=8000
+
+========================================
+TEST:
+========================================
+
+1. Restart frontend (REQUIRED!)
+2. On phone: http://192.168.1.225:3000
+3. Try login
+4. Check browser console on phone for errors
+
+========================================
+QUICK CHECK:
+========================================
+
+Verify .env.local is correct:
+  type frontend\.env.local
+
+Should show:
+  NEXT_PUBLIC_API_URL=http://192.168.1.225:8000/api/v1
+
+========================================
+

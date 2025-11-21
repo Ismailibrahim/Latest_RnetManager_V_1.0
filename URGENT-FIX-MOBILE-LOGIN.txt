@@ -1,0 +1,62 @@
+========================================
+  URGENT: FIX MOBILE LOGIN
+========================================
+
+THE PROBLEM:
+When you access from your phone, the app tries to connect to
+"http://localhost:8000/api/v1" - but "localhost" on your phone
+refers to the phone itself, not your laptop!
+
+========================================
+QUICK FIX (2 Steps):
+========================================
+
+STEP 1: Update Frontend API URL
+--------------------------------
+Open this file in a text editor:
+  frontend\.env.local
+
+Find this line:
+  NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+
+Change it to:
+  NEXT_PUBLIC_API_URL=http://192.168.1.225:8000/api/v1
+
+Save the file.
+
+STEP 2: Restart Frontend Server
+--------------------------------
+1. Stop the current frontend server (Ctrl+C)
+2. Restart it:
+   cd D:\Sandbox\Rent_V2\frontend
+   npm run dev
+
+That's it! The app should now work on your phone.
+
+========================================
+ALSO CHECK:
+========================================
+
+1. Backend must be running with network access:
+   cd C:\laragon\www\Rent_V2_Backend
+   php artisan serve --host=0.0.0.0 --port=8000
+
+2. If you get CORS errors, update backend .env:
+   C:\laragon\www\Rent_V2_Backend\.env
+   
+   Add this line:
+   CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://192.168.1.225:3000
+
+   Then restart backend.
+
+========================================
+TEST:
+========================================
+
+On your phone, go to:
+  http://192.168.1.225:3000
+
+Try logging in. It should work now!
+
+========================================
+

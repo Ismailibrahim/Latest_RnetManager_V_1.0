@@ -65,9 +65,14 @@ class MaintenanceRequestController extends Controller
             ->setStatusCode(201);
     }
 
-    public function show(MaintenanceRequest $maintenanceRequest)
+    public function show(Request $request, MaintenanceRequest $maintenanceRequest)
     {
         $this->authorize('view', $maintenanceRequest);
+
+        // Ensure maintenance request belongs to authenticated user's landlord (defense in depth)
+        if ($maintenanceRequest->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this maintenance request.');
+        }
 
         $maintenanceRequest->load(['unit.property:id,name', 'unit:id,unit_number,property_id', 'asset:id,name']);
 
@@ -76,6 +81,13 @@ class MaintenanceRequestController extends Controller
 
     public function update(UpdateMaintenanceRequest $request, MaintenanceRequest $maintenanceRequest)
     {
+        $this->authorize('update', $maintenanceRequest);
+
+        // Ensure maintenance request belongs to authenticated user's landlord (defense in depth)
+        if ($maintenanceRequest->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this maintenance request.');
+        }
+
         $validated = $request->validated();
 
         if (! empty($validated)) {

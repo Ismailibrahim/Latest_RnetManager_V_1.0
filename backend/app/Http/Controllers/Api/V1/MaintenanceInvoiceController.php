@@ -77,9 +77,14 @@ class MaintenanceInvoiceController extends Controller
             ->setStatusCode(201);
     }
 
-    public function show(MaintenanceInvoice $maintenanceInvoice)
+    public function show(Request $request, MaintenanceInvoice $maintenanceInvoice)
     {
         $this->authorize('view', $maintenanceInvoice);
+
+        // Ensure maintenance invoice belongs to authenticated user's landlord (defense in depth)
+        if ($maintenanceInvoice->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this maintenance invoice.');
+        }
 
         $maintenanceInvoice->load([
             'tenantUnit.tenant:id,full_name',
@@ -92,6 +97,13 @@ class MaintenanceInvoiceController extends Controller
 
     public function update(UpdateMaintenanceInvoiceRequest $request, MaintenanceInvoice $maintenanceInvoice)
     {
+        $this->authorize('update', $maintenanceInvoice);
+
+        // Ensure maintenance invoice belongs to authenticated user's landlord (defense in depth)
+        if ($maintenanceInvoice->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this maintenance invoice.');
+        }
+
         $validated = $request->validated();
 
         if (! empty($validated)) {

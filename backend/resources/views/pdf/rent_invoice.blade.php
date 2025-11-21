@@ -42,6 +42,21 @@
         .badge--paid { background-color: #dcfce7; color: #047857; }
         .badge--overdue { background-color: #fee2e2; color: #b91c1c; }
         .badge--cancelled { background-color: #e2e8f0; color: #475569; }
+        .badge--advance-paid { background-color: #dbeafe; color: #0369a1; }
+
+        .advance-rent-note {
+            background-color: #eff6ff;
+            border-left: 3px solid #3b82f6;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 12px;
+        }
+
+        .advance-rent-note p {
+            margin: 0;
+            font-size: 12px;
+            color: #1e40af;
+        }
 
         table {
             width: 100%;
@@ -110,15 +125,20 @@
             <h2 style="margin-top:6px;font-size:20px;">{{ $invoice->invoice_number ?? 'Rent Invoice' }}</h2>
             @php
                 $status = $invoice->status ?? 'generated';
+                $isAdvanceCovered = (bool) ($invoice->is_advance_covered ?? false);
+                $advanceRentApplied = (float) ($invoice->advance_rent_applied ?? 0);
+                
                 $statusClass = [
                     'generated' => 'badge--generated',
                     'sent' => 'badge--sent',
-                    'paid' => 'badge--paid',
+                    'paid' => $isAdvanceCovered ? 'badge--advance-paid' : 'badge--paid',
                     'overdue' => 'badge--overdue',
                     'cancelled' => 'badge--cancelled',
                 ][$status] ?? 'badge--generated';
             @endphp
-            <span class="badge {{ $statusClass }}">{{ strtoupper($status) }}</span>
+            <span class="badge {{ $statusClass }}">
+                {{ $isAdvanceCovered && $status === 'paid' ? 'PAID (ADVANCE RENT)' : strtoupper($status) }}
+            </span>
         </div>
     </header>
 
@@ -185,25 +205,86 @@
                         </td>
                     </tr>
                 @endif
+                @php
+                    $totalAmount = (float) $invoice->rent_amount + (float) ($invoice->late_fee ?? 0);
+                    $advanceRentApplied = (float) ($invoice->advance_rent_applied ?? 0);
+                    $amountDue = $totalAmount - $advanceRentApplied;
+                @endphp
                 <tr class="totals">
-                    <td style="text-align:right;text-transform:uppercase;color:#475569;">Total due</td>
+                    <td style="text-align:right;text-transform:uppercase;color:#475569;">Total</td>
+                    <td style="text-align:right;">
+                        {{ number_format($totalAmount, 2) }}
+                    </td>
+                </tr>
+                @if($advanceRentApplied > 0)
+                    <tr>
+                        <td style="color:#0369a1;font-size:11px;">
+                            Less: Advance rent applied
+                        </td>
+                        <td style="text-align:right;color:#0369a1;font-size:11px;">
+                            ({{ number_format($advanceRentApplied, 2) }})
+                        </td>
+                    </tr>
+                @endif
+                <tr class="totals">
+                    <td style="text-align:right;text-transform:uppercase;color:#475569;">
+                        {{ $amountDue <= 0 ? 'Total paid' : 'Amount due' }}
+                    </td>
                     <td style="text-align:right;font-size:14px;">
-                        {{ number_format((float) $invoice->rent_amount + (float) $invoice->late_fee, 2) }}
+                        {{ number_format(max(0, $amountDue), 2) }}
                     </td>
                 </tr>
             </tbody>
         </table>
     </section>
 
+    @php
+        $isAdvanceCovered = (bool) ($invoice->is_advance_covered ?? false);
+        $advanceRentApplied = (float) ($invoice->advance_rent_applied ?? 0);
+        $totalAmount = (float) $invoice->rent_amount + (float) ($invoice->late_fee ?? 0);
+        $amountDue = $totalAmount - $advanceRentApplied;
+    @endphp
+
+    @if($isAdvanceCovered || $advanceRentApplied > 0)
+        <section class="section advance-rent-note">
+            <p style="margin:0;font-weight:600;margin-bottom:4px;">
+                @if($isAdvanceCovered)
+                    ✓ This invoice is fully paid with advance rent
+                @else
+                    ℹ Advance rent of {{ number_format($advanceRentApplied, 2) }} MVR has been applied to this invoice
+                @endif
+            </p>
+            @if($isAdvanceCovered)
+                <p style="margin:4px 0 0;font-size:11px;opacity:0.9;">
+                    No payment required. This invoice is covered by advance rent collected on your lease.
+                </p>
+            @elseif($advanceRentApplied > 0)
+                <p style="margin:4px 0 0;font-size:11px;opacity:0.9;">
+                    Remaining amount due: {{ number_format($amountDue, 2) }} MVR
+                </p>
+            @endif
+        </section>
+    @endif
+
     <section class="section" style="background:#f8fafc;padding:16px;border-radius:12px;margin-top:28px;">
         <h4 style="font-size:12px;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:6px;">
             Payment instructions
         </h4>
-        <p style="margin:0;font-size:12px;color:#475569;">
-            Please remit payment to the landlord treasury account and include the invoice number in your reference
-            for automated reconciliation. Late payments may incur additional fees according to the lease agreement.
-        </p>
-        @if(($invoice->status ?? '') === 'overdue')
+        @if($isAdvanceCovered)
+            <p style="margin:0;font-size:12px;color:#475569;">
+                This invoice has been automatically paid using advance rent. No payment action is required.
+            </p>
+        @elseif($amountDue <= 0)
+            <p style="margin:0;font-size:12px;color:#475569;">
+                This invoice has been fully paid using advance rent. No payment action is required.
+            </p>
+        @else
+            <p style="margin:0;font-size:12px;color:#475569;">
+                Please remit payment to the landlord treasury account and include the invoice number in your reference
+                for automated reconciliation. Late payments may incur additional fees according to the lease agreement.
+            </p>
+        @endif
+        @if(($invoice->status ?? '') === 'overdue' && $amountDue > 0)
             <p style="margin-top:10px;font-weight:600;color:#b91c1c;">
                 This invoice is overdue. Please settle the outstanding amount immediately to avoid further penalties.
             </p>

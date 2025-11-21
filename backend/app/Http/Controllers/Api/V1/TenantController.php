@@ -72,13 +72,19 @@ class TenantController extends Controller
             ->setStatusCode(201);
     }
 
-    public function show(Tenant $tenant)
+    public function show(Request $request, Tenant $tenant)
     {
         $this->authorize('view', $tenant);
+
+        // Ensure tenant belongs to authenticated user's landlord (defense in depth)
+        if ($tenant->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this tenant.');
+        }
 
         $tenant->load([
             'tenantUnits' => fn ($query) => $query
                 ->where('status', 'active')
+                ->where('landlord_id', $request->user()->landlord_id)
                 ->with(['unit:id,unit_number,property_id']),
             'documents',
             'idProofDocument',
@@ -90,6 +96,13 @@ class TenantController extends Controller
 
     public function update(UpdateTenantRequest $request, Tenant $tenant)
     {
+        $this->authorize('update', $tenant);
+
+        // Ensure tenant belongs to authenticated user's landlord (defense in depth)
+        if ($tenant->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this tenant.');
+        }
+
         $validated = $request->validated();
 
         $idProofDocumentId = $validated['id_proof_document_id'] ?? null;

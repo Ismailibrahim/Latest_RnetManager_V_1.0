@@ -2,14 +2,17 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToLandlord;
 use App\Services\NumberGeneratorService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Auth;
 
 class RentInvoice extends Model
 {
     use HasFactory;
+    use BelongsToLandlord;
 
     protected $fillable = [
         'tenant_unit_id',
@@ -19,6 +22,8 @@ class RentInvoice extends Model
         'due_date',
         'rent_amount',
         'late_fee',
+        'advance_rent_applied',
+        'is_advance_covered',
         'status',
         'paid_date',
         'payment_method',
@@ -29,6 +34,8 @@ class RentInvoice extends Model
         'due_date' => 'date',
         'rent_amount' => 'decimal:2',
         'late_fee' => 'decimal:2',
+        'advance_rent_applied' => 'decimal:2',
+        'is_advance_covered' => 'boolean',
         'paid_date' => 'date',
     ];
 
@@ -43,6 +50,19 @@ class RentInvoice extends Model
             if (empty($invoice->invoice_number) && $invoice->landlord_id) {
                 $invoice->invoice_number = app(NumberGeneratorService::class)
                     ->generateRentInvoiceNumber($invoice->landlord_id);
+            }
+        });
+    }
+
+    /**
+     * The "booted" method of the model.
+     */
+    protected static function booted(): void
+    {
+        static::addGlobalScope('landlord', function ($query) {
+            $landlordId = Auth::user()?->landlord_id;
+            if ($landlordId !== null) {
+                $query->where('landlord_id', $landlordId);
             }
         });
     }

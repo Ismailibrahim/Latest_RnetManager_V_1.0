@@ -2,38 +2,37 @@
 
 use App\Http\Controllers\Api\V1\AccountController;
 use App\Http\Controllers\Api\V1\AccountDelegateController;
+use App\Http\Controllers\Api\V1\AssetController;
+use App\Http\Controllers\Api\V1\AssetTypeController;
 use App\Http\Controllers\Api\V1\AuthController;
-use App\Http\Controllers\Api\V1\PaymentMethodController;
 use App\Http\Controllers\Api\V1\BillingSettingsController;
-use App\Http\Controllers\Api\V1\PropertyController;
-use App\Http\Controllers\Api\V1\SystemSettingsController;
-use App\Http\Controllers\Api\V1\TenantController;
-use App\Http\Controllers\Api\V1\TenantUnitController;
-use App\Http\Controllers\Api\V1\TenantUnitPendingChargeController;
-use App\Http\Controllers\Api\V1\UnitController;
+use App\Http\Controllers\Api\V1\EmailTemplateController;
 use App\Http\Controllers\Api\V1\FinancialRecordController;
-use App\Http\Controllers\Api\V1\RentInvoiceController;
+use App\Http\Controllers\Api\V1\LandlordController;
 use App\Http\Controllers\Api\V1\MaintenanceInvoiceController;
 use App\Http\Controllers\Api\V1\MaintenanceRequestController;
 use App\Http\Controllers\Api\V1\NationalityController;
-use App\Http\Controllers\Api\V1\AssetController;
-use App\Http\Controllers\Api\V1\AssetTypeController;
 use App\Http\Controllers\Api\V1\NotificationController;
+use App\Http\Controllers\Api\V1\PaymentMethodController;
+use App\Http\Controllers\Api\V1\PropertyController;
+use App\Http\Controllers\Api\V1\RentInvoiceController;
 use App\Http\Controllers\Api\V1\SecurityDepositRefundController;
-use App\Http\Controllers\Api\V1\UnifiedPaymentController;
-use App\Http\Controllers\Api\V1\UnitTypeController;
-use App\Http\Controllers\Api\V1\TenantDocumentController;
-use App\Http\Controllers\Api\V1\UnitOccupancyHistoryController;
-use App\Http\Controllers\Api\V1\EmailTemplateController;
 use App\Http\Controllers\Api\V1\SmsTemplateController;
-use App\Http\Controllers\Api\V1\LandlordController;
+use App\Http\Controllers\Api\V1\SystemSettingsController;
+use App\Http\Controllers\Api\V1\TenantController;
+use App\Http\Controllers\Api\V1\TenantDocumentController;
+use App\Http\Controllers\Api\V1\TenantUnitController;
+use App\Http\Controllers\Api\V1\TenantUnitPendingChargeController;
+use App\Http\Controllers\Api\V1\UnitController;
+use App\Http\Controllers\Api\V1\UnitOccupancyHistoryController;
+use App\Http\Controllers\Api\V1\UnitTypeController;
+use App\Http\Controllers\Api\V1\UnifiedPaymentController;
 use App\Http\Controllers\Api\V1\VendorController;
 use Illuminate\Support\Facades\Route;
 
 // Simple health check endpoint (no version prefix for easier monitoring)
 Route::get('/health', function () {
     try {
-        // Quick database check
         \Illuminate\Support\Facades\DB::connection()->getPdo();
         $dbHealthy = true;
     } catch (\Exception $e) {
@@ -56,11 +55,10 @@ Route::prefix('v1')->group(function (): void {
     });
 
     // Health check endpoints
-    // Keep basic health public with moderate throttling
     Route::get('/health', [\App\Http\Controllers\Api\V1\HealthController::class, 'check'])
         ->middleware('throttle:30,1')
         ->name('api.v1.health');
-    // Protect detailed diagnostics and crash summaries
+
     Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function (): void {
         Route::get('/health/diagnostics', [\App\Http\Controllers\Api\V1\HealthController::class, 'diagnostics'])
             ->name('api.v1.health.diagnostics');
@@ -69,7 +67,6 @@ Route::prefix('v1')->group(function (): void {
     });
 
     Route::prefix('auth')->group(function (): void {
-        // Apply strict throttling to login to limit brute force
         Route::post('login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 
         Route::middleware('auth:sanctum')->group(function (): void {
@@ -78,38 +75,57 @@ Route::prefix('v1')->group(function (): void {
         });
     });
 
-    // Default throttling for authenticated API usage
     Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
         Route::apiResource('landlords', LandlordController::class)->only(['store'])->names('api.v1.landlords');
         Route::apiResource('properties', PropertyController::class)->names('api.v1.properties');
-        // Place specific routes before resource route to avoid route conflicts
-        // Heavier endpoints get stricter throttling
+
         Route::post('units/bulk-import', [UnitController::class, 'bulkImport'])->middleware('throttle:6,1')
             ->name('api.v1.units.bulk-import');
         Route::get('units/import-template', [UnitController::class, 'downloadTemplate'])
             ->name('api.v1.units.import-template');
         Route::apiResource('units', UnitController::class)->names('api.v1.units');
-        // Place specific routes before resource route to avoid route conflicts
+
         Route::post('tenants/bulk-import', [TenantController::class, 'bulkImport'])->middleware('throttle:6,1')
             ->name('api.v1.tenants.bulk-import');
         Route::get('tenants/import-template', [TenantController::class, 'downloadTemplate'])
             ->name('api.v1.tenants.import-template');
         Route::apiResource('tenants', TenantController::class)->names('api.v1.tenants');
+
         Route::post('tenant-units/{tenant_unit}/end-lease', [TenantUnitController::class, 'endLease'])
             ->name('api.v1.tenant-units.end-lease');
+        Route::post('tenant-units/{tenant_unit}/advance-rent', [TenantUnitController::class, 'collectAdvanceRent'])
+            ->name('api.v1.tenant-units.collect-advance-rent');
+        Route::post('tenant-units/{tenant_unit}/retroactive-advance-rent', [TenantUnitController::class, 'retroactivelyApplyAdvanceRent'])
+            ->name('api.v1.tenant-units.retroactive-advance-rent');
         Route::apiResource('tenant-units', TenantUnitController::class)->parameters([
             'tenant-units' => 'tenant_unit',
         ])->names('api.v1.tenant-units');
         Route::get('tenant-units/{tenant_unit}/pending-charges', TenantUnitPendingChargeController::class)
             ->name('api.v1.tenant-units.pending-charges');
+
         Route::apiResource('financial-records', FinancialRecordController::class)->parameters([
             'financial-records' => 'financial_record',
         ])->names('api.v1.financial-records');
-        Route::apiResource('rent-invoices', RentInvoiceController::class)->parameters([
-            'rent-invoices' => 'rent_invoice',
-        ])->names('api.v1.rent-invoices');
+
+        // Simple test route
+        Route::get('test-route-loading', function () {
+            return response()->json(['status' => 'routes loading correctly']);
+        })->name('api.v1.test-route-loading');
+
+        // Rent invoices routes - specific routes MUST come before apiResource
+        Route::post('rent-invoices/bulk-generate', [RentInvoiceController::class, 'bulkStore'])
+            ->middleware('throttle:6,1')
+            ->name('api.v1.rent-invoices.bulk-generate');
         Route::get('rent-invoices/{rent_invoice}/export', [RentInvoiceController::class, 'export'])
+            ->where(['rent_invoice' => '[0-9]+'])
             ->name('api.v1.rent-invoices.export');
+
+        // Resource route with constraint
+        Route::apiResource('rent-invoices', RentInvoiceController::class)
+            ->parameters(['rent-invoices' => 'rent_invoice'])
+            ->where(['rent_invoice' => '[0-9]+'])
+            ->names('api.v1.rent-invoices');
+
         Route::apiResource('maintenance-requests', MaintenanceRequestController::class)->parameters([
             'maintenance-requests' => 'maintenance_request',
         ])->names('api.v1.maintenance-requests');
@@ -145,7 +161,6 @@ Route::prefix('v1')->group(function (): void {
 
         Route::post('payments/{payment}/capture', [UnifiedPaymentController::class, 'capture'])->middleware('throttle:30,1')
             ->name('api.v1.payments.capture');
-
         Route::post('payments/{payment}/void', [UnifiedPaymentController::class, 'void'])->middleware('throttle:30,1')
             ->name('api.v1.payments.void');
 
@@ -237,4 +252,3 @@ Route::prefix('v1')->group(function (): void {
             ->name('api.v1.sms-templates.preview');
     });
 });
-

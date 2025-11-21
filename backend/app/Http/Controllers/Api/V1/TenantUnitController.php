@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\EndLeaseRequest;
+use App\Http\Requests\StoreAdvanceRentRequest;
 use App\Http\Requests\StoreTenantUnitRequest;
 use App\Http\Requests\UpdateTenantUnitRequest;
 use App\Http\Resources\TenantUnitResource;
 use App\Models\TenantUnit;
 use App\Models\Unit;
 use App\Models\UnitOccupancyHistory;
+use App\Services\AdvanceRentService;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -83,9 +85,14 @@ class TenantUnitController extends Controller
             ->setStatusCode(201);
     }
 
-    public function show(TenantUnit $tenantUnit)
+    public function show(Request $request, TenantUnit $tenantUnit)
     {
         $this->authorize('view', $tenantUnit);
+
+        // Ensure tenant unit belongs to authenticated user's landlord (defense in depth)
+        if ($tenantUnit->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this tenant unit.');
+        }
 
         $tenantUnit->load(['unit:id,unit_number,property_id', 'unit.property:id,name', 'tenant:id,full_name']);
 
@@ -94,7 +101,40 @@ class TenantUnitController extends Controller
 
     public function update(UpdateTenantUnitRequest $request, TenantUnit $tenantUnit)
     {
+        $this->authorize('update', $tenantUnit);
+
+        // Ensure tenant unit belongs to authenticated user's landlord (defense in depth)
+        if ($tenantUnit->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this tenant unit.');
+        }
+
         $validated = $request->validated();
+
+        // If tenant_id or unit_id is being updated, verify they belong to the same landlord
+        $landlordId = $request->user()->landlord_id;
+        if (isset($validated['tenant_id']) && $validated['tenant_id'] !== $tenantUnit->tenant_id) {
+            $tenant = \App\Models\Tenant::where('id', $validated['tenant_id'])
+                ->where('landlord_id', $landlordId)
+                ->first();
+            if (! $tenant) {
+                return response()->json([
+                    'message' => 'The selected tenant does not belong to your landlord account.',
+                    'errors' => ['tenant_id' => ['Invalid tenant selected.']],
+                ], 422);
+            }
+        }
+
+        if (isset($validated['unit_id']) && $validated['unit_id'] !== $tenantUnit->unit_id) {
+            $unit = \App\Models\Unit::where('id', $validated['unit_id'])
+                ->where('landlord_id', $landlordId)
+                ->first();
+            if (! $unit) {
+                return response()->json([
+                    'message' => 'The selected unit does not belong to your landlord account.',
+                    'errors' => ['unit_id' => ['Invalid unit selected.']],
+                ], 422);
+            }
+        }
 
         if (array_key_exists('lease_document_path', $validated)) {
             $validated['lease_document_path'] = $validated['lease_document_path']
@@ -185,6 +225,67 @@ class TenantUnitController extends Controller
 
             return TenantUnitResource::make($tenantUnit);
         });
+    }
+
+    public function collectAdvanceRent(StoreAdvanceRentRequest $request, TenantUnit $tenantUnit): JsonResponse
+    {
+        $validated = $request->validated();
+
+        $advanceRentService = app(AdvanceRentService::class);
+
+        $result = $advanceRentService->collectAdvanceRent(
+            tenantUnit: $tenantUnit,
+            months: $validated['advance_rent_months'],
+            amount: (float) $validated['advance_rent_amount'],
+            transactionDate: $validated['transaction_date'],
+            paymentMethod: $validated['payment_method'] ?? null,
+            referenceNumber: $validated['reference_number'] ?? null,
+            notes: $validated['notes'] ?? null
+        );
+
+        $tenantUnit = $result['tenant_unit'];
+        $tenantUnit->load(['unit:id,unit_number,property_id', 'unit.property:id,name', 'tenant:id,full_name']);
+
+        return TenantUnitResource::make($tenantUnit)
+            ->response()
+            ->setStatusCode(200);
+    }
+
+    public function retroactivelyApplyAdvanceRent(Request $request, TenantUnit $tenantUnit): JsonResponse
+    {
+        $this->authorize('update', $tenantUnit);
+
+        // Ensure tenant unit belongs to authenticated user's landlord
+        if ($tenantUnit->landlord_id !== $request->user()->landlord_id) {
+            abort(403, 'Unauthorized access to this tenant unit.');
+        }
+
+        // Check if advance rent exists
+        if (!$tenantUnit->advance_rent_months || $tenantUnit->advance_rent_months <= 0) {
+            return response()->json([
+                'message' => 'No advance rent found for this tenant unit.',
+                'processed' => 0,
+                'applied' => 0.0,
+                'invoices' => [],
+            ], 400);
+        }
+
+        $advanceRentService = app(AdvanceRentService::class);
+        $result = $advanceRentService->retroactivelyApplyAdvanceRent($tenantUnit);
+
+        $tenantUnit->load(['unit:id,unit_number,property_id', 'unit.property:id,name', 'tenant:id,full_name']);
+
+        return response()->json([
+            'message' => sprintf(
+                'Retroactively applied advance rent to %d invoice(s). Total amount applied: %s',
+                $result['processed'],
+                number_format($result['applied'], 2)
+            ),
+            'processed' => $result['processed'],
+            'applied' => $result['applied'],
+            'invoices' => $result['invoices'],
+            'tenant_unit' => TenantUnitResource::make($tenantUnit),
+        ], 200);
     }
 
     protected function syncUnitOccupancy(?Unit $unit): void

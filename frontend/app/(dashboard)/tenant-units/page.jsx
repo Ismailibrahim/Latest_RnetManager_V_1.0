@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import { DataDisplay } from "@/components/DataDisplay";
 import { formatMVR } from "@/lib/currency";
+
+const formatCurrency = formatMVR;
 import { EndLeaseModal } from "@/components/EndLeaseModal";
 
 const API_BASE_URL =
@@ -222,18 +224,20 @@ function TenantUnitsPageContent() {
 
         if (lease?.status === "active") {
           accumulator.active += 1;
-        }
-
-        if (lease?.lease_end) {
-          const end = new Date(lease.lease_end);
-          if (!Number.isNaN(end.valueOf()) && end >= now && end <= thirtyDaysFromNow) {
-            accumulator.endingSoon += 1;
+          
+          // Only sum monthly rent for active leases
+          const monthlyRent = Number(lease?.monthly_rent);
+          if (!Number.isNaN(monthlyRent)) {
+            accumulator.monthlyRent += monthlyRent;
           }
-        }
-
-        const monthlyRent = Number(lease?.monthly_rent);
-        if (!Number.isNaN(monthlyRent)) {
-          accumulator.monthlyRent += monthlyRent;
+          
+          // Only count active leases that are ending soon
+          if (lease?.lease_end) {
+            const end = new Date(lease.lease_end);
+            if (!Number.isNaN(end.valueOf()) && end >= now && end <= thirtyDaysFromNow) {
+              accumulator.endingSoon += 1;
+            }
+          }
         }
 
         const deposit = Number(lease?.security_deposit_paid);
@@ -636,6 +640,94 @@ function SummaryCard({ title, value, icon, description }) {
   );
 }
 
+function RetroactiveApplyButton({ tenantUnitId, onSuccess }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
+
+  const handleClick = async () => {
+    if (!confirm("Apply advance rent to all eligible existing invoices? This will update invoice statuses and apply advance rent in chronological order.")) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSuccess(false);
+
+    try {
+      const token = localStorage.getItem("auth_token");
+      if (!token) {
+        throw new Error("Please log in");
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/tenant-units/${tenantUnitId}/retroactive-advance-rent`,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message ?? "Failed to apply advance rent");
+      }
+
+      const payload = await response.json();
+      setSuccess(true);
+      if (onSuccess) {
+        setTimeout(() => {
+          onSuccess();
+        }, 1500);
+      }
+    } catch (err) {
+      setError(err.message ?? "An error occurred");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (success) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+        Applied successfully!
+      </span>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={loading}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700 transition hover:border-amber-400 hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-60"
+        title="Apply advance rent to existing invoices that fall within the coverage period"
+      >
+        {loading ? (
+          <>
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-600/30 border-t-amber-600" />
+            Applying...
+          </>
+        ) : (
+          <>
+            <RefreshCcw size={14} />
+            Apply to Existing
+          </>
+        )}
+      </button>
+      {error && (
+        <div className="absolute top-full left-0 z-10 mt-1 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 shadow-lg">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LeaseCard({ lease, onEndLease }) {
   const tenantName = lease?.tenant?.full_name ?? `Tenant #${lease?.tenant_id}`;
   const unitNumber = lease?.unit?.unit_number ?? `Unit #${lease?.unit_id}`;
@@ -673,10 +765,97 @@ function LeaseCard({ lease, onEndLease }) {
         <InfoItem label="Security deposit">
           {formatCurrency(lease?.security_deposit_paid)}
         </InfoItem>
-        <InfoItem label="Advance rent">
-          {formatCurrency(lease?.advance_rent_amount)}
-        </InfoItem>
+        {lease?.advance_rent_amount > 0 ? (
+          <>
+            <InfoItem label="Advance rent collected">
+              {formatCurrency(lease?.advance_rent_amount)} ({lease?.advance_rent_months} month
+              {lease?.advance_rent_months !== 1 ? "s" : ""})
+            </InfoItem>
+            <InfoItem label="Advance rent used">
+              {formatCurrency(lease?.advance_rent_used ?? 0)}
+            </InfoItem>
+            <InfoItem label="Advance rent remaining">
+              <span className={lease?.advance_rent_remaining > 0 ? "font-semibold text-emerald-600" : "text-slate-600"}>
+                {formatCurrency(lease?.advance_rent_remaining ?? 0)}
+              </span>
+            </InfoItem>
+            {lease?.advance_rent_collected_date ? (
+              <InfoItem label="Collected on">
+                {new Date(lease.advance_rent_collected_date).toLocaleDateString()}
+              </InfoItem>
+            ) : null}
+          </>
+        ) : (
+          <InfoItem label="Advance rent">
+            <span className="text-slate-400">Not collected</span>
+          </InfoItem>
+        )}
       </dl>
+
+      {lease?.advance_rent_amount > 0 && lease?.advance_rent_remaining > 0 && lease?.lease_start ? (
+        <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/80 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                Advance Rent Coverage
+              </p>
+              <p className="mt-1 text-sm text-blue-900">
+                Covers months 1-{lease?.advance_rent_months} of lease period
+              </p>
+              <p className="mt-1 text-xs text-blue-700">
+                {formatCurrency(lease?.advance_rent_remaining)} available for invoices
+              </p>
+              {lease?.advance_rent_used > 0 ? (
+                <div className="mt-2">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-blue-200">
+                    <div
+                      className="h-full bg-blue-600 transition-all"
+                      style={{
+                        width: `${Math.min(100, ((lease?.advance_rent_used ?? 0) / (lease?.advance_rent_amount ?? 1)) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-blue-600">
+                    {Math.round(((lease?.advance_rent_used ?? 0) / (lease?.advance_rent_amount ?? 1)) * 100)}% used
+                  </p>
+                </div>
+              ) : null}
+            </div>
+            {lease?.status === "active" && (
+              <div className="flex flex-col gap-2">
+                <Link
+                  href={`/advance-rent/collect?tenantUnitId=${lease.id}`}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-100 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:border-blue-400 hover:bg-blue-200"
+                >
+                  <Wallet size={14} />
+                  Collect More
+                </Link>
+                <RetroactiveApplyButton tenantUnitId={lease.id} onSuccess={() => window.location.reload()} />
+              </div>
+            )}
+          </div>
+        </div>
+      ) : lease?.status === "active" && (!lease?.advance_rent_amount || lease?.advance_rent_amount === 0) ? (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Advance Rent
+              </p>
+              <p className="mt-1 text-sm text-slate-700">
+                No advance rent collected yet
+              </p>
+            </div>
+            <Link
+              href={`/advance-rent/collect?tenantUnitId=${lease.id}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition hover:border-primary/40 hover:bg-primary/20"
+            >
+              <Wallet size={14} />
+              Collect
+            </Link>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
         <div className="flex flex-wrap items-center gap-3">
@@ -839,15 +1018,6 @@ function LeaseStatusBadge({ status }) {
       {label}
     </span>
   );
-}
-
-// Use shared MVR formatter
-function formatCurrency(value) {
-  const amount = Number(value);
-  if (value === null || value === undefined || Number.isNaN(amount)) {
-    return "—";
-  }
-  return formatMVR(amount);
 }
 
 function formatDate(value) {
