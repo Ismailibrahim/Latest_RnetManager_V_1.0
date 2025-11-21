@@ -6,8 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, Menu, Settings, UserRound, LogOut } from "lucide-react";
 import clsx from "clsx";
 import { Sidebar } from "./sidebar";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+import { logger } from "@/utils/logger";
+import { API_BASE_URL } from "@/utils/api-config";
 
 const FALLBACK_PROFILE = {
   initials: "RA",
@@ -163,7 +163,7 @@ export function Topbar() {
           });
         } catch (error) {
           // Continue with logout even if API call fails
-          console.warn("Logout API call failed:", error);
+          logger.warn("Logout API call failed:", error);
         }
       }
 
@@ -173,7 +173,7 @@ export function Topbar() {
       // Redirect to login page
       router.push("/login");
     } catch (error) {
-      console.error("Logout error:", error);
+      logger.error("Logout error:", error);
       // Still clear token and redirect even if there's an error
       localStorage.removeItem("auth_token");
       router.push("/login");

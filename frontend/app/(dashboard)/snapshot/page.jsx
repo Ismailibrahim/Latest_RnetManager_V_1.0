@@ -21,9 +21,8 @@ import {
   Filter,
   GripVertical,
 } from "lucide-react";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+import { logger } from "@/utils/logger";
+import { API_BASE_URL } from "@/utils/api-config";
 
 export default function SnapshotPage() {
   const [properties, setProperties] = useState([]);
@@ -256,7 +255,7 @@ export default function SnapshotPage() {
           } catch (err) {
             // Silently fail for individual charge fetches
             if (err.name !== "AbortError" && isMounted) {
-              console.warn(
+              logger.warn(
                 `Failed to fetch charges for tenant-unit ${tenantUnitId}:`,
                 err,
               );
@@ -270,7 +269,7 @@ export default function SnapshotPage() {
       }
     } catch (err) {
       if (err.name !== "AbortError" && isMounted) {
-        console.warn("Failed to fetch tenant-units:", err);
+        logger.warn("Failed to fetch tenant-units:", err);
       }
     }
   }
@@ -337,7 +336,7 @@ export default function SnapshotPage() {
         setTenantUnitData(data.length > 0 ? data[0] : null);
       }
     } catch (err) {
-      console.warn("Failed to fetch tenant-unit data:", err);
+      logger.warn("Failed to fetch tenant-unit data:", err);
     } finally {
       setLoadingTenantUnit(false);
     }

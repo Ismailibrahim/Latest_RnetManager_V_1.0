@@ -3,9 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { handleApiError } from "@/utils/api-error-handler";
 import { invalidateCache } from "@/utils/api-cache";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+import { logger } from "@/utils/logger";
+import { API_BASE_URL } from "@/utils/api-config";
 
 /**
  * Custom hook for managing Telegram settings
@@ -114,9 +113,9 @@ export function useTelegramSettings() {
       try {
         const errorData = await response.json();
         errorMessage = errorData.message || errorData.error || errorMessage;
-        console.error("Telegram test error:", errorData);
+        logger.error("Telegram test error:", errorData);
       } catch (e) {
-        console.error("Telegram test error (non-JSON):", response.status, response.statusText);
+        logger.error("Telegram test error (non-JSON):", response.status, response.statusText);
         errorMessage = response.statusText || errorMessage;
       }
       const error = new Error(errorMessage);

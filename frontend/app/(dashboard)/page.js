@@ -12,9 +12,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { formatMVR } from "@/lib/currency";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+import { API_BASE_URL } from "@/utils/api-config";
 
 export default function Home() {
   const [properties, setProperties] = useState([]);

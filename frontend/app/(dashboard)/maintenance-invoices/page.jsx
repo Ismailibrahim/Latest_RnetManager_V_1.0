@@ -17,9 +17,7 @@ import {
 } from "lucide-react";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { DataDisplay } from "@/components/DataDisplay";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+import { API_BASE_URL } from "@/utils/api-config";
 
 const statusFilters = [
   { value: "all", label: "All statuses" },

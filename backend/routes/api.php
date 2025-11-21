@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\MaintenanceInvoiceController;
 use App\Http\Controllers\Api\V1\MaintenanceRequestController;
 use App\Http\Controllers\Api\V1\NationalityController;
 use App\Http\Controllers\Api\V1\NotificationController;
+use App\Http\Controllers\Api\V1\CurrencyController;
 use App\Http\Controllers\Api\V1\PaymentMethodController;
 use App\Http\Controllers\Api\V1\PropertyController;
 use App\Http\Controllers\Api\V1\RentInvoiceController;
@@ -29,6 +30,7 @@ use App\Http\Controllers\Api\V1\UnitTypeController;
 use App\Http\Controllers\Api\V1\UnifiedPaymentController;
 use App\Http\Controllers\Api\V1\VendorController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Http\Request;
 
 // Simple health check endpoint (no version prefix for easier monitoring)
 Route::get('/health', function () {
@@ -47,6 +49,7 @@ Route::get('/health', function () {
 })->middleware('throttle:60,1')->name('api.health');
 
 Route::prefix('v1')->group(function (): void {
+    
     Route::get('/', function () {
         return response()->json([
             'status' => 'ok',
@@ -67,7 +70,9 @@ Route::prefix('v1')->group(function (): void {
     });
 
     Route::prefix('auth')->group(function (): void {
-        Route::post('login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+        Route::post('login', [AuthController::class, 'login'])
+            ->middleware('throttle:10,1')
+            ->name('api.v1.auth.login');
 
         Route::middleware('auth:sanctum')->group(function (): void {
             Route::get('me', [AuthController::class, 'me']);
@@ -144,6 +149,7 @@ Route::prefix('v1')->group(function (): void {
         Route::apiResource('payment-methods', PaymentMethodController::class)->parameters([
             'payment-methods' => 'payment_method',
         ])->names('api.v1.payment-methods');
+        Route::get('currencies', [CurrencyController::class, 'index'])->name('api.v1.currencies.index');
         Route::apiResource('unit-occupancy-history', UnitOccupancyHistoryController::class)->parameters([
             'unit-occupancy-history' => 'unit_occupancy_history',
         ])->names('api.v1.unit-occupancy-history');

@@ -83,7 +83,7 @@ const INITIAL_FORM = {
   payment_type: "",
   tenant_unit_id: "",
   amount: "",
-  currency: "AED",
+  currency: "MVR",
   description: "",
   due_date: "",
   transaction_date: "",
@@ -104,6 +104,14 @@ export default function CollectPaymentPage() {
     error: paymentMethodsLoadError,
     refresh: refreshPaymentMethods,
   } = usePaymentMethods();
+  // Currency options are hardcoded: MVR and USD
+  const currencyOptions = [
+    { value: "MVR", label: "MVR - Maldivian Rufiyaa" },
+    { value: "USD", label: "USD - US Dollar" },
+  ];
+  // Tenant units are automatically filtered by the logged-in owner's landlord_id on the backend.
+  // The backend TenantUnitController filters by $request->user()->landlord_id,
+  // ensuring only tenant units (and their associated properties) belonging to the current owner are returned.
   const {
     units: tenantUnits,
     loading: tenantUnitsLoading,
@@ -262,7 +270,7 @@ export default function CollectPaymentPage() {
           ? String(charge.tenant_unit_id)
           : current.tenant_unit_id,
         amount: amountValue,
-        currency: charge.currency ?? current.currency ?? "AED",
+        currency: charge.currency ?? current.currency ?? "MVR",
         due_date: charge.due_date ?? current.due_date,
         description:
           charge.description && charge.description.trim().length > 0
@@ -542,6 +550,7 @@ export default function CollectPaymentPage() {
           paymentMethodsLoading={paymentMethodsLoading}
           paymentMethodsError={paymentMethodsLoadError}
           onRefreshPaymentMethods={refreshPaymentMethods}
+          currencyOptions={currencyOptions}
           pendingCharges={pendingCharges}
           pendingChargesGrouped={pendingChargesGrouped}
           pendingChargesLoading={pendingChargesLoading}
@@ -690,6 +699,7 @@ function DetailsForm({
   paymentMethodsLoading,
   paymentMethodsError,
   onRefreshPaymentMethods,
+  currencyOptions,
   pendingCharges,
   pendingChargesGrouped,
   pendingChargesLoading,
@@ -747,10 +757,11 @@ function DetailsForm({
               name="currency"
               value={formData.currency}
               onChange={onChange}
-              placeholder="AED"
-              error={errors?.currency}
-              helper="3-letter ISO currency code."
-            />
+              as="select"
+            >
+              <option value="MVR">MVR - Maldivian Rufiyaa</option>
+              <option value="USD">USD - US Dollar</option>
+            </InputField>
 
             <PaymentMethodField
               value={formData.payment_method}
@@ -862,7 +873,7 @@ function ReviewStep({
     (acc, item) => acc + (Number(item.form.amount ?? 0) || 0),
     0
   );
-  const currency = payments[0]?.form?.currency ?? "AED";
+  const currency = payments[0]?.form?.currency ?? "MVR";
 
   return (
     <div className="space-y-6">
@@ -881,7 +892,7 @@ function ReviewStep({
             );
             const amountLabel = formatAmount(
               Number(item.form.amount ?? 0),
-              item.form.currency ?? "AED"
+              item.form.currency ?? "MVR"
             );
             const paymentMethodLabel = item.form.payment_method
               ? paymentMethodLabels?.get(item.form.payment_method) ??
@@ -901,7 +912,7 @@ function ReviewStep({
               linkedCharge && chargeOriginalAmount
                 ? formatAmount(
                     chargeOriginalAmount,
-                    linkedCharge.currency ?? item.form.currency ?? "AED"
+                    linkedCharge.currency ?? item.form.currency ?? "MVR"
                   )
                 : null;
             const chargeTimelineParts = [];
@@ -1073,7 +1084,7 @@ function SuccessStep({
             linkedCharge && chargeOriginalAmount
               ? formatAmount(
                   chargeOriginalAmount,
-                  linkedCharge.currency ?? item.form.currency ?? "AED"
+                  linkedCharge.currency ?? item.form.currency ?? "MVR"
                 )
               : null;
 
@@ -1344,10 +1355,10 @@ function formatAmount(value, currency) {
   try {
     return new Intl.NumberFormat(undefined, {
       style: "currency",
-      currency: currency ?? "AED",
+      currency: currency ?? "MVR",
     }).format(amount);
   } catch {
-    return `${amount.toFixed(2)} ${currency ?? "AED"}`;
+    return `${amount.toFixed(2)} ${currency ?? "MVR"}`;
   }
 }
 
@@ -1505,7 +1516,7 @@ function TemplatePanel({
             );
             const amountLabel = formatAmount(
               Number(item.form.amount ?? 0),
-              item.form.currency ?? "AED"
+              item.form.currency ?? "MVR"
             );
 
             return (
@@ -1638,14 +1649,14 @@ function PendingChargesPanel({
                   const isSelected = selectedCharge?.id === charge.id;
                   const amountLabel = formatAmount(
                     Number(charge.amount ?? charge.original_amount ?? 0),
-                    charge.currency ?? "AED"
+                    charge.currency ?? "MVR"
                   );
                   const originalAmountLabel =
                     charge.original_amount != null &&
                     charge.original_amount !== charge.amount
                       ? formatAmount(
                           Number(charge.original_amount),
-                          charge.currency ?? "AED"
+                          charge.currency ?? "MVR"
                         )
                       : null;
                   const dueLabel = charge.due_date ?? charge.issued_date ?? null;
@@ -1797,6 +1808,7 @@ function PaymentMethodField({
     </div>
   );
 }
+
 
 function InputField({
   label,

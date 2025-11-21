@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+import { API_BASE_URL } from "@/utils/api-config";
 
 export function useTenantUnits({ enabled = true, status = "active" } = {}) {
   const [units, setUnits] = useState([]);
@@ -43,6 +41,10 @@ export function useTenantUnits({ enabled = true, status = "active" } = {}) {
         }
 
         url.searchParams.set("include", "tenant,unit,unit.property");
+
+        // Note: The backend automatically filters tenant units by the logged-in owner's landlord_id.
+        // The TenantUnitController::index() method filters by $request->user()->landlord_id,
+        // ensuring users only see tenant units (and their associated properties) that belong to their account.
 
         const response = await fetch(url.toString(), {
           signal: controller.signal,

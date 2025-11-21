@@ -5,6 +5,8 @@
  * and error logging.
  */
 
+import { logger } from "./logger";
+
 /**
  * Parse API error response
  * @param {Response} response - Fetch response object
@@ -61,7 +63,7 @@ export async function handleApiError(error, options = {}) {
     const networkError = new Error("Network error. Please check your connection.");
     networkError.name = "NetworkError";
     if (logError) {
-      console.error("Network error:", error);
+      logger.error("Network error:", error);
     }
     return networkError;
   }
@@ -76,7 +78,7 @@ export async function handleApiError(error, options = {}) {
     apiError.data = parsed.data;
 
     if (logError) {
-      console.error("API error:", {
+      logger.error("API error:", {
         status: parsed.status,
         message: parsed.message,
         errors: parsed.errors,
@@ -89,7 +91,7 @@ export async function handleApiError(error, options = {}) {
   // Generic error
   if (error instanceof Error) {
     if (logError) {
-      console.error("Error:", error);
+      logger.error("Error:", error);
     }
     return error;
   }
@@ -98,7 +100,7 @@ export async function handleApiError(error, options = {}) {
   const unknownError = new Error(defaultMessage);
   unknownError.name = "UnknownError";
   if (logError) {
-    console.error("Unknown error:", error);
+    logger.error("Unknown error:", error);
   }
   return unknownError;
 }

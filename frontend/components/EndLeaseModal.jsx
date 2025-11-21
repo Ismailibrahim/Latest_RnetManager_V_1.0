@@ -2,9 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { X, Calendar, FileText, Loader2, AlertCircle } from "lucide-react";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+import { API_BASE_URL } from "@/utils/api-config";
 
 export function EndLeaseModal({ lease, isOpen, onClose, onSuccess }) {
   const [moveOutDate, setMoveOutDate] = useState("");

@@ -9,6 +9,7 @@ use App\Models\MaintenanceInvoice;
 use App\Models\MaintenanceRequest;
 use App\Models\Notification;
 use App\Models\Nationality;
+use App\Models\Currency;
 use App\Models\PaymentMethod;
 use App\Models\Property;
 use App\Models\RentInvoice;
@@ -26,6 +27,7 @@ use App\Policies\MaintenanceInvoicePolicy;
 use App\Policies\MaintenanceRequestPolicy;
 use App\Policies\NotificationPolicy;
 use App\Policies\NationalityPolicy;
+use App\Policies\CurrencyPolicy;
 use App\Policies\PaymentMethodPolicy;
 use App\Policies\PropertyPolicy;
 use App\Policies\RentInvoicePolicy;
@@ -70,6 +72,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(UnitOccupancyHistory::class, UnitOccupancyHistoryPolicy::class);
         Gate::policy(UnifiedPayment::class, UnifiedPaymentPolicy::class);
         Gate::policy(PaymentMethod::class, PaymentMethodPolicy::class);
+        Gate::policy(Currency::class, CurrencyPolicy::class);
         Gate::policy(Nationality::class, NationalityPolicy::class);
         Gate::policy(LandlordSetting::class, SystemSettingsPolicy::class);
     }

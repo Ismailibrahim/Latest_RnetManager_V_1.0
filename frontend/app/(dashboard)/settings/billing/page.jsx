@@ -9,9 +9,7 @@ import {
   Loader2,
   ShieldCheck,
 } from "lucide-react";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+import { API_BASE_URL } from "@/utils/api-config";
 
 function formatCurrency(amount, currency = "USD") {
   if (amount === null || amount === undefined) {

@@ -5,9 +5,7 @@ import { useEffect, useState } from "react";
 import { BulkImport } from "@/components/BulkImport";
 import { ArrowLeft, Users, Info } from "lucide-react";
 import Link from "next/link";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+import { API_BASE_URL } from "@/utils/api-config";
 
 export default function TenantsImportPage() {
   const router = useRouter();

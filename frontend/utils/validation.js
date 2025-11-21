@@ -4,6 +4,8 @@
  * Provides validation functions and schema-based validation for forms.
  */
 
+import { logger } from "./logger";
+
 /**
  * Validation rule functions
  */
@@ -275,7 +277,7 @@ export function validateForm(data, schemaOrSchemaName) {
   if (typeof schemaOrSchemaName === "string") {
     schema = schemas[schemaOrSchemaName];
     if (!schema) {
-      console.warn(`Schema "${schemaOrSchemaName}" not found`);
+      logger.warn(`Schema "${schemaOrSchemaName}" not found`);
       return { isValid: true, errors: {} };
     }
   } else {

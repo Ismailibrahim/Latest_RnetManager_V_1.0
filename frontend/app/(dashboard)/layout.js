@@ -5,9 +5,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import ErrorBoundary from "@/components/ErrorBoundary";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+import { API_BASE_URL } from "@/utils/api-config";
 
 export default function DashboardLayout({ children }) {
   const router = useRouter();
