@@ -47,7 +47,7 @@ echo   Firewall Configuration Complete!
 echo ========================================
 echo.
 echo You can now access your app from your phone.
-echo Make sure to use START-SERVERS-NETWORK.bat to start servers.
+echo Make sure to use scripts\windows\START-SERVERS-NETWORK.bat to start servers.
 echo.
 pause
 

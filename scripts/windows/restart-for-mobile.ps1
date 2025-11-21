@@ -47,7 +47,7 @@ if ($isAdmin) {
     Write-Host "[OK] Firewall configured!" -ForegroundColor Green
 } else {
     Write-Host "NOTE: Run as Administrator to configure firewall automatically" -ForegroundColor Yellow
-    Write-Host "Or run: ALLOW-MOBILE-ACCESS.bat as Administrator" -ForegroundColor Yellow
+    Write-Host "Or run: scripts\windows\ALLOW-MOBILE-ACCESS.bat as Administrator" -ForegroundColor Yellow
 }
 
 Write-Host ""

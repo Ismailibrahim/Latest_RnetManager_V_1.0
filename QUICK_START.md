@@ -5,15 +5,15 @@
 1. Open PowerShell in the project root
 2. Run:
 ```powershell
-.\start-servers.ps1
+.\scripts\windows\start-servers.ps1
 ```
 
 ## Option 2: Using Batch File
 
-1. Double-click `start-servers.bat`
+1. Double-click `scripts\windows\start-servers.bat`
 2. Or run from command prompt:
 ```cmd
-start-servers.bat
+scripts\windows\start-servers.bat
 ```
 
 ## Option 3: Manual Start

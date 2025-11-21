@@ -22,7 +22,7 @@ if (-not $isAdmin) {
     Write-Host "NOTE: Firewall configuration requires Administrator privileges." -ForegroundColor Yellow
     Write-Host "You can either:" -ForegroundColor Yellow
     Write-Host "1. Run this script as Administrator (Right-click -> Run as Administrator)" -ForegroundColor Yellow
-    Write-Host "2. Or run ALLOW-MOBILE-ACCESS.bat as Administrator" -ForegroundColor Yellow
+    Write-Host "2. Or run scripts\windows\ALLOW-MOBILE-ACCESS.bat as Administrator" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "For now, let's start the servers with network access..." -ForegroundColor Cyan
     Write-Host ""
