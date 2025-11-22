@@ -132,7 +132,7 @@ describe("CollectPaymentPage", () => {
     });
 
     fireEvent.change(screen.getByLabelText(/^Currency/i), {
-      target: { value: "AED" },
+      target: { value: "MVR" },
     });
 
     fireEvent.change(screen.getByLabelText(/Transaction date/i), {
@@ -159,7 +159,7 @@ describe("CollectPaymentPage", () => {
       payment_type: "rent",
       tenant_unit_id: 42,
       amount: 2500,
-      currency: "AED",
+      currency: "MVR",
       description: null,
       due_date: null,
       transaction_date: "2025-12-01",

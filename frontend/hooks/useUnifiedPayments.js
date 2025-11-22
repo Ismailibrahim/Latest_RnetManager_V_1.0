@@ -33,13 +33,28 @@ export function useUnifiedPayments() {
       const data = await response.json().catch(() => null);
 
       if (!response.ok) {
-        const message =
-          data?.message ??
-          "We couldn’t create the payment. Please review the fields and try again.";
-        const details = data?.errors ?? null;
+        // Get error message from multiple possible locations
+        let message = data?.message;
+        
+        // If no message, try to get it from error object
+        if (!message && data?.error) {
+          if (typeof data.error === 'string') {
+            message = data.error;
+          } else if (data.error?.message) {
+            message = data.error.message;
+          }
+        }
+        
+        // Fallback to generic message
+        if (!message) {
+          message = "We couldn't create the payment. Please review the fields and try again.";
+        }
+        
+        const details = data?.errors ?? data?.error ?? null;
 
         const error = new Error(message);
         error.details = details;
+        error.errorData = data; // Include full error data for debugging
         throw error;
       }
 

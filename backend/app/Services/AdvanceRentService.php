@@ -110,13 +110,16 @@ class AdvanceRentService
             $tenantUnit->save();
 
             // Create financial record
+            $unitNumber = $tenantUnit->unit->unit_number ?? 'Unit';
+            $description = $notes ?? "Advance rent for {$months} month(s) - {$unitNumber}";
+            
             $financialRecord = FinancialRecord::create([
                 'landlord_id' => $tenantUnit->landlord_id,
                 'tenant_unit_id' => $tenantUnit->id,
                 'type' => 'rent',
                 'category' => 'monthly_rent',
                 'amount' => $amount,
-                'description' => $notes ?? "Advance rent for {$months} month(s) - {$tenantUnit->unit->unit_number ?? 'Unit'}",
+                'description' => $description,
                 'transaction_date' => $transactionDate,
                 'paid_date' => $transactionDate,
                 'payment_method' => $paymentMethod ?? 'cash',

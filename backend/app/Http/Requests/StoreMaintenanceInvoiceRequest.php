@@ -32,10 +32,8 @@ class StoreMaintenanceInvoiceRequest extends FormRequest
             'invoice_date' => ['required', 'date'],
             'due_date' => ['required', 'date', 'after_or_equal:invoice_date'],
             'status' => ['nullable', Rule::in(['draft', 'sent', 'approved', 'paid', 'overdue', 'cancelled'])],
-            'labor_cost' => ['required', 'numeric', 'min:0'],
-            'parts_cost' => ['required', 'numeric', 'min:0'],
+            'cost' => ['required', 'numeric', 'min:0'],
             'tax_amount' => ['nullable', 'numeric', 'min:0'],
-            'misc_amount' => ['nullable', 'numeric', 'min:0'],
             'discount_amount' => ['nullable', 'numeric', 'min:0'],
             'grand_total' => ['required', 'numeric', 'min:0'],
             'line_items' => ['nullable', 'array'],
@@ -56,16 +54,14 @@ class StoreMaintenanceInvoiceRequest extends FormRequest
             $data = $this->validated();
 
             $expectedTotal = round(
-                ($data['labor_cost'] ?? 0)
-                + ($data['parts_cost'] ?? 0)
+                ($data['cost'] ?? 0)
                 + ($data['tax_amount'] ?? 0)
-                + ($data['misc_amount'] ?? 0)
                 - ($data['discount_amount'] ?? 0),
                 2
             );
 
             if (isset($data['grand_total']) && round($data['grand_total'], 2) !== $expectedTotal) {
-                $validator->errors()->add('grand_total', 'Grand total must equal labor + parts + tax + misc − discount.');
+                $validator->errors()->add('grand_total', 'Grand total must equal cost + tax − discount.');
             }
 
             if (!empty($data['line_items']) && is_array($data['line_items'])) {

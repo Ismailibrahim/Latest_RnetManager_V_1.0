@@ -11,12 +11,10 @@ import {
   Search,
   AlertTriangle,
   RefreshCcw,
-  BookmarkPlus,
   Trash2,
 } from "lucide-react";
 import { useUnifiedPayments } from "@/hooks/useUnifiedPayments";
 import { useTenantUnits } from "@/hooks/useTenantUnits";
-import { usePaymentTemplates } from "@/hooks/usePaymentTemplates";
 import {
   usePaymentMethods,
   formatPaymentMethodLabel,
@@ -97,7 +95,7 @@ const INITIAL_FORM = {
   description: "",
   due_date: "",
   transaction_date: "",
-  status: "pending",
+  status: "completed", // Set to 'completed' by default since this is a manual payment collection
   payment_method: "",
   reference_number: "",
   metadata: {},
@@ -108,7 +106,6 @@ const INITIAL_FORM = {
 export default function CollectPaymentPage() {
   const router = useRouter();
   const { createPayment, loading, error } = useUnifiedPayments();
-  const { templates, saveTemplate, deleteTemplate } = usePaymentTemplates();
   const {
     options: paymentMethodOptions,
     labels: paymentMethodLabels,
@@ -135,7 +132,6 @@ export default function CollectPaymentPage() {
   const [results, setResults] = useState([]);
   const [batch, setBatch] = useState([]);
   const [linkedCharge, setLinkedCharge] = useState(null);
-  const [templateError, setTemplateError] = useState(null);
 
   const selectedType = useMemo(
     () => PAYMENT_TYPES.find((type) => type.value === formData.payment_type),
@@ -181,16 +177,6 @@ export default function CollectPaymentPage() {
       setAmountManuallyEdited(false);
     }
   }, [formData.payment_type]);
-
-  const templatesForType = useMemo(() => {
-    if (!formData.payment_type) {
-      return templates;
-    }
-
-    return templates.filter(
-      (template) => template.payment_type === formData.payment_type
-    );
-  }, [templates, formData.payment_type]);
 
   const {
     charges: pendingCharges,
@@ -310,6 +296,15 @@ export default function CollectPaymentPage() {
           ? String(charge.original_amount)
           : current.amount;
 
+      // Ensure currency is always MVR (never AED)
+      const chargeCurrency = charge.currency && charge.currency.toUpperCase() !== 'AED'
+        ? charge.currency
+        : getDefaultCurrency();
+      const finalCurrency = chargeCurrency ?? current.currency ?? getDefaultCurrency();
+      const safeCurrency = finalCurrency && finalCurrency.toUpperCase() !== 'AED'
+        ? finalCurrency
+        : getDefaultCurrency();
+
       return {
         ...current,
         payment_type: suggestedType || current.payment_type,
@@ -317,7 +312,7 @@ export default function CollectPaymentPage() {
           ? String(charge.tenant_unit_id)
           : current.tenant_unit_id,
         amount: amountValue,
-        currency: charge.currency ?? current.currency ?? getDefaultCurrency(),
+        currency: safeCurrency,
         due_date: charge.due_date ?? current.due_date,
         description:
           charge.description && charge.description.trim().length > 0
@@ -425,7 +420,6 @@ export default function CollectPaymentPage() {
     setResults([]);
     setBatch([]);
     setLinkedCharge(null);
-    setTemplateError(null);
   };
 
   const handleSubmit = async () => {
@@ -482,6 +476,13 @@ export default function CollectPaymentPage() {
             }
           );
 
+          if (response.status === 401 || response.status === 403) {
+            const apiPayload = await response.json().catch(() => ({}));
+            const errorMessage = apiPayload?.message ?? "You don't have permission to perform this action. Please check your account permissions.";
+            setSubmissionError(errorMessage);
+            throw new Error(errorMessage);
+          }
+
           if (response.status === 422) {
             const validationPayload = await response.json();
             setFieldErrors(normalizeErrors(validationPayload?.errors ?? {}));
@@ -490,10 +491,9 @@ export default function CollectPaymentPage() {
 
           if (!response.ok) {
             const apiPayload = await response.json().catch(() => ({}));
-            throw new Error(
-              apiPayload?.message ??
-              `Unable to collect advance rent (HTTP ${response.status}).`
-            );
+            const errorMessage = apiPayload?.message ?? `Unable to collect advance rent (HTTP ${response.status}).`;
+            setSubmissionError(errorMessage);
+            throw new Error(errorMessage);
           }
 
           const responseData = await response.json();
@@ -506,6 +506,26 @@ export default function CollectPaymentPage() {
         } else {
           // Regular payment flow
           const payload = buildPayload(item.form, item.charge);
+          // Debug: Log payload to verify source_type and source_id are set
+          if (item.charge) {
+            console.log('Payment payload with charge:', {
+              charge: item.charge,
+              charge_id: item.charge.id,
+              charge_source_type: item.charge.source_type,
+              charge_source_id: item.charge.source_id,
+              payload_source_type: payload.source_type,
+              payload_source_id: payload.source_id,
+              payload_source_id_type: typeof payload.source_id,
+              metadata: payload.metadata,
+              full_payload: payload,
+            });
+          } else {
+            console.warn('Payment payload WITHOUT charge:', {
+              payload_source_type: payload.source_type,
+              payload_source_id: payload.source_id,
+              metadata: payload.metadata,
+            });
+          }
           const response = await createPayment(payload);
           collected.push({
             response,
@@ -521,66 +541,45 @@ export default function CollectPaymentPage() {
       setFormData(INITIAL_FORM);
       setLinkedCharge(null);
       setSubmissionError(null);
+      // Refresh pending charges after successful payment to update the list
+      // Use a delay to ensure backend has updated the invoice status
+      // Also clear linked charge to force refresh
+      setLinkedCharge(null);
+      setTimeout(() => {
+        refreshPendingCharges();
+      }, 1000);
       setStep(4);
     } catch (err) {
       if (err?.details) {
         setFieldErrors(normalizeErrors(err.details));
       }
-      setSubmissionError(err?.message ?? "Unable to submit payment.");
+      
+      // Show the actual error message, including SQL errors if available
+      let errorMessage = err?.message ?? "Unable to submit payment.";
+      
+      // If there's error data with SQL info, include it in the message
+      if (err?.errorData?.error) {
+        const errorInfo = err.errorData.error;
+        if (errorInfo.sql) {
+          errorMessage = `${errorMessage}\n\nSQL: ${errorInfo.sql}`;
+          if (errorInfo.bindings && errorInfo.bindings.length > 0) {
+            errorMessage = `${errorMessage}\nBindings: ${JSON.stringify(errorInfo.bindings)}`;
+          }
+        }
+      }
+      
+      setSubmissionError(errorMessage);
       setResults([]);
+      
+      // Also log to console for debugging
+      console.error('Payment creation error:', err);
+      if (err?.errorData) {
+        console.error('Error data:', JSON.stringify(err.errorData, null, 2));
+        console.error('Error message:', err.errorData.message);
+        console.error('Error SQL:', err.errorData.error?.sql);
+        console.error('Error bindings:', err.errorData.error?.bindings);
+      }
     }
-  };
-
-  const handleSaveTemplate = (name) => {
-    if (!name?.trim()) {
-      setTemplateError("Template name is required.");
-      return;
-    }
-
-    if (!formData.payment_type) {
-      setTemplateError("Select a payment type before saving a template.");
-      return;
-    }
-
-    try {
-      saveTemplate({
-        name: name.trim(),
-        payment_type: formData.payment_type,
-        tenant_unit_id: selectedTenantUnit ? Number(selectedTenantUnit.id) : null,
-        amount: formData.amount ? Number(formData.amount) : null,
-        currency: formData.currency,
-        payment_method: formData.payment_method || null,
-        description: formData.description || "",
-        metadata: formData.metadata ?? {},
-      });
-      setTemplateError(null);
-    } catch (err) {
-      setTemplateError(err?.message ?? "Unable to save template.");
-    }
-  };
-
-  const handleApplyTemplate = (template) => {
-    if (!template) return;
-
-    setLinkedCharge(null);
-    setFormData((current) => ({
-      ...current,
-      payment_type: template.payment_type ?? current.payment_type,
-      tenant_unit_id: template.tenant_unit_id
-        ? String(template.tenant_unit_id)
-        : current.tenant_unit_id,
-      amount:
-        template.amount != null ? String(template.amount) : current.amount,
-      currency: template.currency ?? current.currency,
-      payment_method: template.payment_method ?? current.payment_method,
-      description: template.description ?? current.description,
-    }));
-
-    setFieldErrors({});
-  };
-
-  const handleDeleteTemplate = (id) => {
-    deleteTemplate(id);
   };
 
   const handleViewLedger = () => {
@@ -657,15 +656,6 @@ export default function CollectPaymentPage() {
           onSelectTenantUnit={handleSelectTenantUnit}
           onRefreshTenantUnits={refreshTenantUnits}
           selectedTenantUnit={selectedTenantUnit}
-          templates={templatesForType}
-          onApplyTemplate={handleApplyTemplate}
-          onSaveTemplate={handleSaveTemplate}
-          onDeleteTemplate={handleDeleteTemplate}
-          templateError={templateError}
-          batch={batch}
-          onAddToBatch={handleAddToBatch}
-          onRemoveFromBatch={handleRemoveFromBatch}
-          canAddToBatch={canAddToBatch}
           paymentMethodOptions={paymentMethodOptions}
           paymentMethodsLoading={paymentMethodsLoading}
           paymentMethodsError={paymentMethodsLoadError}
@@ -806,15 +796,6 @@ function DetailsForm({
   onSelectTenantUnit,
   onRefreshTenantUnits,
   selectedTenantUnit,
-  templates,
-  onApplyTemplate,
-  onSaveTemplate,
-  onDeleteTemplate,
-  templateError,
-  batch,
-  onAddToBatch,
-  onRemoveFromBatch,
-  canAddToBatch,
   paymentMethodOptions,
   paymentMethodsLoading,
   paymentMethodsError,
@@ -832,221 +813,205 @@ function DetailsForm({
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-slate-200 bg-white/80 p-6 shadow-sm">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="grid gap-5 md:grid-cols-2">
-            {selectedType?.requiresTenantUnit && (
-              <TenantUnitSelector
-                value={formData.tenant_unit_id}
-                units={tenantUnits}
-                loading={tenantUnitsLoading}
-                error={tenantUnitsError}
-                onSelect={onSelectTenantUnit}
-                onRefresh={onRefreshTenantUnits}
-                errorMessage={errors?.tenant_unit_id}
-                selectedUnit={selectedTenantUnit}
-              />
-            )}
+        <div className="grid gap-5 md:grid-cols-2">
+          {selectedType?.requiresTenantUnit && (
+            <TenantUnitSelector
+              value={formData.tenant_unit_id}
+              units={tenantUnits}
+              loading={tenantUnitsLoading}
+              error={tenantUnitsError}
+              onSelect={onSelectTenantUnit}
+              onRefresh={onRefreshTenantUnits}
+              errorMessage={errors?.tenant_unit_id}
+              selectedUnit={selectedTenantUnit}
+            />
+          )}
 
-            {formData.tenant_unit_id && selectedType?.value !== "advance_rent" && (
-              <PendingChargesPanel
-                charges={pendingCharges}
-                grouped={pendingChargesGrouped}
-                loading={pendingChargesLoading}
-                error={pendingChargesError}
-                onRefresh={onRefreshPendingCharges}
-                onSelect={onSelectCharge}
-                onClear={onClearCharge}
-                selectedCharge={selectedCharge}
-              />
-            )}
+          {formData.tenant_unit_id && selectedType?.value !== "advance_rent" && (
+            <PendingChargesPanel
+              charges={pendingCharges}
+              grouped={pendingChargesGrouped}
+              loading={pendingChargesLoading}
+              error={pendingChargesError}
+              onRefresh={onRefreshPendingCharges}
+              onSelect={onSelectCharge}
+              onClear={onClearCharge}
+              selectedCharge={selectedCharge}
+            />
+          )}
 
-            {selectedType?.value === "advance_rent" ? (
-              <>
-                {selectedTenantUnit && (
-                  <div className="md:col-span-2 rounded-xl border border-primary/20 bg-primary/5 p-4">
-                    <p className="text-xs font-semibold text-primary mb-2">Lease Information</p>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
+          {selectedType?.value === "advance_rent" ? (
+            <>
+              {selectedTenantUnit && (
+                <div className="md:col-span-2 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                  <p className="text-xs font-semibold text-primary mb-2">Lease Information</p>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="text-slate-500">Monthly Rent:</span>
+                      <p className="font-semibold text-slate-900">
+                        {new Intl.NumberFormat(undefined, {
+                          style: "currency",
+                          currency: formData.currency || getDefaultCurrency(),
+                        }).format(Number(selectedTenantUnit.monthly_rent || 0))}
+                      </p>
+                    </div>
+                    {selectedTenantUnit.advance_rent_amount > 0 && (
                       <div>
-                        <span className="text-slate-500">Monthly Rent:</span>
-                        <p className="font-semibold text-slate-900">
+                        <span className="text-slate-500">Existing Advance Rent:</span>
+                        <p className="font-semibold text-amber-600">
                           {new Intl.NumberFormat(undefined, {
                             style: "currency",
                             currency: formData.currency || getDefaultCurrency(),
-                          }).format(Number(selectedTenantUnit.monthly_rent || 0))}
+                          }).format(Number(selectedTenantUnit.advance_rent_amount || 0))}
+                          {" "}({selectedTenantUnit.advance_rent_months} months)
+                        </p>
+                        <p className="text-xs text-amber-600 mt-1">
+                          Note: Collecting new advance rent will replace the existing amount.
                         </p>
                       </div>
-                      {selectedTenantUnit.advance_rent_amount > 0 && (
-                        <div>
-                          <span className="text-slate-500">Existing Advance Rent:</span>
-                          <p className="font-semibold text-amber-600">
-                            {new Intl.NumberFormat(undefined, {
-                              style: "currency",
-                              currency: formData.currency || getDefaultCurrency(),
-                            }).format(Number(selectedTenantUnit.advance_rent_amount || 0))}
-                            {" "}({selectedTenantUnit.advance_rent_months} months)
-                          </p>
-                          <p className="text-xs text-amber-600 mt-1">
-                            Note: Collecting new advance rent will replace the existing amount.
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                    )}
                   </div>
-                )}
-                <InputField
-                  label="Advance Rent (Months)"
-                  name="advance_rent_months"
-                  type="number"
-                  min="1"
-                  max="12"
-                  step="1"
-                  value={formData.advance_rent_months}
-                  onChange={onChange}
-                  placeholder="1"
-                  error={errors?.advance_rent_months}
-                  helper="Number of months to collect in advance (1-12)"
-                />
-                <InputField
-                  label="Advance Rent Amount"
-                  name="advance_rent_amount"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={formData.advance_rent_amount}
-                  onChange={onChange}
-                  placeholder="0.00"
-                  error={errors?.advance_rent_amount}
-                  helper={
-                    selectedTenantUnit && formData.advance_rent_months
-                      ? `Auto-calculated: ${new Intl.NumberFormat(undefined, {
-                          style: "currency",
-                          currency: formData.currency || getDefaultCurrency(),
-                        }).format(
-                          Number(selectedTenantUnit.monthly_rent || 0) *
-                            Number(formData.advance_rent_months || 0)
-                        )}`
-                      : "Total amount to collect. Auto-calculated from months, but can be edited."
-                  }
-                />
-              </>
-            ) : (
+                </div>
+              )}
               <InputField
-                label="Amount"
-                name="amount"
+                label="Advance Rent (Months)"
+                name="advance_rent_months"
+                type="number"
+                min="1"
+                max="12"
+                step="1"
+                value={formData.advance_rent_months}
+                onChange={onChange}
+                placeholder="1"
+                error={errors?.advance_rent_months}
+                helper="Number of months to collect in advance (1-12)"
+              />
+              <InputField
+                label="Advance Rent Amount"
+                name="advance_rent_amount"
                 type="number"
                 min="0"
                 step="0.01"
-                value={formData.amount}
+                value={formData.advance_rent_amount}
                 onChange={onChange}
                 placeholder="0.00"
-                error={errors?.amount}
-              />
-            )}
-
-            {selectedType?.value !== "advance_rent" && (
-              <InputField
-                label="Currency"
-                name="currency"
-                value={formData.currency}
-                onChange={onChange}
-                as="select"
-              >
-                {currencyOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </InputField>
-            )}
-
-            <PaymentMethodField
-              value={formData.payment_method}
-              onChange={onChange}
-              options={paymentMethodOptions}
-              loading={paymentMethodsLoading}
-              error={paymentMethodsError}
-              onRefresh={onRefreshPaymentMethods}
-            />
-
-            <InputField
-              label="Reference number"
-              name="reference_number"
-              value={formData.reference_number}
-              onChange={onChange}
-              placeholder="Optional reference or invoice code"
-            />
-
-            {selectedType?.value !== "advance_rent" && (
-              <InputField
-                label="Status"
-                name="status"
-                value={formData.status}
-                onChange={onChange}
-                as="select"
-              >
-                {STATUS_OPTIONS.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </InputField>
-            )}
-
-            <InputField
-              label="Transaction date"
-              name="transaction_date"
-              value={formData.transaction_date}
-              onChange={onChange}
-              type="date"
-              helper={
-                selectedType?.value === "advance_rent"
-                  ? "Date when advance rent was collected."
-                  : "When the payment was received or paid out."
-              }
-            />
-
-            {selectedType?.value !== "advance_rent" && (
-              <InputField
-                label="Due date"
-                name="due_date"
-                value={formData.due_date}
-                onChange={onChange}
-                type="date"
-              />
-            )}
-
-            <div className="md:col-span-2">
-              <label className="text-sm font-medium text-slate-700">
-                {selectedType?.value === "advance_rent" ? "Notes" : "Description"}
-              </label>
-              <textarea
-                name="description"
-                value={formData.description}
-                onChange={onChange}
-                rows={4}
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                placeholder={
-                  selectedType?.value === "advance_rent"
-                    ? "Additional notes about this advance rent collection..."
-                    : "Add a short note about this payment..."
+                error={errors?.advance_rent_amount}
+                helper={
+                  selectedTenantUnit && formData.advance_rent_months
+                    ? `Auto-calculated: ${new Intl.NumberFormat(undefined, {
+                        style: "currency",
+                        currency: formData.currency || getDefaultCurrency(),
+                      }).format(
+                        Number(selectedTenantUnit.monthly_rent || 0) *
+                          Number(formData.advance_rent_months || 0)
+                      )}`
+                    : "Total amount to collect. Auto-calculated from months, but can be edited."
                 }
               />
-            </div>
-          </div>
+            </>
+          ) : (
+            <InputField
+              label="Amount"
+              name="amount"
+              type="number"
+              min="0"
+              step="0.01"
+              value={formData.amount}
+              onChange={onChange}
+              placeholder="0.00"
+              error={errors?.amount}
+            />
+          )}
 
-          <TemplatePanel
-            templates={templates}
-            onApply={onApplyTemplate}
-            onSave={onSaveTemplate}
-            onDelete={onDeleteTemplate}
-            currentType={formData.payment_type}
-            templateError={templateError}
-            formData={formData}
-            batch={batch}
-            onAddToBatch={onAddToBatch}
-            onRemoveFromBatch={onRemoveFromBatch}
-            canAddToBatch={canAddToBatch}
+          {selectedType?.value !== "advance_rent" && (
+            <InputField
+              label="Currency"
+              name="currency"
+              value={formData.currency}
+              onChange={onChange}
+              as="select"
+            >
+              {currencyOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </InputField>
+          )}
+
+          <PaymentMethodField
+            value={formData.payment_method}
+            onChange={onChange}
+            options={paymentMethodOptions}
+            loading={paymentMethodsLoading}
+            error={paymentMethodsError}
+            onRefresh={onRefreshPaymentMethods}
           />
+
+          <InputField
+            label="Reference number"
+            name="reference_number"
+            value={formData.reference_number}
+            onChange={onChange}
+            placeholder="Optional reference or invoice code"
+          />
+
+          {selectedType?.value !== "advance_rent" && (
+            <InputField
+              label="Status"
+              name="status"
+              value={formData.status}
+              onChange={onChange}
+              as="select"
+            >
+              {STATUS_OPTIONS.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </InputField>
+          )}
+
+          <InputField
+            label="Transaction date"
+            name="transaction_date"
+            value={formData.transaction_date}
+            onChange={onChange}
+            type="date"
+            helper={
+              selectedType?.value === "advance_rent"
+                ? "Date when advance rent was collected."
+                : "When the payment was received or paid out."
+            }
+          />
+
+          {selectedType?.value !== "advance_rent" && selectedType?.value !== "security_refund" && (
+            <InputField
+              label="Due date"
+              name="due_date"
+              value={formData.due_date}
+              onChange={onChange}
+              type="date"
+            />
+          )}
+
+          <div className="md:col-span-2">
+            <label className="text-sm font-medium text-slate-700">
+              {selectedType?.value === "advance_rent" ? "Notes" : "Description"}
+            </label>
+            <textarea
+              name="description"
+              value={formData.description}
+              onChange={onChange}
+              rows={4}
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+              placeholder={
+                selectedType?.value === "advance_rent"
+                  ? "Additional notes about this advance rent collection..."
+                  : "Add a short note about this payment..."
+              }
+            />
+          </div>
         </div>
       </div>
 
@@ -1083,7 +1048,11 @@ function ReviewStep({
     }
     return acc + (Number(item.form.amount ?? 0) || 0);
   }, 0);
-  const currency = payments[0]?.form?.currency ?? getDefaultCurrency();
+  // Ensure currency is always MVR (never AED)
+  const rawCurrency = payments[0]?.form?.currency ?? getDefaultCurrency();
+  const currency = rawCurrency && rawCurrency.toUpperCase() !== 'AED' 
+    ? rawCurrency 
+    : getDefaultCurrency();
 
   return (
     <div className="space-y-6">
@@ -1103,14 +1072,18 @@ function ReviewStep({
               (type) => type.value === item.form.payment_type
             );
             const isAdvanceRent = item.form.payment_type === "advance_rent";
+            // Ensure currency is always MVR (never AED)
+            const itemCurrency = item.form.currency && item.form.currency.toUpperCase() !== 'AED'
+              ? item.form.currency
+              : getDefaultCurrency();
             const amountLabel = isAdvanceRent
               ? formatAmount(
                   Number(item.form.advance_rent_amount ?? 0),
-                  item.form.currency ?? getDefaultCurrency()
+                  itemCurrency
                 )
               : formatAmount(
                   Number(item.form.amount ?? 0),
-                  item.form.currency ?? getDefaultCurrency()
+                  itemCurrency
                 );
             const paymentMethodLabel = item.form.payment_method
               ? paymentMethodLabels?.get(item.form.payment_method) ??
@@ -1126,11 +1099,15 @@ function ReviewStep({
               linkedCharge &&
               linkedCharge.supports_partial &&
               Number(item.form.amount ?? 0) + 0.009 < chargeOriginalAmount;
+            // Ensure linked charge currency is also MVR (never AED)
+            const linkedCurrency = linkedCharge?.currency && linkedCharge.currency.toUpperCase() !== 'AED'
+              ? linkedCharge.currency
+              : itemCurrency;
             const originalAmountLabel =
               linkedCharge && chargeOriginalAmount
                 ? formatAmount(
                     chargeOriginalAmount,
-                    linkedCharge.currency ?? item.form.currency ?? getDefaultCurrency()
+                    linkedCurrency
                   )
                 : null;
             const chargeTimelineParts = [];
@@ -1296,9 +1273,14 @@ function SuccessStep({
           const typeMeta = PAYMENT_TYPES.find(
             (type) => type.value === item.form.payment_type
           );
+          const isAdvanceRent = item.form.payment_type === "advance_rent";
+          // Ensure currency is always MVR (never AED)
+          const itemCurrency = item.form.currency && item.form.currency.toUpperCase() !== 'AED'
+            ? item.form.currency
+            : getDefaultCurrency();
           const amountLabel = formatAmount(
             Number(item.form.amount ?? 0),
-            item.form.currency ?? "AED"
+            itemCurrency
           );
           const paymentMethodLabel = item.form.payment_method
             ? paymentMethodLabels?.get(item.form.payment_method) ??
@@ -1541,8 +1523,16 @@ function buildPayload(form, charge) {
       : {};
 
   if (charge) {
+    // Extract source_id from charge.id if it's in format "rent_invoice:123"
+    let sourceId = charge.source_id;
+    if (!sourceId && charge.id && typeof charge.id === 'string' && charge.id.includes(':')) {
+      // If source_id is not set but id is in format "type:123", extract the numeric part
+      const parts = charge.id.split(':');
+      sourceId = parts.length > 1 ? parseInt(parts[1], 10) : null;
+    }
+    
     baseMetadata.source_type = charge.source_type ?? baseMetadata.source_type;
-    baseMetadata.source_id = charge.source_id ?? baseMetadata.source_id;
+    baseMetadata.source_id = sourceId ?? charge.source_id ?? baseMetadata.source_id;
     baseMetadata.source_title = charge.title ?? baseMetadata.source_title;
     baseMetadata.source_status = charge.status ?? baseMetadata.source_status;
     baseMetadata.source_due_date = charge.due_date ?? baseMetadata.source_due_date;
@@ -1562,17 +1552,33 @@ function buildPayload(form, charge) {
     )
   );
 
-  // Extract source_type and source_id from metadata for direct payload fields
-  const sourceType = metadata.source_type ?? null;
-  const sourceId = metadata.source_id ?? null;
+  // Extract source_type and source_id from metadata or charge for direct payload fields
+  // Prefer metadata values, but also check charge directly if metadata doesn't have them
+  const sourceType = metadata.source_type ?? (charge?.source_type ?? null);
+  let sourceId = metadata.source_id ?? (charge?.source_id ?? null);
+  
+  // If source_id is still null but charge.id exists in format "type:123", extract it
+  if (!sourceId && charge?.id && typeof charge.id === 'string' && charge.id.includes(':')) {
+    const parts = charge.id.split(':');
+    if (parts.length > 1) {
+      sourceId = parseInt(parts[1], 10) || null;
+    }
+  }
 
-  return {
+  // Ensure currency is always MVR (never AED) and is a valid 3-character string
+  let currency = form.currency || getDefaultCurrency();
+  if (currency && currency.toUpperCase() === 'AED') {
+    currency = getDefaultCurrency();
+  }
+  // Ensure it's exactly 3 characters (uppercase)
+  currency = currency ? String(currency).toUpperCase().substring(0, 3) : getDefaultCurrency();
+
+  const payload = {
     payment_type: form.payment_type,
     tenant_unit_id: form.tenant_unit_id ? Number(form.tenant_unit_id) : null,
     amount: Number(form.amount),
-    currency: form.currency,
+    currency: currency,
     description: form.description || null,
-    due_date: form.due_date || null,
     transaction_date: form.transaction_date || null,
     status: form.status,
     payment_method: form.payment_method || null,
@@ -1581,6 +1587,13 @@ function buildPayload(form, charge) {
     source_id: sourceId,
     metadata,
   };
+
+  // Only include due_date for payment types that need it (exclude advance_rent and security_refund)
+  if (form.payment_type !== 'advance_rent' && form.payment_type !== 'security_refund' && form.due_date) {
+    payload.due_date = form.due_date;
+  }
+
+  return payload;
 }
 
 function formatAmount(value, currency) {
@@ -1599,200 +1612,6 @@ function formatAmount(value, currency) {
   }
 }
 
-function TemplatePanel({
-  templates,
-  onApply,
-  onSave,
-  onDelete,
-  currentType,
-  templateError,
-  formData,
-  batch,
-  onAddToBatch,
-  onRemoveFromBatch,
-  canAddToBatch,
-}) {
-  const [name, setName] = useState("");
-
-  const handleSaveClick = () => {
-    if (!onSave) return;
-
-    try {
-      onSave(name);
-      setName("");
-    } catch {
-      // handled upstream
-    }
-  };
-
-  const canSave =
-    currentType &&
-    name.trim().length > 0 &&
-    formData.amount &&
-    Number(formData.amount) > 0;
-  const batchCount = batch?.length ?? 0;
-
-  return (
-    <aside className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-700 shadow-sm">
-      <div className="flex items-center gap-2">
-        <BookmarkPlus size={16} className="text-primary" />
-        <h3 className="text-sm font-semibold text-slate-900">
-          Saved templates
-        </h3>
-      </div>
-
-      <p className="mt-2 text-xs text-slate-500">
-        Save frequently used payment setups or apply an existing template to
-        prefill the form. You can also queue multiple payments for bulk
-        submission.
-      </p>
-
-      <div className="mt-4 space-y-2">
-        <button
-          type="button"
-          onClick={onAddToBatch}
-          disabled={!canAddToBatch}
-          className="w-full rounded-lg border border-primary/40 bg-white px-3 py-2 text-xs font-semibold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          Add current payment to batch
-        </button>
-      </div>
-
-      <div className="mt-4 space-y-2">
-        <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Template name
-        </label>
-        <input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="e.g. Monthly rent - 2BR"
-          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-        />
-        <button
-          type="button"
-          onClick={handleSaveClick}
-          disabled={!canSave}
-          className="w-full rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          Save template for this type
-        </button>
-        {templateError && (
-          <p className="text-xs text-rose-600">{templateError}</p>
-        )}
-      </div>
-
-      <div className="mt-5 space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Templates ({templates.length})
-        </p>
-
-        {templates.length === 0 && (
-          <p className="text-xs text-slate-500">
-            {currentType
-              ? "No templates saved for this payment type yet."
-              : "Select a payment type to view relevant templates."}
-          </p>
-        )}
-
-        <div className="space-y-2">
-          {templates.map((template) => (
-            <div
-              key={template.id}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">
-                    {template.name}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {template.payment_type} •{" "}
-                    {template.amount != null
-                      ? `${template.amount} ${template.currency}`
-                      : "No amount preset"}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onApply?.(template)}
-                    className="rounded-lg border border-primary/40 px-2 py-1 text-xs font-semibold text-primary transition hover:bg-primary/10"
-                  >
-                    Apply
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onDelete?.(template.id)}
-                    className="rounded-lg border border-rose-200 px-2 py-1 text-xs text-rose-500 transition hover:bg-rose-50"
-                    aria-label={`Delete template ${template.name}`}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="mt-6 space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Batch queue ({batchCount})
-        </p>
-
-        {batchCount === 0 && (
-          <p className="text-xs text-slate-500">
-            Add payments to the batch to submit multiple records at once.
-          </p>
-        )}
-
-        <div className="space-y-2">
-          {batch?.map((item, index) => {
-            const typeMeta = PAYMENT_TYPES.find(
-              (type) => type.value === item.form.payment_type
-            );
-            const amountLabel = formatAmount(
-              Number(item.form.amount ?? 0),
-              item.form.currency ?? getDefaultCurrency()
-            );
-
-            return (
-              <div
-                key={item.id}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">
-                      {typeMeta?.label ?? item.form.payment_type ?? "Payment"} #
-                      {index + 1}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {amountLabel} •{" "}
-                      {item.summary ??
-                        (item.form.tenant_unit_id
-                          ? `Tenant unit #${item.form.tenant_unit_id}`
-                          : "No tenant selected")}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onRemoveFromBatch?.(item.id)}
-                    className="rounded-lg border border-rose-200 px-2 py-1 text-xs text-rose-500 transition hover:bg-rose-50"
-                    aria-label={`Remove batch item ${index + 1}`}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </aside>
-  );
-}
-
 function PendingChargesPanel({
   charges,
   grouped,
@@ -1806,6 +1625,7 @@ function PendingChargesPanel({
   const hasCharges = Array.isArray(charges) && charges.length > 0;
   const sections = [
     { key: "rent_invoice", label: "Rent invoices" },
+    { key: "maintenance_invoice", label: "Maintenance invoices" },
     { key: "financial_record", label: "Financial records" },
   ];
 
@@ -1884,16 +1704,20 @@ function PendingChargesPanel({
               <div className="space-y-2">
                 {items.map((charge) => {
                   const isSelected = selectedCharge?.id === charge.id;
+                  // Ensure currency is always MVR (never AED)
+                  const currency = charge.currency && charge.currency.toUpperCase() !== 'AED' 
+                    ? charge.currency 
+                    : getDefaultCurrency();
                   const amountLabel = formatAmount(
                     Number(charge.amount ?? charge.original_amount ?? 0),
-                    charge.currency ?? getDefaultCurrency()
+                    currency
                   );
                   const originalAmountLabel =
                     charge.original_amount != null &&
                     charge.original_amount !== charge.amount
                       ? formatAmount(
                           Number(charge.original_amount),
-                          charge.currency ?? getDefaultCurrency()
+                          currency
                         )
                       : null;
                   const dueLabel = charge.due_date ?? charge.issued_date ?? null;

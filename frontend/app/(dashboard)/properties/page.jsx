@@ -13,6 +13,8 @@ import {
   RefreshCcw,
   Trash2,
   Loader2,
+  Users,
+  UserX,
 } from "lucide-react";
 import { DataDisplay } from "@/components/DataDisplay";
 import { API_BASE_URL } from "@/utils/api-config";
@@ -32,6 +34,8 @@ export default function PropertiesPage() {
   const [actionMessage, setActionMessage] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [units, setUnits] = useState([]);
+  const [unitsLoading, setUnitsLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
@@ -115,6 +119,59 @@ export default function PropertiesPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchUnits() {
+      setUnitsLoading(true);
+
+      try {
+        const token = localStorage.getItem("auth_token");
+
+        if (!token) {
+          return;
+        }
+
+        const url = new URL(`${API_BASE_URL}/units`);
+        url.searchParams.set("per_page", "500"); // Fetch all units for stats
+
+        const response = await fetch(url.toString(), {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          // Don't throw error, just use empty array for stats
+          if (!isMounted) return;
+          setUnits([]);
+          return;
+        }
+
+        const payload = await response.json();
+        if (!isMounted) return;
+
+        const data = Array.isArray(payload?.data) ? payload.data : [];
+        setUnits(data);
+      } catch (err) {
+        if (!isMounted) return;
+        // Silently fail for units, don't show error
+        setUnits([]);
+      } finally {
+        if (isMounted) {
+          setUnitsLoading(false);
+        }
+      }
+    }
+
+    fetchUnits();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const filteredProperties = useMemo(() => {
     const query = search.trim().toLowerCase();
 
@@ -162,6 +219,24 @@ export default function PropertiesPage() {
       { total: 0, residential: 0, commercial: 0, totalUnits: 0 },
     );
   }, [properties]);
+
+  const unitStats = useMemo(() => {
+    const totals = units.reduce(
+      (accumulator, unit) => {
+        accumulator.total += 1;
+        if (unit?.is_occupied) {
+          accumulator.occupied += 1;
+        }
+        return accumulator;
+      },
+      { total: 0, occupied: 0 },
+    );
+
+    return {
+      occupied: totals.occupied,
+      unoccupied: Math.max(totals.total - totals.occupied, 0),
+    };
+  }, [units]);
 
   const handleDelete = useCallback(async (property) => {
     if (!property?.id) {
@@ -244,7 +319,19 @@ export default function PropertiesPage() {
         </div>
       </header>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <SummaryCard
+          title="Total Units Occupied"
+          value={unitsLoading ? "..." : unitStats.occupied}
+          icon={<Users size={20} />}
+          tone="success"
+        />
+        <SummaryCard
+          title="Total Units Unoccupied"
+          value={unitsLoading ? "..." : unitStats.unoccupied}
+          icon={<UserX size={20} />}
+          tone="warning"
+        />
         <SummaryCard
           title="Total Properties"
           value={insights.total}
@@ -445,9 +532,13 @@ export default function PropertiesPage() {
   );
 }
 
-function SummaryCard({ title, value, icon }) {
+function SummaryCard({ title, value, icon, tone = "default" }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md">
+    <div
+      className={`rounded-2xl border border-slate-200 p-4 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md ${summaryTone(
+        tone,
+      )}`}
+    >
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-slate-500">{title}</p>
         <span className="text-primary">{icon}</span>
@@ -455,6 +546,18 @@ function SummaryCard({ title, value, icon }) {
       <p className="mt-3 text-2xl font-semibold text-slate-900">{value}</p>
     </div>
   );
+}
+
+function summaryTone(tone) {
+  const mapping = {
+    default: "bg-white/80",
+    success: "bg-emerald-50/90",
+    warning: "bg-amber-50/90",
+    danger: "bg-red-50/90",
+    info: "bg-sky-50/90",
+  };
+
+  return mapping[tone] ?? mapping.default;
 }
 
 function PropertyCard({ property, onDelete, isDeleting }) {

@@ -148,6 +148,7 @@ function AssetsPageContent() {
   const [assetTypes, setAssetTypes] = useState([]);
   const [units, setUnits] = useState([]);
   const [tenants, setTenants] = useState([]);
+  const [tenantUnits, setTenantUnits] = useState([]);
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [optionsError, setOptionsError] = useState(null);
 
@@ -252,7 +253,7 @@ function AssetsPageContent() {
           );
         }
 
-        const [assetTypesResponse, unitsResponse, tenantsResponse] =
+        const [assetTypesResponse, unitsResponse, tenantsResponse, tenantUnitsResponse] =
           await Promise.all([
             fetchCollection(`${API_BASE_URL}/asset-types`, token, controller, {
               per_page: 100,
@@ -263,6 +264,10 @@ function AssetsPageContent() {
             fetchCollection(`${API_BASE_URL}/tenants`, token, controller, {
               per_page: 100,
             }),
+            fetchCollection(`${API_BASE_URL}/tenant-units`, token, controller, {
+              per_page: 100,
+              status: "active",
+            }),
           ]);
 
         if (!isMounted) return;
@@ -270,6 +275,7 @@ function AssetsPageContent() {
         setAssetTypes(assetTypesResponse);
         setUnits(unitsResponse);
         setTenants(tenantsResponse);
+        setTenantUnits(tenantUnitsResponse);
       } catch (err) {
         if (err.name === "AbortError") {
           return;
@@ -319,6 +325,16 @@ function AssetsPageContent() {
       return accumulator;
     }, new Map());
   }, [tenants]);
+
+  // Map unit_id to tenant_id for active tenant-units
+  const unitToTenantMap = useMemo(() => {
+    return tenantUnits.reduce((accumulator, tenantUnit) => {
+      if (tenantUnit?.unit_id && tenantUnit?.tenant_id && tenantUnit?.status === "active") {
+        accumulator.set(tenantUnit.unit_id, tenantUnit.tenant_id);
+      }
+      return accumulator;
+    }, new Map());
+  }, [tenantUnits]);
 
   const filteredAssets = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -536,6 +552,35 @@ function AssetsPageContent() {
 
       if (name === "ownership" && value !== "tenant") {
         next.tenant_id = "";
+      }
+
+      // Auto-populate tenant when ownership is "tenant" and unit is selected
+      if (name === "ownership" && value === "tenant" && previous.unit_id) {
+        const unitId = Number(previous.unit_id);
+        const tenantId = unitToTenantMap.get(unitId);
+        if (tenantId) {
+          // Only auto-populate if tenant_id is empty or if it doesn't match the unit's tenant
+          const currentTenantId = previous.tenant_id ? Number(previous.tenant_id) : null;
+          if (!currentTenantId || currentTenantId !== tenantId) {
+            next.tenant_id = String(tenantId);
+          }
+        }
+      }
+
+      // Auto-populate tenant when unit is selected and ownership is "tenant"
+      if (name === "unit_id" && previous.ownership === "tenant" && value) {
+        const unitId = Number(value);
+        const tenantId = unitToTenantMap.get(unitId);
+        if (tenantId) {
+          // Only auto-populate if tenant_id is empty or if it doesn't match the unit's tenant
+          const currentTenantId = previous.tenant_id ? Number(previous.tenant_id) : null;
+          if (!currentTenantId || currentTenantId !== tenantId) {
+            next.tenant_id = String(tenantId);
+          }
+        } else {
+          // If unit has no active tenant, clear tenant_id
+          next.tenant_id = "";
+        }
       }
 
       return next;
@@ -808,6 +853,33 @@ function AssetsPageContent() {
       return { ...previous, name: nextName };
     });
   }, [formOpen, formMode, formNameDirty, autoSuggestedName]);
+
+  // Auto-populate tenant when form opens with tenant ownership and unit selected
+  useEffect(() => {
+    if (!formOpen || !formValues.unit_id || formValues.ownership !== "tenant") {
+      return;
+    }
+
+    const unitId = Number(formValues.unit_id);
+    const tenantId = unitToTenantMap.get(unitId);
+    const currentTenantId = formValues.tenant_id ? Number(formValues.tenant_id) : null;
+    
+    // Auto-populate if:
+    // 1. tenant_id is empty, OR
+    // 2. tenant_id doesn't match the unit's current active tenant
+    if (tenantId && (!currentTenantId || currentTenantId !== tenantId)) {
+      setFormValues((previous) => ({
+        ...previous,
+        tenant_id: String(tenantId),
+      }));
+    } else if (!tenantId && currentTenantId) {
+      // If unit has no active tenant but tenant_id is set, clear it
+      setFormValues((previous) => ({
+        ...previous,
+        tenant_id: "",
+      }));
+    }
+  }, [formOpen, formValues.unit_id, formValues.ownership, formValues.tenant_id, unitToTenantMap]);
 
   const handleUseSuggestedName = useCallback(() => {
     if (formMode !== "create") {
@@ -1163,6 +1235,7 @@ function AssetsPageContent() {
           lockedUnitOption={lockedUnitOption}
           tenantOptions={tenantSelectOptions}
           optionsLoading={optionsLoading}
+          unitToTenantMap={unitToTenantMap}
         />
       ) : null}
     </div>
@@ -1739,6 +1812,7 @@ function AssetFormDialog({
   lockedUnitOption,
   tenantOptions,
   optionsLoading,
+  unitToTenantMap,
 }) {
   const isEdit = mode === "edit";
 
@@ -1997,6 +2071,22 @@ function AssetFormDialog({
                   </option>
                 ))}
               </select>
+              {(() => {
+                if (!values.unit_id || !values.tenant_id || !unitToTenantMap) {
+                  return null;
+                }
+                const unitId = Number(values.unit_id);
+                const tenantId = Number(values.tenant_id);
+                const unitTenantId = unitToTenantMap.get(unitId);
+                if (unitTenantId === tenantId) {
+                  return (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Tenant automatically selected based on the active lease for this unit.
+                    </p>
+                  );
+                }
+                return null;
+              })()}
             </FormField>
           ) : null}
 

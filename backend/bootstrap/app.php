@@ -77,17 +77,41 @@ return Application::configure(basePath: dirname(__DIR__))
                 }
             }
 
+            // Only handle QueryException if it hasn't been handled by a controller
+            // Controllers should handle their own exceptions and return proper responses
             if ($e instanceof \Illuminate\Database\QueryException) {
+                // Check if this is an API route that might have its own error handling
+                // If so, let it bubble up so the controller can handle it
+                if ($request->is('api/v1/payments*')) {
+                    // Let the controller handle it - don't catch it here
+                    return null;
+                }
+                
                 \Log::error('Database query exception', [
                     'message' => $e->getMessage(),
                     'sql' => $e->getSql() ?? 'N/A',
+                    'bindings' => $e->getBindings() ?? [],
+                    'code' => $e->getCode(),
                 ]);
                 
                 // Return a proper error response instead of crashing
                 if ($request->expectsJson() || $request->is('api/*')) {
+                    // Always include error details in the response
+                    $errorDetails = [
+                        'message' => $e->getMessage(),
+                        'code' => $e->getCode(),
+                    ];
+                    
+                    if ($e->getSql()) {
+                        $errorDetails['sql'] = $e->getSql();
+                        $errorDetails['bindings'] = $e->getBindings();
+                    }
+                    
+                    // Always show the actual error message, not generic one
                     return response()->json([
-                        'message' => 'Database error occurred. Please try again later.',
-                        'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                        'message' => $e->getMessage(),
+                        'error' => $errorDetails,
+                        'debug' => config('app.debug'),
                     ], 500);
                 }
             }

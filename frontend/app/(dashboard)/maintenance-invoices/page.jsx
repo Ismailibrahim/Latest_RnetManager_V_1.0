@@ -36,10 +36,8 @@ const initialFormState = {
   invoice_number: "",
   invoice_date: "",
   due_date: "",
-  labor_cost: "0.00",
-  parts_cost: "0.00",
+  cost: "0.00",
   tax_amount: "0.00",
-  misc_amount: "0.00",
   discount_amount: "0.00",
   grand_total: "0.00",
   include_tax: true,
@@ -164,6 +162,31 @@ export default function MaintenanceInvoicesPage() {
     };
   }, [refreshKey, statusFilter]);
 
+  // Auto-refresh when window gains focus, but only if user was away for more than 2 seconds
+  // This prevents excessive refreshes when just switching tabs briefly
+  useEffect(() => {
+    let blurTime = null;
+    
+    const handleBlur = () => {
+      blurTime = Date.now();
+    };
+    
+    const handleFocus = () => {
+      // Only refresh if user was away for more than 2 seconds
+      if (blurTime && Date.now() - blurTime > 2000) {
+        setRefreshKey((value) => value + 1);
+      }
+      blurTime = null;
+    };
+
+    window.addEventListener('blur', handleBlur);
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
+
   useEffect(() => {
     let isMounted = true;
     const controller = new AbortController();
@@ -271,8 +294,7 @@ export default function MaintenanceInvoicesPage() {
             maintenance_request_id: String(request.id),
             invoice_date: today,
             due_date: dueDate.toISOString().split("T")[0],
-            labor_cost: String(request.cost ?? "0.00"),
-            parts_cost: "0.00",
+            cost: String(request.cost ?? "0.00"),
             grand_total: String(request.cost ?? "0.00"),
             notes: request.description || "",
             status: "draft",
@@ -565,7 +587,7 @@ export default function MaintenanceInvoicesPage() {
       }
 
       if (
-        ["tax_amount", "discount_amount"].includes(name)
+        ["cost", "tax_amount", "discount_amount"].includes(name)
       ) {
         const taxPercentage = systemSettings?.tax?.gst_percentage ?? 0;
         const gstEnabled = systemSettings?.tax?.gst_enabled ?? false;
@@ -609,6 +631,14 @@ export default function MaintenanceInvoicesPage() {
       }) ?? [];
 
       const next = { ...previous, line_items: items };
+      
+      // Calculate cost from line items
+      const lineItemsTotal = items.reduce((acc, item) => {
+        const itemTotal = parseFloat(item?.total ?? "0") || 0;
+        return acc + itemTotal;
+      }, 0);
+      next.cost = lineItemsTotal.toFixed(2);
+      
       const taxPercentage = systemSettings?.tax?.gst_percentage ?? 0;
       const gstEnabled = systemSettings?.tax?.gst_enabled ?? false;
       const includeTax = next.include_tax ?? true;
@@ -751,6 +781,88 @@ export default function MaintenanceInvoicesPage() {
       status: "paid",
       paid_date: formatDateInput(new Date()),
     });
+  };
+
+  const handleSyncStatus = async (invoiceId) => {
+    if (!invoiceId || updatingInvoiceId) {
+      return;
+    }
+
+    setUpdatingInvoiceId(invoiceId);
+
+    try {
+      const token = localStorage.getItem("auth_token");
+      if (!token) {
+        throw new Error("You must be logged in before syncing invoice status.");
+      }
+
+      // First, try to link any unlinked payments
+      try {
+        const linkResponse = await fetch(`${API_BASE_URL}/maintenance-invoices/${invoiceId}/link-payments`, {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (linkResponse.ok) {
+          const linkResult = await linkResponse.json();
+          if (linkResult.linked_count > 0) {
+            console.log('Linked payments:', linkResult);
+          }
+        }
+      } catch (linkErr) {
+        console.warn('Link payments failed (non-critical):', linkErr);
+      }
+
+      // Then sync the status
+      const response = await fetch(`${API_BASE_URL}/maintenance-invoices/${invoiceId}/sync-status`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        const message =
+          payload?.message ??
+          `Unable to sync invoice status (HTTP ${response.status}).`;
+        throw new Error(message);
+      }
+
+      const result = await response.json();
+      
+      // The response structure is: { message, invoice: {...}, total_paid, grand_total, is_fully_paid }
+      const invoice = result?.invoice?.data ?? result?.invoice ?? result?.data;
+      
+      if (invoice) {
+        // Update the invoice in the list
+        setInvoices((previous) =>
+          previous.map((inv) => (inv.id === invoiceId ? invoice : inv))
+        );
+      }
+      
+      let message = result?.message || 
+        (result?.is_fully_paid 
+          ? `Invoice is fully paid (${result.total_paid} / ${result.grand_total})` 
+          : `Invoice status checked. Paid: ${result.total_paid || 0} / ${result.grand_total || 0}`);
+      
+      // Add info about linked payments if available
+      if (result?.linked_payments_count !== undefined) {
+        message += ` (${result.linked_payments_count} payment(s) linked)`;
+      }
+      
+      setFlashMessage(message);
+      
+      // Refresh the list to ensure we have the latest data
+      setRefreshKey((value) => value + 1);
+    } catch (err) {
+      setFlashMessage(err.message || "Failed to sync invoice status.");
+    } finally {
+      setUpdatingInvoiceId(null);
+    }
   };
 
   const handleStatusChange = async (invoiceId, status) => {
@@ -1160,6 +1272,23 @@ export default function MaintenanceInvoicesPage() {
                           <FileText size={14} />
                           View
                         </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSyncStatus(item.id);
+                          }}
+                          disabled={updating}
+                          className="inline-flex items-center gap-1 rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-600 transition hover:border-blue-300 hover:text-blue-700 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                          title="Sync status with payments"
+                        >
+                          {updating ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <RefreshCcw size={14} />
+                          )}
+                          Sync
+                        </button>
                         {["draft", "sent", "approved", "overdue"].includes(status) && (
                           <button
                             type="button"
@@ -1302,6 +1431,7 @@ function InvoiceRow({
   maintenanceRequestMap,
   onView,
   onMarkPaid,
+  onSyncStatus,
   onChangeStatus,
   updating,
 }) {
@@ -1372,6 +1502,22 @@ function InvoiceRow({
             <FileText size={14} />
             View
           </button>
+          {onSyncStatus && (
+            <button
+              type="button"
+              onClick={onSyncStatus}
+              disabled={updating}
+              className="inline-flex items-center gap-1 rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-600 transition hover:border-blue-300 hover:text-blue-700 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+              title="Sync status with payments"
+            >
+              {updating ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <RefreshCcw size={14} />
+              )}
+              Sync
+            </button>
+          )}
           {["draft", "sent", "approved", "overdue"].includes(invoice?.status ?? "") ? (
             <button
               type="button"
@@ -1414,6 +1560,7 @@ function MaintenanceInvoiceCard({
   maintenanceRequestMap,
   onView,
   onMarkPaid,
+  onSyncStatus,
   onChangeStatus,
   updating,
 }) {
@@ -1561,32 +1708,34 @@ function MaintenanceInvoiceFormPanel({
   optionsLoading,
   systemSettings,
 }) {
+  if (!open) return null;
 
   return (
-    <section
-      className={`rounded-2xl border border-slate-200 bg-white/70 shadow-sm backdrop-blur transition-all duration-200 ${
-        open ? "visible opacity-100" : "invisible opacity-0"
-      }`}
-    >
-      <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-            Maintenance billing
-          </p>
-          <h2 className="text-xl font-semibold text-slate-900">
-            Generate maintenance invoice
-          </h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 py-8">
+      <div 
+        className="absolute inset-0 bg-slate-900/40" 
+        onClick={onClose}
+      />
+      <div className="relative z-10 w-full max-w-4xl rounded-3xl border border-slate-200 bg-white shadow-xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 flex-shrink-0">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+              Maintenance billing
+            </p>
+            <h2 className="text-xl font-semibold text-slate-900">
+              Generate maintenance invoice
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-700"
+          >
+            <X size={16} />
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-700"
-        >
-          <X size={16} />
-        </button>
-      </div>
 
-      <div className="space-y-4 px-6 py-6">
+        <div className="flex-1 overflow-y-auto space-y-4 px-6 py-6">
         {apiError ? (
           <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50/80 p-3 text-sm text-red-600">
             <AlertTriangle size={18} className="mt-0.5 flex-shrink-0" />
@@ -1858,6 +2007,25 @@ function MaintenanceInvoiceFormPanel({
 
           <section className="w-full space-y-3">
             <div className="flex items-center gap-3">
+              <label htmlFor="cost" className="w-[140px] text-xs font-semibold text-slate-700 text-right">
+                Cost (MVR):
+              </label>
+              <input
+                id="cost"
+                name="cost"
+                type="number"
+                value={values.cost}
+                onChange={(event) => onChange("cost", event.target.value)}
+                min="0"
+                step="0.01"
+                disabled={submitting}
+                suppressHydrationWarning
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </div>
+            {errors?.cost ? <p className="text-xs font-medium text-red-500 ml-[155px]">{firstError(errors.cost)}</p> : null}
+
+            <div className="flex items-center gap-3">
               <label htmlFor="discount_amount" className="w-[140px] text-xs font-semibold text-slate-700 text-right">
                 Discount (MVR):
               </label>
@@ -1988,8 +2156,9 @@ function MaintenanceInvoiceFormPanel({
             </button>
           </div>
         </form>
+        </div>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -2284,27 +2453,15 @@ function MaintenanceInvoicePreviewDialog({
 
             <section className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4 text-sm text-slate-700">
               <div className="flex items-center justify-between">
-                <span>Labour</span>
+                <span>Cost</span>
                 <span className="font-semibold text-slate-900">
-                  {formatCurrency(invoice?.labor_cost)}
-                </span>
-              </div>
-              <div className="mt-2 flex items-center justify-between">
-                <span>Parts & materials</span>
-                <span className="font-semibold text-slate-900">
-                  {formatCurrency(invoice?.parts_cost)}
+                  {formatCurrency(invoice?.cost ?? ((invoice?.labor_cost ?? 0) + (invoice?.parts_cost ?? 0)))}
                 </span>
               </div>
               <div className="mt-2 flex items-center justify-between">
                 <span>Tax</span>
                 <span className="font-semibold text-slate-900">
                   {formatCurrency(invoice?.tax_amount)}
-                </span>
-              </div>
-              <div className="mt-2 flex items-center justify-between">
-                <span>Misc charges</span>
-                <span className="font-semibold text-slate-900">
-                  {formatCurrency(invoice?.misc_amount)}
                 </span>
               </div>
               <div className="mt-2 flex items-center justify-between">
@@ -2509,35 +2666,41 @@ function createLineItemFromRequest(request, formValues) {
 }
 
 function calculateTotals(values, taxPercentage = 0, taxEnabled = false) {
-  const lineItems = values.line_items ?? [];
+  // Get cost from form (or calculate from line items if not provided)
+  let cost = Number.isFinite(parseFloat(values.cost))
+    ? parseFloat(values.cost)
+    : 0;
 
-  // Sum all line items (all line items are added to the total)
-  const lineItemsTotal = lineItems.reduce((acc, item) => {
-    const itemTotal = toAmount(item?.total);
-    return acc + itemTotal;
-  }, 0);
+  // If cost is not set, calculate from line items
+  if (cost === 0 && values.line_items && values.line_items.length > 0) {
+    const lineItems = values.line_items ?? [];
+    cost = lineItems.reduce((acc, item) => acc + toAmount(item?.total), 0);
+  }
 
-  // Get discount amount
+  // Get amounts from form values
+  const tax_amount = Number.isFinite(parseFloat(values.tax_amount))
+    ? parseFloat(values.tax_amount)
+    : 0;
   const discount_amount = Number.isFinite(parseFloat(values.discount_amount))
     ? parseFloat(values.discount_amount)
     : 0;
 
-  // Calculate subtotal: All line items - Discount
-  const subtotal = lineItemsTotal - discount_amount;
+  // Calculate subtotal for tax calculation: cost - discount
+  const subtotal = cost - discount_amount;
 
   // Auto-calculate tax if enabled, otherwise use manual entry
-  let tax_amount;
+  let calculatedTax;
   if (taxEnabled && taxPercentage > 0) {
-    tax_amount = (subtotal * taxPercentage / 100);
+    calculatedTax = (subtotal * taxPercentage / 100);
   } else {
-    tax_amount = Number.isFinite(parseFloat(values.tax_amount)) ? parseFloat(values.tax_amount) : 0;
+    calculatedTax = tax_amount;
   }
 
-  // Grand total = Subtotal + Tax
-  const grand_total = (subtotal + tax_amount).toFixed(2);
+  // Grand total = cost + tax - discount (matching backend validation)
+  const grand_total = (cost + calculatedTax - discount_amount).toFixed(2);
 
   return {
-    taxAmount: tax_amount.toFixed(2),
+    taxAmount: calculatedTax.toFixed(2),
     grandTotal: grand_total,
   };
 }
@@ -2552,15 +2715,25 @@ function buildInvoicePayload(values) {
     }))
     .filter((item) => item.description.length > 0);
 
-  // Calculate labor_cost and parts_cost from line items for backward compatibility with API
-  const labor_cost = lineItems
-    .filter((item) => (item.description ?? "").toLowerCase().includes("labour") || (item.description ?? "").toLowerCase().includes("labor"))
-    .reduce((acc, item) => acc + (item.total ?? 0), 0);
+  // Get cost from form (or calculate from line items if not provided)
+  let cost = Number.isFinite(parseFloat(values.cost))
+    ? parseFloat(values.cost)
+    : 0;
 
-  const parts_cost = lineItems
-    .filter((item) => !(item.description ?? "").toLowerCase().includes("labour") &&
-        !(item.description ?? "").toLowerCase().includes("labor"))
-    .reduce((acc, item) => acc + (item.total ?? 0), 0);
+  // If cost is not set, calculate from line items
+  if (cost === 0 && lineItems.length > 0) {
+    cost = lineItems.reduce((acc, item) => acc + (item.total ?? 0), 0);
+  }
+
+  // Ensure grand_total matches the backend validation formula
+  const tax_amount = Number(values.tax_amount ?? 0);
+  const discount_amount = Number(values.discount_amount ?? 0);
+  
+  // Calculate expected grand_total: cost + tax - discount
+  const expectedGrandTotal = cost + tax_amount - discount_amount;
+  
+  // Use the calculated grand_total from form (which should match) or recalculate if needed
+  const grand_total = Number(values.grand_total ?? expectedGrandTotal);
 
   return {
     tenant_unit_id: values.tenant_unit_id ? Number(values.tenant_unit_id) : null,
@@ -2571,12 +2744,10 @@ function buildInvoicePayload(values) {
     invoice_date: values.invoice_date || null,
     due_date: values.due_date || null,
     status: values.status ?? "draft",
-    labor_cost: labor_cost,
-    parts_cost: parts_cost,
-    tax_amount: Number(values.tax_amount ?? 0),
-    misc_amount: 0,
-    discount_amount: Number(values.discount_amount ?? 0),
-    grand_total: Number(values.grand_total ?? 0),
+    cost: Number(cost.toFixed(2)),
+    tax_amount: Number(tax_amount.toFixed(2)),
+    discount_amount: Number(discount_amount.toFixed(2)),
+    grand_total: Number(grand_total.toFixed(2)),
     line_items: lineItems,
     notes: values.notes ?? null,
     paid_date: values.paid_date || null,
@@ -2661,11 +2832,10 @@ function renderInvoicePdf(pdf, invoice, tenantUnit, maintenanceRequest) {
   pdf.line(marginX, cursorY, marginX + 480, cursorY);
   cursorY += 20;
 
+  const cost = invoice?.cost ?? ((invoice?.labor_cost ?? 0) + (invoice?.parts_cost ?? 0));
   const totals = [
-    ["Labour", formatCurrency(invoice?.labor_cost)],
-    ["Parts & materials", formatCurrency(invoice?.parts_cost)],
+    ["Cost", formatCurrency(cost)],
     ["Tax", formatCurrency(invoice?.tax_amount)],
-    ["Misc charges", formatCurrency(invoice?.misc_amount)],
     ["Discount", `− ${formatCurrency(invoice?.discount_amount)}`],
   ];
 

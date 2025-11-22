@@ -97,6 +97,7 @@ export default function RentInvoicesPage() {
   const [bulkFormSubmitting, setBulkFormSubmitting] = useState(false);
   const [bulkFormApiError, setBulkFormApiError] = useState(null);
   const [bulkResult, setBulkResult] = useState(null);
+  const bulkFormSubmitRef = useRef(null); // Track last submission to prevent duplicates
 
   const { labels: paymentMethodLabels } = usePaymentMethods({ onlyActive: true });
 
@@ -501,14 +502,29 @@ export default function RentInvoicesPage() {
   const handleBulkFormSubmit = async (event) => {
     event.preventDefault();
 
+    // Prevent multiple submissions
     if (bulkFormSubmitting) {
       return;
     }
 
-    setBulkFormSubmitting(true);
+    // Create a unique request signature to prevent duplicate submissions
+    const requestSignature = JSON.stringify({
+      invoice_date: bulkFormValues.invoice_date,
+      due_date: bulkFormValues.due_date,
+      timestamp: Date.now(),
+    });
+
+    // Prevent duplicate requests within 2 seconds
+    if (bulkFormSubmitRef.current === requestSignature) {
+      return;
+    }
+
+    // Clear any previous error
     setBulkFormErrors({});
     setBulkFormApiError(null);
     setBulkResult(null);
+    setBulkFormSubmitting(true);
+    bulkFormSubmitRef.current = requestSignature;
 
     try {
       const token = localStorage.getItem("auth_token");
@@ -541,6 +557,21 @@ export default function RentInvoicesPage() {
         throw new Error(validationPayload?.message ?? "Validation failed.");
       }
 
+      // Handle rate limiting (429) with user-friendly message
+      if (response.status === 429) {
+        const apiPayload = await response.json().catch(() => ({}));
+        const retryAfter = response.headers.get("Retry-After");
+        let message = apiPayload?.message ?? "Too many requests. Please wait a moment before trying again.";
+        
+        if (retryAfter) {
+          const seconds = parseInt(retryAfter, 10);
+          const minutes = Math.ceil(seconds / 60);
+          message = `Too many requests. Please wait ${minutes} minute${minutes !== 1 ? 's' : ''} before trying again.`;
+        }
+        
+        throw new Error(message);
+      }
+
       if (!response.ok) {
         const apiPayload = await response.json().catch(() => ({}));
         const message =
@@ -561,6 +592,10 @@ export default function RentInvoicesPage() {
       setBulkFormApiError(err.message);
     } finally {
       setBulkFormSubmitting(false);
+      // Clear the request signature after a delay to allow retries if needed
+      setTimeout(() => {
+        bulkFormSubmitRef.current = null;
+      }, 2000);
     }
   };
 

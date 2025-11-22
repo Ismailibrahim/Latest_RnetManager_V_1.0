@@ -44,6 +44,11 @@ class FinancialRecord extends Model
     ];
 
     /**
+     * Payment method is now stored as a string that references payment_methods.name.
+     * No normalization needed - the value should match a payment method name from the payment_methods table.
+     */
+
+    /**
      * Boot the model.
      */
     protected static function boot(): void
@@ -63,6 +68,9 @@ class FinancialRecord extends Model
                 $record->invoice_number = app(NumberGeneratorService::class)
                     ->generateFinancialRecordInvoiceNumber($record->landlord_id);
             }
+            
+            // Payment method is now stored as a string that references payment_methods.name
+            // No normalization needed - validation ensures it matches a payment method from the database
         });
     }
 

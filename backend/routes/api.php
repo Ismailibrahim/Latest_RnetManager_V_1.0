@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BillingSettingsController;
 use App\Http\Controllers\Api\V1\EmailTemplateController;
 use App\Http\Controllers\Api\V1\FinancialRecordController;
+use App\Http\Controllers\Api\V1\FinancialSummaryController;
 use App\Http\Controllers\Api\V1\LandlordController;
 use App\Http\Controllers\Api\V1\MaintenanceInvoiceController;
 use App\Http\Controllers\Api\V1\MaintenanceRequestController;
@@ -114,6 +115,8 @@ Route::prefix('v1')->group(function (): void {
         Route::apiResource('financial-records', FinancialRecordController::class)->parameters([
             'financial-records' => 'financial_record',
         ])->names('api.v1.financial-records');
+        Route::get('financial-summary', FinancialSummaryController::class)
+            ->name('api.v1.financial-summary');
 
         // Simple test route
         Route::get('test-route-loading', function () {
@@ -121,8 +124,10 @@ Route::prefix('v1')->group(function (): void {
         })->name('api.v1.test-route-loading');
 
         // Rent invoices routes - specific routes MUST come before apiResource
+        // Bulk generate uses per-user throttling: 20 requests per hour per user
+        // This prevents abuse while allowing legitimate retries
         Route::post('rent-invoices/bulk-generate', [RentInvoiceController::class, 'bulkStore'])
-            ->middleware('throttle:6,1')
+            ->middleware('throttle:20,60')
             ->name('api.v1.rent-invoices.bulk-generate');
         Route::get('rent-invoices/{rent_invoice}/export', [RentInvoiceController::class, 'export'])
             ->where(['rent_invoice' => '[0-9]+'])
@@ -140,6 +145,78 @@ Route::prefix('v1')->group(function (): void {
         Route::apiResource('maintenance-invoices', MaintenanceInvoiceController::class)->parameters([
             'maintenance-invoices' => 'maintenance_invoice',
         ])->names('api.v1.maintenance-invoices');
+        Route::post('maintenance-invoices/{maintenance_invoice}/sync-status', [MaintenanceInvoiceController::class, 'syncStatus'])
+            ->name('api.v1.maintenance-invoices.sync-status');
+        Route::post('maintenance-invoices/{maintenance_invoice}/link-payments', [MaintenanceInvoiceController::class, 'linkPayments'])
+            ->name('api.v1.maintenance-invoices.link-payments');
+        
+        // Debug route to check maintenance invoice payment linking
+        Route::get('debug/maintenance-invoice-payments', function (Request $request) {
+            $user = $request->user();
+            if (!$user || !$user->landlord_id) {
+                return response()->json(['error' => 'Unauthorized'], 401);
+            }
+            
+            $invoice = \App\Models\MaintenanceInvoice::withoutGlobalScopes()
+                ->where('landlord_id', $user->landlord_id)
+                ->latest('id')
+                ->first();
+            
+            if (!$invoice) {
+                return response()->json(['error' => 'No maintenance invoices found'], 404);
+            }
+            
+            $payments = \App\Models\UnifiedPaymentEntry::where('source_type', 'maintenance_invoice')
+                ->where('source_id', $invoice->id)
+                ->get();
+            
+            $paymentsByTenant = \App\Models\UnifiedPaymentEntry::where('tenant_unit_id', $invoice->tenant_unit_id)
+                ->whereIn('status', ['completed', 'partial'])
+                ->latest('id')
+                ->take(10)
+                ->get();
+            
+            $totalPaid = \App\Models\UnifiedPaymentEntry::where('source_type', 'maintenance_invoice')
+                ->where('source_id', $invoice->id)
+                ->whereIn('status', ['completed', 'partial'])
+                ->sum('amount');
+            
+            return response()->json([
+                'invoice' => [
+                    'id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'status' => $invoice->status,
+                    'grand_total' => (float) $invoice->grand_total,
+                    'landlord_id' => $invoice->landlord_id,
+                    'tenant_unit_id' => $invoice->tenant_unit_id,
+                ],
+                'payments_linked' => $payments->map(function($p) {
+                    return [
+                        'id' => $p->id,
+                        'source_type' => $p->source_type,
+                        'source_id' => $p->source_id,
+                        'source_id_type' => gettype($p->source_id),
+                        'amount' => (float) $p->amount,
+                        'status' => $p->status,
+                        'created_at' => $p->created_at,
+                    ];
+                }),
+                'recent_payments_for_tenant_unit' => $paymentsByTenant->map(function($p) {
+                    return [
+                        'id' => $p->id,
+                        'source_type' => $p->source_type,
+                        'source_id' => $p->source_id,
+                        'source_id_type' => gettype($p->source_id),
+                        'amount' => (float) $p->amount,
+                        'status' => $p->status,
+                        'payment_type' => $p->payment_type,
+                        'description' => $p->description,
+                    ];
+                }),
+                'total_paid' => (float) $totalPaid,
+                'should_be_paid' => $totalPaid >= (float) $invoice->grand_total - 0.01,
+            ]);
+        })->middleware('auth:sanctum');
         Route::apiResource('assets', AssetController::class)->names('api.v1.assets');
         Route::apiResource('asset-types', AssetTypeController::class)->parameters([
             'asset-types' => 'asset_type',

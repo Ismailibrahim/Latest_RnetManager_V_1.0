@@ -72,7 +72,7 @@ class UnifiedPaymentApiTest extends TestCase
             'payment_type' => 'rent',
             'tenant_unit_id' => $this->tenantUnit->id,
             'amount' => 15000,
-            'currency' => 'aed',
+            'currency' => 'mvr',
             'description' => 'November rent',
             'transaction_date' => Carbon::now()->toDateString(),
             'status' => 'pending',
@@ -82,14 +82,14 @@ class UnifiedPaymentApiTest extends TestCase
 
         $response->assertCreated()
             ->assertJsonPath('data.payment_type', 'rent')
-            ->assertJsonPath('data.currency', 'AED')
+            ->assertJsonPath('data.currency', 'MVR')
             ->assertJsonPath('data.entry_origin', 'native');
 
         $this->assertDatabaseHas('unified_payment_entries', [
             'tenant_unit_id' => $this->tenantUnit->id,
             'amount' => 15000.00,
             'status' => 'pending',
-            'currency' => 'AED',
+            'currency' => 'MVR',
         ]);
     }
 

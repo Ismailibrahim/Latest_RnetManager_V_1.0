@@ -132,6 +132,10 @@ class LandlordSetting extends Model
                 'late_fee_fixed' => 0,
                 'grace_period_days' => 7,
             ],
+            'lease' => [
+                'default_notice_period_days' => 30,
+                'default_lock_in_period_months' => 6,
+            ],
             'system' => [
                 'timezone' => 'Indian/Maldives',
                 'date_format' => 'DD/MM/YYYY',

@@ -59,9 +59,12 @@ export function DataDisplay({
     return (
       <div className="grid gap-4 p-4 sm:grid-cols-2">
         {data.map((item, index) => {
+          // Use composite_id if available (for unified payments), otherwise id, fallback to index
+          const rowKey = item.composite_id ?? item.id ?? `row-${index}`;
+          
           if (renderCard) {
             return (
-              <div key={item.id ?? index} onClick={() => onRowClick?.(item)}>
+              <div key={rowKey} onClick={() => onRowClick?.(item)}>
                 {renderCard(item, index)}
               </div>
             );
@@ -69,7 +72,7 @@ export function DataDisplay({
 
           return (
             <div
-              key={item.id ?? index}
+              key={rowKey}
               onClick={() => onRowClick?.(item)}
               className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-primary/40 hover:shadow-md cursor-pointer"
             >
@@ -115,7 +118,9 @@ export function DataDisplay({
         </thead>
         <tbody>
           {data.map((item, index) => {
-            const rowKey = item.id ?? index;
+            // Use composite_id if available (for unified payments), otherwise id, fallback to index
+            // This ensures unique keys even when items share the same numeric id
+            const rowKey = item.composite_id ?? item.id ?? `row-${index}`;
             return (
               <tr
                 key={rowKey}

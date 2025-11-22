@@ -55,6 +55,10 @@ function NewTenantUnitPageContent() {
   const [rentManuallyEdited, setRentManuallyEdited] = useState(false);
   const [securityDepositManuallyEdited, setSecurityDepositManuallyEdited] =
     useState(false);
+  const [noticePeriodManuallyEdited, setNoticePeriodManuallyEdited] =
+    useState(false);
+  const [lockInPeriodManuallyEdited, setLockInPeriodManuallyEdited] =
+    useState(false);
 
   const leaseDocumentInputRef = useRef(null);
 
@@ -62,6 +66,8 @@ function NewTenantUnitPageContent() {
   const [units, setUnits] = useState([]);
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [optionsError, setOptionsError] = useState(null);
+  const [settings, setSettings] = useState(null);
+  const [settingsLoading, setSettingsLoading] = useState(false);
 
   useEffect(() => {
     const tenantParam =
@@ -185,6 +191,59 @@ function NewTenantUnitPageContent() {
     };
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+
+    async function loadSettings() {
+      setSettingsLoading(true);
+
+      try {
+        const token = localStorage.getItem("auth_token");
+
+        if (!token) {
+          return;
+        }
+
+        const response = await fetch(`${API_BASE_URL}/settings/system`, {
+          signal: controller.signal,
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = await response.json();
+
+        if (!isMounted) {
+          return;
+        }
+
+        setSettings(data?.data || data);
+      } catch (error) {
+        if (error.name === "AbortError") {
+          return;
+        }
+        // Silently fail - settings are optional
+      } finally {
+        if (isMounted) {
+          setSettingsLoading(false);
+        }
+      }
+    }
+
+    loadSettings();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, []);
+
   const tenantOptions = useMemo(() => {
     return tenants.map((tenant) => ({
       value: String(tenant.id),
@@ -223,6 +282,14 @@ function NewTenantUnitPageContent() {
 
     if (name === "securityDepositPaid") {
       setSecurityDepositManuallyEdited(true);
+    }
+
+    if (name === "noticePeriodDays") {
+      setNoticePeriodManuallyEdited(true);
+    }
+
+    if (name === "lockInPeriodMonths") {
+      setLockInPeriodManuallyEdited(true);
     }
 
     if (name === "leaseEnd") {
@@ -395,6 +462,64 @@ function NewTenantUnitPageContent() {
   ]);
 
   useEffect(() => {
+    if (!settings) {
+      return;
+    }
+
+    const noticePeriodDays =
+      settings?.lease?.default_notice_period_days ??
+      settings?.payment_terms?.default_notice_period_days;
+    const lockInPeriodMonths =
+      settings?.lease?.default_lock_in_period_months ??
+      settings?.payment_terms?.default_lock_in_period_months;
+
+    setForm((previous) => {
+      let updated = previous;
+      let changed = false;
+
+      if (
+        !noticePeriodManuallyEdited &&
+        noticePeriodDays !== null &&
+        noticePeriodDays !== undefined
+      ) {
+        const noticePeriodString = String(noticePeriodDays);
+        if (previous.noticePeriodDays !== noticePeriodString) {
+          if (!changed) {
+            updated = { ...previous };
+            changed = true;
+          }
+          updated.noticePeriodDays = noticePeriodString;
+        }
+      }
+
+      if (
+        !lockInPeriodManuallyEdited &&
+        lockInPeriodMonths !== null &&
+        lockInPeriodMonths !== undefined
+      ) {
+        const lockInPeriodString = String(lockInPeriodMonths);
+        if (previous.lockInPeriodMonths !== lockInPeriodString) {
+          if (!changed) {
+            updated = { ...previous };
+            changed = true;
+          }
+          updated.lockInPeriodMonths = lockInPeriodString;
+        }
+      }
+
+      if (!changed) {
+        return previous;
+      }
+
+      return updated;
+    });
+  }, [
+    settings,
+    noticePeriodManuallyEdited,
+    lockInPeriodManuallyEdited,
+  ]);
+
+  useEffect(() => {
     if (!leaseEndAuto) {
       return;
     }
@@ -482,6 +607,8 @@ function NewTenantUnitPageContent() {
       setLeaseEndAuto(false);
       setRentManuallyEdited(false);
       setSecurityDepositManuallyEdited(false);
+      setNoticePeriodManuallyEdited(false);
+      setLockInPeriodManuallyEdited(false);
       setUnitDefaults({
         rent: null,
         deposit: null,
@@ -782,6 +909,15 @@ function NewTenantUnitPageContent() {
                     : undefined
                 }
               />
+              <Hint icon={<CalendarRange size={14} className="text-slate-400" />}>
+                {settings?.lease?.default_notice_period_days ||
+                settings?.payment_terms?.default_notice_period_days
+                  ? `Default from settings: ${
+                      settings?.lease?.default_notice_period_days ??
+                      settings?.payment_terms?.default_notice_period_days
+                    } days`
+                  : "Number of days required for notice before lease termination."}
+              </Hint>
               {validationErrors.notice_period_days ? (
                 <FieldError id="noticePeriod-error">
                   {firstError(validationErrors.notice_period_days)}
@@ -807,6 +943,15 @@ function NewTenantUnitPageContent() {
                     : undefined
                 }
               />
+              <Hint icon={<CalendarRange size={14} className="text-slate-400" />}>
+                {settings?.lease?.default_lock_in_period_months ||
+                settings?.payment_terms?.default_lock_in_period_months
+                  ? `Default from settings: ${
+                      settings?.lease?.default_lock_in_period_months ??
+                      settings?.payment_terms?.default_lock_in_period_months
+                    } months`
+                  : "Minimum period tenant must stay before they can terminate."}
+              </Hint>
               {validationErrors.lock_in_period_months ? (
                 <FieldError id="lockInPeriod-error">
                   {firstError(validationErrors.lock_in_period_months)}

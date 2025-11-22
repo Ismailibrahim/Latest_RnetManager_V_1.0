@@ -41,7 +41,8 @@ class ComprehensiveReportDataSeeder extends Seeder
         $properties = Property::query()->where('landlord_id', $landlord->id)->get();
         $units = Unit::query()->where('landlord_id', $landlord->id)->get();
         $tenantUnits = TenantUnit::query()->where('landlord_id', $landlord->id)->get();
-        $paymentMethods = PaymentMethod::query()->where('landlord_id', $landlord->id)->get();
+        // Payment methods are global (no landlord_id), get all active ones
+        $paymentMethods = PaymentMethod::query()->where('is_active', true)->get();
         $assetTypes = AssetType::query()->get();
 
         if ($tenantUnits->isEmpty()) {
@@ -101,12 +102,13 @@ class ComprehensiveReportDataSeeder extends Seeder
         $this->command?->info('Generating financial data (12+ months)...');
 
         $statuses = ['completed', 'pending', 'overdue'];
-        $types = ['rent', 'maintenance_expense', 'other_income', 'other_outgoing'];
+        // Financial records type enum only supports: 'rent', 'expense', 'fee', 'refund'
+        // Valid categories: 'monthly_rent', 'late_fee', 'processing_fee', 'maintenance', 'repair', 'utility', 'tax', 'insurance', 'management_fee', 'other'
+        $types = ['rent', 'expense', 'fee'];
         $categories = [
-            'rent' => ['monthly_rent', 'late_fee', 'advance_rent'],
-            'maintenance_expense' => ['repair', 'service', 'replacement'],
-            'other_income' => ['fee', 'penalty', 'other'],
-            'other_outgoing' => ['utility', 'insurance', 'tax', 'other'],
+            'rent' => ['monthly_rent', 'late_fee'],
+            'expense' => ['maintenance', 'repair', 'utility', 'insurance', 'tax', 'other'],
+            'fee' => ['late_fee', 'processing_fee', 'other'],
         ];
 
         foreach ($tenantUnits as $tenantUnit) {
@@ -175,9 +177,9 @@ class ComprehensiveReportDataSeeder extends Seeder
                 );
             }
 
-            // Generate additional financial records (other income/outgoing)
+            // Generate additional financial records (expenses and fees)
             for ($i = 0; $i < 5; $i++) {
-                $type = $faker->randomElement(['other_income', 'other_outgoing']);
+                $type = $faker->randomElement(['expense', 'fee']);
                 $category = $faker->randomElement($categories[$type]);
                 $monthsAgo = $faker->numberBetween(0, 6);
                 $transactionDate = now()->subMonths($monthsAgo)->subDays(rand(0, 30));
@@ -194,7 +196,7 @@ class ComprehensiveReportDataSeeder extends Seeder
                         'amount' => $faker->randomFloat(2, 500, 5000),
                         'description' => ucfirst(str_replace('_', ' ', $category)),
                         'due_date' => $transactionDate->copy()->addDays(7),
-                        'paid_date' => $type === 'other_income' ? $transactionDate->copy()->addDays(rand(1, 5)) : null,
+                        'paid_date' => $type === 'fee' ? $transactionDate->copy()->addDays(rand(1, 5)) : null,
                         'transaction_date' => $transactionDate,
                         'payment_method' => $paymentMethods->isNotEmpty() 
                             ? $paymentMethods->random()->name 
@@ -244,12 +246,12 @@ class ComprehensiveReportDataSeeder extends Seeder
                         'type' => $faker->randomElement($types),
                         'cost' => $faker->randomFloat(2, 500, 5000),
                         'location' => $faker->optional()->randomElement(['Kitchen', 'Bathroom', 'Living Room', 'Bedroom', 'Balcony']),
-                        'serviced_by' => $vendors->isNotEmpty() ? $vendors->random()->name : $faker->name(),
+                        'serviced_by' => !empty($vendors) ? collect($vendors)->random()->name : $faker->name(),
                         'invoice_number' => $faker->optional()->bothify('EXT-####'),
                         'billed_to_tenant' => $billedToTenant,
                         'tenant_share' => $tenantShare,
-                        'status' => $faker->randomElement($statuses),
-                        'notes' => $faker->optional()->paragraph(),
+                        // 'status' => $faker->randomElement($statuses), // maintenance_requests table doesn't have status column
+                        // 'notes' => $faker->optional()->paragraph(), // maintenance_requests table doesn't have notes column
                     ]
                 );
 

@@ -26,7 +26,7 @@ class UnitTypeController extends Controller
         return UnitTypeResource::collection($types);
     }
 
-    public function store(Request $request): UnitTypeResource
+    public function store(Request $request)
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:191', 'unique:unit_types,name'],
@@ -40,7 +40,9 @@ class UnitTypeController extends Controller
             'is_active' => array_key_exists('is_active', $validated) ? (bool) $validated['is_active'] : true,
         ]);
 
-        return new UnitTypeResource($unitType);
+        return (new UnitTypeResource($unitType))
+            ->response()
+            ->setStatusCode(201);
     }
 
     public function update(Request $request, UnitType $unitType): UnitTypeResource

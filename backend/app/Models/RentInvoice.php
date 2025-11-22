@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Helpers\PaymentMethodNormalizer;
 use App\Models\Concerns\BelongsToLandlord;
 use App\Services\NumberGeneratorService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -38,6 +39,15 @@ class RentInvoice extends Model
         'is_advance_covered' => 'boolean',
         'paid_date' => 'date',
     ];
+
+    /**
+     * Normalize payment method to ENUM value when setting.
+     * Rent invoices table has payment_method as ENUM: 'cash', 'bank_transfer', 'upi', 'card', 'cheque'
+     */
+    public function setPaymentMethodAttribute(?string $value): void
+    {
+        $this->attributes['payment_method'] = $value ? PaymentMethodNormalizer::normalize($value) : null;
+    }
 
     /**
      * Boot the model.

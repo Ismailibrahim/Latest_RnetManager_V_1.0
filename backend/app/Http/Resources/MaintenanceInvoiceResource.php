@@ -15,6 +15,9 @@ class MaintenanceInvoiceResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        // Calculate cost from labor_cost + parts_cost for simplified frontend
+        $cost = (float) ($this->labor_cost ?? 0) + (float) ($this->parts_cost ?? 0);
+
         return [
             'id' => $this->id,
             'tenant_unit_id' => $this->tenant_unit_id,
@@ -24,10 +27,8 @@ class MaintenanceInvoiceResource extends JsonResource
             'invoice_date' => $this->invoice_date?->toDateString(),
             'due_date' => $this->due_date?->toDateString(),
             'status' => $this->status,
-            'labor_cost' => (float) $this->labor_cost,
-            'parts_cost' => (float) $this->parts_cost,
+            'cost' => $cost,
             'tax_amount' => (float) $this->tax_amount,
-            'misc_amount' => (float) $this->misc_amount,
             'discount_amount' => (float) $this->discount_amount,
             'grand_total' => (float) $this->grand_total,
             'line_items' => $this->line_items ?? [],
@@ -37,6 +38,10 @@ class MaintenanceInvoiceResource extends JsonResource
             'reference_number' => $this->reference_number,
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
+            // Keep legacy fields for backward compatibility
+            'labor_cost' => (float) $this->labor_cost,
+            'parts_cost' => (float) $this->parts_cost,
+            'misc_amount' => (float) $this->misc_amount,
             'tenant_unit' => $this->whenLoaded('tenantUnit', fn () => TenantUnitResource::make($this->tenantUnit)),
             'maintenance_request' => $this->whenLoaded('maintenanceRequest', fn () => MaintenanceRequestResource::make($this->maintenanceRequest)),
         ];

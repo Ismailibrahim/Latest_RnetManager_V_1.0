@@ -166,9 +166,13 @@ export default function MaintenancePage() {
             Accept: "application/json",
             Authorization: `Bearer ${token}`,
           },
+        }).catch((fetchError) => {
+          // Suppress network errors for optional data
+          // Return null to indicate fetch failed, but don't throw
+          return null;
         });
 
-        if (!response.ok) {
+        if (!response || !response.ok) {
           // Silently fail - units are optional for the maintenance page
           return;
         }
@@ -185,13 +189,8 @@ export default function MaintenancePage() {
           return;
         }
         // Silently fail - units are optional for the maintenance page
-        // Network errors (like "Failed to fetch") are expected if the API is down
-        if (isMounted) {
-          // Only log in development
-          if (process.env.NODE_ENV === "development") {
-            console.error("Failed to fetch units:", err);
-          }
-        }
+        // All errors are suppressed since this is optional data
+        // The page will work fine without units data
       }
     }
 

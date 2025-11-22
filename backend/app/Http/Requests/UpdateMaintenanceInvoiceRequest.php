@@ -42,10 +42,8 @@ class UpdateMaintenanceInvoiceRequest extends FormRequest
             'invoice_date' => ['sometimes', 'date'],
             'due_date' => ['sometimes', 'date', 'after_or_equal:invoice_date'],
             'status' => ['sometimes', Rule::in(['draft', 'sent', 'approved', 'paid', 'overdue', 'cancelled'])],
-            'labor_cost' => ['sometimes', 'numeric', 'min:0'],
-            'parts_cost' => ['sometimes', 'numeric', 'min:0'],
+            'cost' => ['sometimes', 'numeric', 'min:0'],
             'tax_amount' => ['sometimes', 'numeric', 'min:0'],
-            'misc_amount' => ['sometimes', 'numeric', 'min:0'],
             'discount_amount' => ['sometimes', 'numeric', 'min:0'],
             'grand_total' => ['sometimes', 'numeric', 'min:0'],
             'line_items' => ['nullable', 'array'],
@@ -65,26 +63,29 @@ class UpdateMaintenanceInvoiceRequest extends FormRequest
         $validator->after(function ($validator): void {
             $data = $this->validated();
 
-            $hasCostUpdate = isset($data['labor_cost']) ||
-                isset($data['parts_cost']) ||
+            $hasCostUpdate = isset($data['cost']) ||
                 isset($data['tax_amount']) ||
-                isset($data['misc_amount']) ||
                 isset($data['discount_amount']) ||
                 isset($data['grand_total']);
 
             if ($hasCostUpdate) {
                 $invoice = $this->route('maintenance_invoice');
 
-                $labor = $data['labor_cost'] ?? $invoice?->labor_cost ?? 0;
-                $parts = $data['parts_cost'] ?? $invoice?->parts_cost ?? 0;
+                // For backward compatibility, calculate cost from labor + parts if cost is not provided
+                $cost = $data['cost'] ?? null;
+                if ($cost === null && $invoice) {
+                    // Calculate cost from existing labor_cost + parts_cost
+                    $cost = ($invoice->labor_cost ?? 0) + ($invoice->parts_cost ?? 0);
+                }
+                $cost = $cost ?? 0;
+
                 $tax = $data['tax_amount'] ?? $invoice?->tax_amount ?? 0;
-                $misc = $data['misc_amount'] ?? $invoice?->misc_amount ?? 0;
                 $discount = $data['discount_amount'] ?? $invoice?->discount_amount ?? 0;
                 $grandTotal = $data['grand_total'] ?? $invoice?->grand_total ?? 0;
 
-                $expectedTotal = round(($labor + $parts + $tax + $misc - $discount), 2);
+                $expectedTotal = round(($cost + $tax - $discount), 2);
                 if (round($grandTotal, 2) !== $expectedTotal) {
-                    $validator->errors()->add('grand_total', 'Grand total must equal labor + parts + tax + misc − discount.');
+                    $validator->errors()->add('grand_total', 'Grand total must equal cost + tax − discount.');
                 }
             }
 

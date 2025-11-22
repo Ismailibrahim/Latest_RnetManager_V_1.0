@@ -218,21 +218,23 @@ class NumberGeneratorService
         $number = sprintf('%s-%s-%03d', $prefix, $period, $sequence);
 
         // Check uniqueness (only if required)
+        // Note: For maintenance_invoices, uniqueness is enforced per landlord_id via composite unique index
         if ($required) {
             $maxAttempts = 100; // Prevent infinite loop
             $attempts = 0;
 
             while ($attempts < $maxAttempts) {
-                $exists = $modelClass::query()
-                    ->where($field, $number)
-                    ->when(!empty($additionalConditions), function ($q) use ($additionalConditions) {
-                        foreach ($additionalConditions as $column => $value) {
-                            if ($value !== null) {
-                                $q->where($column, $value);
-                            }
-                        }
-                    })
-                    ->exists();
+                $existsQuery = $modelClass::query()
+                    ->where($field, $number);
+                
+                // Always include additional conditions (like landlord_id) in uniqueness check
+                foreach ($additionalConditions as $column => $value) {
+                    if ($value !== null) {
+                        $existsQuery->where($column, $value);
+                    }
+                }
+                
+                $exists = $existsQuery->exists();
 
                 if (! $exists) {
                     break;

@@ -164,7 +164,7 @@ Rent invoices with status `generated`, `sent`, or `overdue` appear in the **Paym
       "status": "sent",
       "due_date": "2024-01-07",
       "amount": 10500.00,  // rent_amount + late_fee
-      "currency": "AED",
+      "currency": "MVR",
       "suggested_payment_type": "rent",
       "supports_partial": true,
       "metadata": {

@@ -53,7 +53,10 @@ export function usePendingCharges(tenantUnitId, { enabled = true } = {}) {
         if (!isMounted) return;
 
         const items = Array.isArray(payload?.data) ? payload.data : [];
-        setCharges(items);
+        // Filter out any invoices with status 'paid' as an extra safety measure
+        // (Backend already filters these, but this ensures no paid invoices slip through)
+        const filteredItems = items.filter((item) => item.status !== 'paid');
+        setCharges(filteredItems);
       } catch (err) {
         if (err.name === "AbortError") {
           return;

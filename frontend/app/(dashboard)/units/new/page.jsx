@@ -148,7 +148,12 @@ export default function NewUnitPage() {
         }
 
         const payload = await response.json();
-        const data = Array.isArray(payload?.data) ? payload.data : [];
+        // Handle both wrapped and unwrapped responses
+        const data = Array.isArray(payload?.data) 
+          ? payload.data 
+          : Array.isArray(payload) 
+          ? payload 
+          : [];
 
         const options = data
           .filter((type) => type?.id)
@@ -900,24 +905,46 @@ export default function NewUnitPage() {
                   },
                   body: JSON.stringify({ name: trimmed, is_active: true }),
                 });
-                const body = await res.json().catch(() => ({}));
+                
+                let body;
+                try {
+                  body = await res.json();
+                } catch (parseError) {
+                  console.error("Failed to parse response:", parseError);
+                  throw new Error("Invalid response from server. Please try again.");
+                }
+                
                 if (!res.ok) {
                   const message =
-                    body?.errors?.name?.[0] ?? body?.message ?? "Failed to create unit type";
+                    body?.errors?.name?.[0] ?? 
+                    body?.message ?? 
+                    `Failed to create unit type (HTTP ${res.status})`;
+                  console.error("API error:", { status: res.status, body });
                   throw new Error(message);
                 }
+                
+                // Handle both wrapped and unwrapped responses
                 const created = body?.data ?? body;
-                if (created?.id && created?.name) {
-                  const option = { value: String(created.id), label: created.name };
-                  setUnitTypeOptions((prev) => {
-                    const next = [...prev];
-                    if (!next.some((o) => o.value === option.value)) next.push(option);
-                    return next.sort((a, b) =>
-                      a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
-                    );
-                  });
-                  setForm((prev) => ({ ...prev, unitTypeId: String(created.id) }));
+                
+                if (!created) {
+                  console.error("Unexpected response format:", body);
+                  throw new Error("Invalid response format from server.");
                 }
+                
+                if (!created.id || !created.name) {
+                  console.error("Missing required fields in response:", created);
+                  throw new Error("Server response missing required fields (id or name).");
+                }
+                
+                const option = { value: String(created.id), label: created.name };
+                setUnitTypeOptions((prev) => {
+                  const next = [...prev];
+                  if (!next.some((o) => o.value === option.value)) next.push(option);
+                  return next.sort((a, b) =>
+                    a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+                  );
+                });
+                setForm((prev) => ({ ...prev, unitTypeId: String(created.id) }));
               } else {
                 const id = String(form.unitTypeId);
                 const res = await fetch(`${API_BASE_URL}/unit-types/${id}`, {
@@ -929,15 +956,35 @@ export default function NewUnitPage() {
                   },
                   body: JSON.stringify({ name: trimmed }),
                 });
-                const body = await res.json().catch(() => ({}));
+                
+                let body;
+                try {
+                  body = await res.json();
+                } catch (parseError) {
+                  console.error("Failed to parse response:", parseError);
+                  throw new Error("Invalid response from server. Please try again.");
+                }
+                
                 if (!res.ok) {
                   const message =
-                    body?.errors?.name?.[0] ?? body?.message ?? "Failed to update unit type";
+                    body?.errors?.name?.[0] ?? 
+                    body?.message ?? 
+                    `Failed to update unit type (HTTP ${res.status})`;
+                  console.error("API error:", { status: res.status, body });
                   throw new Error(message);
                 }
+                
+                // Handle both wrapped and unwrapped responses
+                const updated = body?.data ?? body;
+                
+                if (!updated || !updated.name) {
+                  console.error("Unexpected response format:", body);
+                  throw new Error("Invalid response format from server.");
+                }
+                
                 setUnitTypeOptions((prev) =>
                   prev
-                    .map((o) => (o.value === id ? { ...o, label: trimmed } : o))
+                    .map((o) => (o.value === id ? { ...o, label: updated.name } : o))
                     .sort((a, b) =>
                       a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
                     ),

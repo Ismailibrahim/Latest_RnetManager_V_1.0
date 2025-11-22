@@ -78,6 +78,7 @@ class SystemSettingsController extends Controller
                 'currency' => $settings['currency'] ?? [],
                 'invoice_numbering' => $settings['invoice_numbering'] ?? [],
                 'payment_terms' => $settings['payment_terms'] ?? [],
+                'lease' => $settings['lease'] ?? [],
                 'system' => $settings['system'] ?? [],
                 'documents' => $settings['documents'] ?? [],
                 'tax' => $settings['tax'] ?? [],
