@@ -40,7 +40,7 @@ const navigation = [
   { name: "Rent Invoices", href: "/rent-invoices", icon: Receipt },
   { name: "Deposit Refunds", href: "/security-deposit-refunds", icon: ShieldCheck },
   { name: "Payment Methods", href: "/payment-methods", icon: CreditCard },
-  { name: "Maintenance", href: "/maintenance", icon: Wrench },
+  { name: "Maintenance Expenses", href: "/maintenance", icon: Wrench },
   { name: "Maintenance Invoices", href: "/maintenance-invoices", icon: ClipboardPlus },
   { name: "Assets", href: "/assets", icon: Boxes },
   { name: "Asset Types", href: "/asset-types", icon: Layers3 },
