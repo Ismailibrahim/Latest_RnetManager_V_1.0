@@ -2,43 +2,26 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ClipboardList,
-  Mail,
-  Phone,
-  ShieldCheck,
+  DollarSign,
   Wrench,
   Plus,
   Edit,
   Trash2,
   X,
   RefreshCcw,
-  Search,
+  FileText,
+  Calendar,
+  Building2,
+  TrendingUp,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { DataDisplay } from "@/components/DataDisplay";
 import { API_BASE_URL } from "@/utils/api-config";
 
-// Vendors are now loaded from API (directory) instead of hardcoded
-
-const fieldCapacity = [
-  {
-    team: "Male City crew",
-    coverage: "Core urban properties",
-    load: "4 / 6 active slots",
-  },
-  {
-    team: "South atoll crew",
-    coverage: "Addu & Fuvahmulah rotations",
-    load: "3 / 5 active slots",
-  },
-  {
-    team: "Vendor scheduled",
-    coverage: "Speciality contractors",
-    load: "7 confirmed today",
-  },
-];
-
 export default function MaintenancePage() {
+  const router = useRouter();
   const [maintenanceRequests, setMaintenanceRequests] = useState([]);
+  const [maintenanceInvoices, setMaintenanceInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -47,19 +30,22 @@ export default function MaintenancePage() {
   const [editingRequest, setEditingRequest] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [units, setUnits] = useState([]);
+  const [properties, setProperties] = useState([]);
   const [assets, setAssets] = useState([]);
   const [loadingAssets, setLoadingAssets] = useState(false);
-  const [vendors, setVendors] = useState([]);
-  const [loadingVendors, setLoadingVendors] = useState(true);
-  const [vendorPage, setVendorPage] = useState(1);
-  const [vendorTotalPages, setVendorTotalPages] = useState(1);
 
   // Filters
   const [unitFilter, setUnitFilter] = useState("all");
+  const [propertyFilter, setPropertyFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [billableFilter, setBillableFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState(undefined);
   const [dateTo, setDateTo] = useState(undefined);
+
+  // Summary date range filter
+  const [summaryDateRange, setSummaryDateRange] = useState("month"); // "month", "year", "custom"
+  const [summaryDateFrom, setSummaryDateFrom] = useState(undefined);
+  const [summaryDateTo, setSummaryDateTo] = useState(undefined);
 
   useEffect(() => {
     let isMounted = true;
@@ -79,10 +65,14 @@ export default function MaintenancePage() {
         }
 
         const url = new URL(`${API_BASE_URL}/maintenance-requests`);
-        url.searchParams.set("per_page", "100");
+        url.searchParams.set("per_page", "1000");
 
         if (unitFilter !== "all") {
           url.searchParams.set("unit_id", unitFilter);
+        }
+
+        if (propertyFilter !== "all") {
+          // Filter by property - we'll filter client-side since API might not support property filter directly
         }
 
         if (typeFilter !== "all") {
@@ -146,7 +136,7 @@ export default function MaintenancePage() {
       isMounted = false;
       controller.abort();
     };
-  }, [refreshKey, unitFilter, typeFilter, billableFilter, dateFrom, dateTo]);
+  }, [refreshKey, unitFilter, propertyFilter, typeFilter, billableFilter, dateFrom, dateTo]);
 
   useEffect(() => {
     let isMounted = true;
@@ -213,21 +203,18 @@ export default function MaintenancePage() {
     };
   }, []);
 
-  // Load vendors directory (for the side card)
+  // Load maintenance invoices to check invoice status
   useEffect(() => {
     let isMounted = true;
     const controller = new AbortController();
 
-    async function fetchVendors() {
+    async function fetchInvoices() {
       try {
-        setLoadingVendors(true);
         const token = localStorage.getItem("auth_token");
         if (!token) return;
 
-        const url = new URL(`${API_BASE_URL}/vendors`);
-        url.searchParams.set("per_page", "10");
-        url.searchParams.set("page", String(vendorPage));
-        // Optionally show preferred first in future; for now, fetch all
+        const url = new URL(`${API_BASE_URL}/maintenance-invoices`);
+        url.searchParams.set("per_page", "1000");
 
         const response = await fetch(url.toString(), {
           signal: controller.signal,
@@ -238,35 +225,65 @@ export default function MaintenancePage() {
         });
 
         if (!response.ok) {
-          // Silently ignore; this card is optional
           return;
         }
 
         const payload = await response.json();
         if (!isMounted) return;
-        const data = Array.isArray(payload?.data) ? payload.data : payload ?? [];
-        // Laravel paginator returns meta with last_page/current_page
-        const meta = payload?.meta;
-        if (meta) {
-          setVendorTotalPages(Number(meta.last_page ?? 1));
-        } else {
-          // Fallback if no meta: single page
-          setVendorTotalPages(1);
-        }
-        setVendors(data);
+        const data = Array.isArray(payload?.data) ? payload.data : [];
+        setMaintenanceInvoices(data);
       } catch {
-        // optional card - ignore errors
-      } finally {
-        if (isMounted) setLoadingVendors(false);
+        // Silently ignore errors
       }
     }
 
-    fetchVendors();
+    fetchInvoices();
     return () => {
       isMounted = false;
       controller.abort();
     };
-  }, [vendorPage]);
+  }, [refreshKey]);
+
+  // Load properties for filtering
+  useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+
+    async function fetchProperties() {
+      try {
+        const token = localStorage.getItem("auth_token");
+        if (!token) return;
+
+        const url = new URL(`${API_BASE_URL}/properties`);
+        url.searchParams.set("per_page", "1000");
+
+        const response = await fetch(url.toString(), {
+          signal: controller.signal,
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = await response.json();
+        if (!isMounted) return;
+        const data = Array.isArray(payload?.data) ? payload.data : [];
+        setProperties(data);
+      } catch {
+        // Silently ignore errors
+      }
+    }
+
+    fetchProperties();
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, []);
 
   const fetchAssetsForUnit = useCallback(async (unitId) => {
     // Reset assets if no unit selected
@@ -342,7 +359,7 @@ export default function MaintenancePage() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm("Are you sure you want to delete this maintenance request?")) {
+    if (!confirm("Are you sure you want to delete this maintenance expense?")) {
       return;
     }
 
@@ -374,7 +391,7 @@ export default function MaintenancePage() {
       setMaintenanceRequests((previous) =>
         previous.filter((item) => item.id !== id),
       );
-      setFlashMessage({ type: "success", text: "Maintenance request deleted." });
+      setFlashMessage({ type: "success", text: "Maintenance expense deleted." });
     } catch (err) {
       setFlashMessage({ type: "error", text: err.message });
     } finally {
@@ -384,6 +401,7 @@ export default function MaintenancePage() {
 
   const handleResetFilters = () => {
     setUnitFilter("all");
+    setPropertyFilter("all");
     setTypeFilter("all");
     setBillableFilter("all");
     setDateFrom(undefined);
@@ -392,10 +410,137 @@ export default function MaintenancePage() {
 
   const hasFilters =
     unitFilter !== "all" ||
+    propertyFilter !== "all" ||
     typeFilter !== "all" ||
     billableFilter !== "all" ||
     (dateFrom && dateFrom.trim()) ||
     (dateTo && dateTo.trim());
+
+  // Filter maintenance requests by property (client-side)
+  const filteredMaintenanceRequests = useMemo(() => {
+    let filtered = maintenanceRequests;
+
+    if (propertyFilter !== "all") {
+      filtered = filtered.filter(
+        (req) => req.unit?.property_id === Number(propertyFilter)
+      );
+    }
+
+    return filtered;
+  }, [maintenanceRequests, propertyFilter]);
+
+  // Check if expense is invoiced
+  const isExpenseInvoiced = useCallback(
+    (requestId) => {
+      return maintenanceInvoices.some(
+        (invoice) => invoice.maintenance_request_id === requestId
+      );
+    },
+    [maintenanceInvoices]
+  );
+
+  // Handle create invoice
+  const handleCreateInvoice = (request) => {
+    // Navigate to maintenance invoices page with pre-filled data
+    router.push(
+      `/maintenance-invoices?maintenance_request_id=${request.id}&unit_id=${request.unit_id}`
+    );
+  };
+
+  // Calculate summary statistics
+  const summaryStats = useMemo(() => {
+    let filtered = filteredMaintenanceRequests;
+
+    // Apply date range filter for summary
+    const now = new Date();
+    let summaryFrom, summaryTo;
+
+    if (summaryDateRange === "month") {
+      summaryFrom = new Date(now.getFullYear(), now.getMonth(), 1)
+        .toISOString()
+        .split("T")[0];
+      summaryTo = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+        .toISOString()
+        .split("T")[0];
+    } else if (summaryDateRange === "year") {
+      summaryFrom = new Date(now.getFullYear(), 0, 1)
+        .toISOString()
+        .split("T")[0];
+      summaryTo = new Date(now.getFullYear(), 11, 31)
+        .toISOString()
+        .split("T")[0];
+    } else if (summaryDateRange === "custom") {
+      summaryFrom = summaryDateFrom;
+      summaryTo = summaryDateTo;
+    }
+
+    if (summaryFrom) {
+      filtered = filtered.filter(
+        (req) => req.maintenance_date >= summaryFrom
+      );
+    }
+    if (summaryTo) {
+      filtered = filtered.filter((req) => req.maintenance_date <= summaryTo);
+    }
+
+    const stats = {
+      total: 0,
+      totalAmount: 0,
+      byType: { repair: 0, replacement: 0, service: 0 },
+      byTypeAmount: { repair: 0, replacement: 0, service: 0 },
+      billable: { count: 0, amount: 0 },
+      nonBillable: { count: 0, amount: 0 },
+      byProperty: {},
+    };
+
+    filtered.forEach((req) => {
+      const cost = Number(req.cost ?? 0);
+      const type = (req.type ?? "repair").toLowerCase();
+      const propertyId = req.unit?.property_id;
+      const propertyName = req.unit?.property?.name ?? "Unknown Property";
+
+      stats.total += 1;
+      stats.totalAmount += cost;
+
+      if (type === "repair") {
+        stats.byType.repair += 1;
+        stats.byTypeAmount.repair += cost;
+      } else if (type === "replacement") {
+        stats.byType.replacement += 1;
+        stats.byTypeAmount.replacement += cost;
+      } else if (type === "service") {
+        stats.byType.service += 1;
+        stats.byTypeAmount.service += cost;
+      }
+
+      if (req.is_billable) {
+        stats.billable.count += 1;
+        stats.billable.amount += cost;
+      } else {
+        stats.nonBillable.count += 1;
+        stats.nonBillable.amount += cost;
+      }
+
+      if (propertyId) {
+        if (!stats.byProperty[propertyId]) {
+          stats.byProperty[propertyId] = {
+            name: propertyName,
+            count: 0,
+            amount: 0,
+          };
+        }
+        stats.byProperty[propertyId].count += 1;
+        stats.byProperty[propertyId].amount += cost;
+      }
+    });
+
+    return stats;
+  }, [
+    filteredMaintenanceRequests,
+    summaryDateRange,
+    summaryDateFrom,
+    summaryDateTo,
+  ]);
 
   const unitOptions = useMemo(() => {
     const options = units.map((unit) => ({
@@ -407,21 +552,29 @@ export default function MaintenancePage() {
     return [{ value: "all", label: "All units" }, ...options];
   }, [units]);
 
+  const propertyOptions = useMemo(() => {
+    const options = properties.map((property) => ({
+      value: String(property.id),
+      label: property.name ?? `Property #${property.id}`,
+    }));
+    return [{ value: "all", label: "All properties" }, ...options];
+  }, [properties]);
+
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-            Live maintenance command
+            Expense Tracking
           </p>
           <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold text-slate-900">
-            <Wrench size={24} className="text-primary" />
-            Maintenance
+            <DollarSign size={24} className="text-primary" />
+            Maintenance Expenses
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-600">
-            Monitor ticket intake, dispatch workload, and SLA compliance across
-            properties. Insights refresh when the API syncs with the operations
-            backend.
+            Record and track all maintenance expenses for accounting and reporting.
+            Track billable expenses that can be invoiced to tenants, and non-billable
+            expenses paid by the landlord.
           </p>
         </div>
 
@@ -432,7 +585,7 @@ export default function MaintenancePage() {
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90"
           >
             <Plus size={16} />
-            Create Request
+            Record Expense
           </button>
         </div>
       </header>
@@ -449,10 +602,168 @@ export default function MaintenancePage() {
         </div>
       ) : null}
 
-      {/* Summary cards removed as not needed */}
+      {/* Expense Summary Cards */}
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h2 className="text-lg font-semibold text-slate-900">Expense Summary</h2>
+          <div className="flex items-center gap-2">
+            <select
+              value={summaryDateRange}
+              onChange={(e) => {
+                setSummaryDateRange(e.target.value);
+                if (e.target.value !== "custom") {
+                  setSummaryDateFrom(undefined);
+                  setSummaryDateTo(undefined);
+                }
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="month">This Month</option>
+              <option value="year">This Year</option>
+              <option value="custom">Custom Range</option>
+            </select>
+            {summaryDateRange === "custom" && (
+              <>
+                <input
+                  type="date"
+                  value={summaryDateFrom || ""}
+                  onChange={(e) => setSummaryDateFrom(e.target.value || undefined)}
+                  placeholder="From"
+                  suppressHydrationWarning
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                />
+                <input
+                  type="date"
+                  value={summaryDateTo || ""}
+                  onChange={(e) => setSummaryDateTo(e.target.value || undefined)}
+                  placeholder="To"
+                  suppressHydrationWarning
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                />
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {/* Total Expenses Card */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Total Expenses
+                </p>
+                <p className="mt-2 text-2xl font-bold text-slate-900">
+                  {formatCurrency(summaryStats.totalAmount)}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {summaryStats.total} {summaryStats.total === 1 ? "expense" : "expenses"}
+                </p>
+              </div>
+              <div className="rounded-full bg-primary/10 p-3">
+                <DollarSign className="h-6 w-6 text-primary" />
+              </div>
+            </div>
+          </div>
+
+          {/* By Type Card */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-3 flex items-center gap-2">
+              <Wrench className="h-4 w-4 text-slate-400" />
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                By Type
+              </p>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-600">Repair</span>
+                <span className="font-semibold text-slate-900">
+                  {formatCurrency(summaryStats.byTypeAmount.repair)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-600">Replacement</span>
+                <span className="font-semibold text-slate-900">
+                  {formatCurrency(summaryStats.byTypeAmount.replacement)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-600">Service</span>
+                <span className="font-semibold text-slate-900">
+                  {formatCurrency(summaryStats.byTypeAmount.service)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Billable vs Non-Billable Card */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-3 flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-slate-400" />
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Billable Status
+              </p>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-600">Billable</span>
+                <span className="font-semibold text-emerald-600">
+                  {formatCurrency(summaryStats.billable.amount)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-600">Non-Billable</span>
+                <span className="font-semibold text-slate-600">
+                  {formatCurrency(summaryStats.nonBillable.amount)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* By Property Card */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-3 flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-slate-400" />
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Top Properties
+              </p>
+            </div>
+            <div className="space-y-2 max-h-32 overflow-y-auto">
+              {Object.values(summaryStats.byProperty)
+                .sort((a, b) => b.amount - a.amount)
+                .slice(0, 3)
+                .map((prop, idx) => (
+                  <div key={idx} className="flex items-center justify-between text-sm">
+                    <span className="truncate text-slate-600" title={prop.name}>
+                      {prop.name}
+                    </span>
+                    <span className="font-semibold text-slate-900">
+                      {formatCurrency(prop.amount)}
+                    </span>
+                  </div>
+                ))}
+              {Object.keys(summaryStats.byProperty).length === 0 && (
+                <p className="text-xs text-slate-400">No expenses yet</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white/60 p-4 shadow-sm backdrop-blur">
         <div className="flex flex-wrap items-center gap-4">
+          <select
+            value={propertyFilter}
+            onChange={(e) => setPropertyFilter(e.target.value)}
+            className="min-w-[180px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+          >
+            {propertyOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+
           <select
             value={unitFilter}
             onChange={(e) => setUnitFilter(e.target.value)}
@@ -517,21 +828,20 @@ export default function MaintenancePage() {
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <div className="space-y-4 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
-          <header className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-slate-900">
-                Active maintenance queue
-              </h2>
-              <p className="text-xs text-slate-500">
-                Prioritised by urgency and SLA window · synced every 5 minutes
-              </p>
-            </div>
-            <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-              {maintenanceRequests.length} requests
-            </span>
-          </header>
+      <section className="rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
+        <header className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">
+              Maintenance Expenses
+            </h2>
+            <p className="text-xs text-slate-500">
+              All recorded maintenance expenses for accounting and reporting
+            </p>
+          </div>
+          <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+            {filteredMaintenanceRequests.length} {filteredMaintenanceRequests.length === 1 ? "expense" : "expenses"}
+          </span>
+        </header>
 
           {error ? (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -547,13 +857,13 @@ export default function MaintenancePage() {
             </div>
           ) : (
             <DataDisplay
-              data={maintenanceRequests}
+              data={filteredMaintenanceRequests}
               loading={loading}
-              loadingMessage="Fetching maintenance requests…"
+              loadingMessage="Loading maintenance expenses…"
               emptyMessage={
                 hasFilters
-                  ? "No maintenance requests match your filters"
-                  : "No maintenance requests yet"
+                  ? "No expenses match your filters"
+                  : "No maintenance expenses recorded yet"
               }
               columns={[
                 {
@@ -612,29 +922,69 @@ export default function MaintenancePage() {
                   ),
                 },
                 {
+                  key: "invoice_status",
+                  label: "Invoice Status",
+                  render: (_, item) => {
+                    const invoiced = isExpenseInvoiced(item.id);
+                    const isBillable = item.is_billable;
+                    
+                    if (!isBillable) {
+                      return (
+                        <span className="text-xs text-slate-400">N/A</span>
+                      );
+                    }
+                    
+                    return invoiced ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
+                        <FileText size={12} />
+                        Invoiced
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
+                        Not Invoiced
+                      </span>
+                    );
+                  },
+                },
+                {
                   key: "actions",
                   label: "Actions",
-                  render: (_, item) => (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleEdit(item)}
-                        className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-50"
-                        title="Edit"
-                      >
-                        <Edit size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(item.id)}
-                        disabled={deletingId === item.id}
-                        className="rounded-lg border border-red-200 bg-white p-2 text-red-600 transition hover:bg-red-50 disabled:opacity-50"
-                        title="Delete"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  ),
+                  render: (_, item) => {
+                    const invoiced = isExpenseInvoiced(item.id);
+                    const canCreateInvoice = item.is_billable && !invoiced;
+                    
+                    return (
+                      <div className="flex items-center gap-2">
+                        {canCreateInvoice && (
+                          <button
+                            type="button"
+                            onClick={() => handleCreateInvoice(item)}
+                            className="rounded-lg border border-primary bg-primary/10 p-2 text-primary transition hover:bg-primary/20"
+                            title="Create Invoice"
+                          >
+                            <FileText size={16} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(item)}
+                          className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-50"
+                          title="Edit"
+                        >
+                          <Edit size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(item.id)}
+                          disabled={deletingId === item.id}
+                          className="rounded-lg border border-red-200 bg-white p-2 text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                          title="Delete"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    );
+                  },
                 },
               ]}
               renderCard={(request) => (
@@ -643,160 +993,13 @@ export default function MaintenancePage() {
                   onEdit={handleEdit}
                   onDelete={handleDelete}
                   deletingId={deletingId}
+                  isInvoiced={isExpenseInvoiced(request.id)}
+                  onCreateInvoice={handleCreateInvoice}
                 />
               )}
             />
           )}
-        </div>
-
-        <aside className="space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
-            <div className="flex items-center gap-3">
-              <ClipboardList className="h-9 w-9 rounded-full bg-primary/10 p-2 text-primary" />
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">
-                  Backlog spotlight
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Total maintenance requests by type.
-                </p>
-              </div>
-            </div>
-
-            <ul className="mt-4 space-y-3">
-              {(() => {
-                const totals = maintenanceRequests.reduce(
-                  (acc, item) => {
-                    const key = (item?.type ?? "repair").toLowerCase();
-                    if (key === "replacement") acc.replacement += 1;
-                    else if (key === "service") acc.service += 1;
-                    else acc.repair += 1;
-                    return acc;
-                  },
-                  { repair: 0, replacement: 0, service: 0 },
-                );
-
-                const metrics = [
-                  {
-                    title: "Repair",
-                    value: String(totals.repair),
-                    description: "All repair tickets across properties",
-                    tone: "warning",
-                  },
-                  {
-                    title: "Replacement",
-                    value: String(totals.replacement),
-                    description: "All replacement requests",
-                    tone: "muted",
-                  },
-                  {
-                    title: "Service",
-                    value: String(totals.service),
-                    description: "Scheduled or routine services",
-                    tone: "danger",
-                  },
-                ];
-
-                return metrics.map((metric) => (
-                <li
-                  key={metric.title}
-                  className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-slate-800">
-                      {metric.title}
-                    </p>
-                    <span className={badgeTone(metric.tone)}>{metric.value}</span>
-                  </div>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {metric.description}
-                  </p>
-                </li>
-                ));
-              })()}
-            </ul>
-          </div>
-
-          {/* Field crew capacity section removed as not needed */}
-        </aside>
       </section>
-
-      <section className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <div className="rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
-          <div className="flex items-center gap-3">
-            <ShieldCheck className="h-9 w-9 rounded-full bg-violet-100 p-2 text-violet-600" />
-            <div>
-              <h2 className="text-base font-semibold text-slate-900">
-                Vendor control centre
-              </h2>
-              <p className="text-xs text-slate-500">
-                Fast access to preferred contractors island-wide.
-              </p>
-            </div>
-          </div>
-
-          <ul className="mt-4 space-y-3">
-            {loadingVendors ? (
-              <li className="text-xs text-slate-500">Loading vendors…</li>
-            ) : vendors.length === 0 ? (
-              <li className="text-xs text-slate-500">No vendors available yet.</li>
-            ) : (
-              vendors.map((vendor) => (
-                <li
-                  key={vendor.id ?? vendor.name}
-                  className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-600"
-                >
-                  <p className="text-sm font-semibold text-slate-900">{vendor.name}</p>
-                  <p className="text-xs text-slate-500">
-                    {vendor.service_category ?? "—"}
-                  </p>
-                  <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
-                    {vendor.phone ? (
-                      <span className="inline-flex items-center gap-1 text-slate-500">
-                        <Phone size={14} className="text-slate-400" />
-                        {vendor.phone}
-                      </span>
-                    ) : null}
-                    {vendor.email ? (
-                      <span className="inline-flex items-center gap-1 text-slate-500">
-                        <Mail size={14} className="text-slate-400" />
-                        {vendor.email}
-                      </span>
-                    ) : null}
-                  </div>
-                </li>
-              ))
-            )}
-          </ul>
-
-          {/* Pagination controls */}
-          <div className="mt-3 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              disabled={vendorPage <= 1 || loadingVendors}
-              onClick={() => setVendorPage((p) => Math.max(1, p - 1))}
-              className="rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-700 disabled:opacity-50 hover:bg-slate-50"
-            >
-              Prev
-            </button>
-            <span className="text-xs text-slate-500">
-              Page {vendorPage} of {vendorTotalPages}
-            </span>
-            <button
-              type="button"
-              disabled={vendorPage >= vendorTotalPages || loadingVendors}
-              onClick={() =>
-                setVendorPage((p) => (p < vendorTotalPages ? p + 1 : p))
-              }
-              className="rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-700 disabled:opacity-50 hover:bg-slate-50"
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Island distribution section removed as not needed */}
 
       {isModalOpen && (
         <MaintenanceRequestModal
@@ -817,8 +1020,8 @@ export default function MaintenancePage() {
             setFlashMessage({
               type: "success",
               text: editingRequest
-                ? "Maintenance request updated."
-                : "Maintenance request created.",
+                ? "Maintenance expense updated."
+                : "Maintenance expense recorded.",
             });
           }}
           onFetchAssets={fetchAssetsForUnit}
@@ -950,7 +1153,7 @@ function MaintenanceRequestModal({
       <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <h2 className="text-lg font-semibold text-slate-900">
-            {request ? "Edit Maintenance Request" : "Create Maintenance Request"}
+            {request ? "Edit Maintenance Expense" : "Record Maintenance Expense"}
           </h2>
           <button
             type="button"
@@ -1223,8 +1426,8 @@ function MaintenanceRequestModal({
               {submitting
                 ? "Saving..."
                 : request
-                  ? "Update Request"
-                  : "Create Request"}
+                  ? "Update Expense"
+                  : "Record Expense"}
             </button>
           </div>
         </form>
@@ -1260,35 +1463,16 @@ function TypeBadge({ type }) {
   );
 }
 
-function summaryTone(tone) {
-  const mapping = {
-    default: "border border-slate-200 bg-white/80 shadow-sm backdrop-blur",
-    success: "border border-emerald-100 bg-emerald-50/90 shadow-sm backdrop-blur",
-    warning: "border border-amber-100 bg-amber-50/90 shadow-sm backdrop-blur",
-    danger: "border border-red-100 bg-red-50/90 shadow-sm backdrop-blur",
-    info: "border border-sky-100 bg-sky-50/90 shadow-sm backdrop-blur",
-  };
 
-  return mapping[tone] ?? mapping.default;
-}
-
-function badgeTone(tone) {
-  const mapping = {
-    warning: "rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700",
-    danger: "rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-600",
-    muted: "rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700",
-  };
-
-  return mapping[tone] ?? mapping.muted;
-}
-
-function MaintenanceRequestCard({ request, onEdit, onDelete, deletingId }) {
+function MaintenanceRequestCard({ request, onEdit, onDelete, deletingId, isInvoiced, onCreateInvoice }) {
+  const canCreateInvoice = request.is_billable && !isInvoiced;
+  
   return (
     <article className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Request #{request.id}
+            Expense #{request.id}
           </p>
           <h3 className="text-lg font-semibold text-slate-900">
             {request.description}
@@ -1300,7 +1484,29 @@ function MaintenanceRequestCard({ request, onEdit, onDelete, deletingId }) {
         </div>
         <div className="flex flex-col items-end gap-2">
           <TypeBadge type={request.type ?? "repair"} />
+          {request.is_billable && (
+            isInvoiced ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
+                <FileText size={12} />
+                Invoiced
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
+                Not Invoiced
+              </span>
+            )
+          )}
           <div className="flex items-center gap-2">
+            {canCreateInvoice && (
+              <button
+                type="button"
+                onClick={() => onCreateInvoice(request)}
+                className="rounded-lg border border-primary bg-primary/10 p-1.5 text-primary transition hover:bg-primary/20"
+                title="Create Invoice"
+              >
+                <FileText size={14} />
+              </button>
+            )}
             <button
               type="button"
               onClick={() => onEdit(request)}

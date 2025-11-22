@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   ClipboardCheck,
@@ -56,6 +57,7 @@ const emptyLineItem = {
 };
 
 export default function MaintenanceInvoicesPage() {
+  const searchParams = useSearchParams();
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -241,6 +243,61 @@ export default function MaintenanceInvoicesPage() {
     const timeout = setTimeout(() => setFlashMessage(null), 3200);
     return () => clearTimeout(timeout);
   }, [flashMessage]);
+
+  // Handle URL parameters to pre-fill form from "Create Invoice" button
+  useEffect(() => {
+    const maintenanceRequestId = searchParams.get("maintenance_request_id");
+    const unitId = searchParams.get("unit_id");
+
+    if (maintenanceRequestId && maintenanceRequests.length > 0 && tenantUnits.length > 0) {
+      const request = maintenanceRequests.find((r) => String(r.id) === maintenanceRequestId);
+      
+      if (request) {
+        // Find tenant unit for this unit
+        const unitIdToFind = unitId ? Number(unitId) : request.unit_id;
+        const tenantUnit = tenantUnits.find(
+          (tu) => tu.unit_id === unitIdToFind && tu.status === "active"
+        );
+
+        if (tenantUnit) {
+          // Pre-fill form with maintenance request data
+          const today = new Date().toISOString().split("T")[0];
+          const dueDate = new Date();
+          dueDate.setDate(dueDate.getDate() + 30); // Default 30 days from today
+          
+          setFormValues({
+            ...initialFormState,
+            tenant_unit_id: String(tenantUnit.id),
+            maintenance_request_id: String(request.id),
+            invoice_date: today,
+            due_date: dueDate.toISOString().split("T")[0],
+            labor_cost: String(request.cost ?? "0.00"),
+            parts_cost: "0.00",
+            grand_total: String(request.cost ?? "0.00"),
+            notes: request.description || "",
+            status: "draft",
+          });
+          
+          // Open the form
+          setFormOpen(true);
+          
+          // Clear URL parameters
+          window.history.replaceState({}, "", window.location.pathname);
+        } else {
+          // Unit doesn't have an active tenant, show selection dialog
+          setPendingMaintenanceRequest(request);
+          setTenantUnitSelectionOpen(true);
+          
+          // Find all tenant units for this unit
+          const availableUnits = tenantUnits.filter((tu) => tu.unit_id === unitIdToFind);
+          setAvailableTenantUnits(availableUnits);
+          
+          // Clear URL parameters
+          window.history.replaceState({}, "", window.location.pathname);
+        }
+      }
+    }
+  }, [searchParams, maintenanceRequests, tenantUnits]);
 
   const tenantUnitMap = useMemo(() => {
     return tenantUnits.reduce((acc, unit) => {
