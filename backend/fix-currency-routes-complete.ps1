@@ -11,7 +11,20 @@ Write-Host "   ✓ Cache files cleared" -ForegroundColor Green
 
 # Step 2: Verify routes file syntax
 Write-Host "`n2. Verifying routes file syntax..." -ForegroundColor Yellow
-$phpPath = "C:\laragon\bin\php\php-8.3.26-Win32-vs16-x64\php.exe"
+# Get PHP path from environment or auto-detect
+$phpPath = $env:PHP_PATH
+if (-not $phpPath) {
+    $phpInPath = Get-Command php -ErrorAction SilentlyContinue
+    if ($phpInPath) {
+        $phpPath = $phpInPath.Source
+    } else {
+        $phpPath = "C:\laragon\bin\php\php-8.3.26-Win32-vs16-x64\php.exe"
+        if (-not (Test-Path $phpPath)) {
+            Write-Error "PHP not found. Please set PHP_PATH environment variable."
+            exit 1
+        }
+    }
+}
 $syntaxCheck = & $phpPath -l routes\api.php 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-Host "   ✓ routes/api.php syntax is valid" -ForegroundColor Green

@@ -31,17 +31,26 @@ class UpdateUnitRequest extends FormRequest
     {
         /** @var \App\Models\Unit|null $unit */
         $unit = $this->route('unit');
+        $user = $this->user();
+        $isSuperAdmin = $user && $user->isSuperAdmin();
 
         $currentPropertyId = $this->input('property_id') ?? $unit?->property_id;
 
-        $propertyRule = Rule::exists('properties', 'id')
-            ->where('landlord_id', $this->user()?->landlord_id);
+        // Property validation rule
+        if ($isSuperAdmin) {
+            // Super admin can use any property
+            $propertyRule = Rule::exists('properties', 'id');
+        } else {
+            // Regular users can only use their landlord's properties
+            $propertyRule = Rule::exists('properties', 'id')
+                ->where('landlord_id', $user?->landlord_id);
+        }
 
         $unitNumberRule = Rule::unique('units', 'unit_number')
             ->where(fn ($query) => $query->where('property_id', $currentPropertyId))
             ->ignore($unit?->id);
 
-        return [
+        $rules = [
             'property_id' => ['sometimes', 'required', 'integer', $propertyRule],
             'unit_type_id' => [
                 'sometimes',
@@ -54,5 +63,12 @@ class UpdateUnitRequest extends FormRequest
             'security_deposit' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'is_occupied' => ['sometimes', 'boolean'],
         ];
+
+        // Super admins can optionally update landlord_id
+        if ($isSuperAdmin) {
+            $rules['landlord_id'] = ['sometimes', 'required', 'integer', Rule::exists('landlords', 'id')];
+        }
+
+        return $rules;
     }
 }

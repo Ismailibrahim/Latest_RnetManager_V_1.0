@@ -23,13 +23,18 @@ class PropertyController extends Controller
         $this->authorize('viewAny', Property::class);
 
         $perPage = $this->resolvePerPage($request);
+        $user = $request->user();
 
-        $properties = Property::query()
-            ->where('landlord_id', $request->user()->landlord_id)
+        $query = Property::query()
             ->withCount('units')
-            ->latest()
-            ->paginate($perPage)
-            ->withQueryString();
+            ->latest();
+
+        // Super admins can view all properties, others only their landlord's
+        if (! $user->isSuperAdmin()) {
+            $query->where('landlord_id', $user->landlord_id);
+        }
+
+        $properties = $query->paginate($perPage)->withQueryString();
 
         return PropertyResource::collection($properties);
     }
@@ -44,9 +49,20 @@ class PropertyController extends Controller
         }
 
         $data = $request->validated();
+        $user = $request->user();
+
+        // Super admins must specify landlord_id when creating properties
+        if ($user->isSuperAdmin() && ! isset($data['landlord_id'])) {
+            return response()->json([
+                'message' => 'Super admin must specify landlord_id when creating properties.',
+                'errors' => [
+                    'landlord_id' => ['The landlord_id field is required for super admin users.'],
+                ],
+            ], 422);
+        }
 
         $property = Property::create([
-            'landlord_id' => $request->user()->landlord_id,
+            'landlord_id' => $user->isSuperAdmin() ? $data['landlord_id'] : $user->landlord_id,
             'name' => $data['name'],
             'address' => $data['address'],
             'type' => $data['type'],
@@ -64,18 +80,24 @@ class PropertyController extends Controller
     {
         $this->authorize('view', $property);
 
+        $user = $request->user();
+
         // Ensure property belongs to authenticated user's landlord (defense in depth)
-        if ($property->landlord_id !== $request->user()->landlord_id) {
+        // Super admins can view any property
+        if (! $user->isSuperAdmin() && $property->landlord_id !== $user->landlord_id) {
             abort(403, 'Unauthorized access to this property.');
         }
 
         $property->loadCount('units');
         $property->load([
             'landlord:id,company_name',
-            'units' => fn ($query) => $query
-                ->where('landlord_id', $request->user()->landlord_id)
-                ->orderBy('unit_number')
-                ->with('unitType:id,name'),
+            'units' => function ($query) use ($user) {
+                // Super admins can view all units, others only their landlord's
+                if (! $user->isSuperAdmin()) {
+                    $query->where('landlord_id', $user->landlord_id);
+                }
+                $query->orderBy('unit_number')->with('unitType:id,name');
+            },
         ]);
 
         return PropertyResource::make($property);
@@ -88,8 +110,11 @@ class PropertyController extends Controller
     {
         $this->authorize('update', $property);
 
+        $user = $request->user();
+
         // Ensure property belongs to authenticated user's landlord (defense in depth)
-        if ($property->landlord_id !== $request->user()->landlord_id) {
+        // Super admins can update any property
+        if (! $user->isSuperAdmin() && $property->landlord_id !== $user->landlord_id) {
             abort(403, 'Unauthorized access to this property.');
         }
 

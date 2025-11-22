@@ -3,7 +3,20 @@ param(
     [switch]$StartServer = $false
 )
 
-$phpPath = "C:\laragon\bin\php\php-8.3.26-Win32-vs16-x64\php.exe"
+# Get PHP path from environment or auto-detect
+$phpPath = $env:PHP_PATH
+if (-not $phpPath) {
+    $phpInPath = Get-Command php -ErrorAction SilentlyContinue
+    if ($phpInPath) {
+        $phpPath = $phpInPath.Source
+    } else {
+        $phpPath = "C:\laragon\bin\php\php-8.3.26-Win32-vs16-x64\php.exe"
+        if (-not (Test-Path $phpPath)) {
+            Write-Error "PHP not found. Please set PHP_PATH environment variable."
+            exit 1
+        }
+    }
+}
 $baseUrl = "http://localhost:8000"
 
 Write-Host "=== API Test Runner ===" -ForegroundColor Cyan

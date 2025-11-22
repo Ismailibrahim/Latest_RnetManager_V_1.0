@@ -5,7 +5,8 @@
  * Tests login, token generation, and protected route access
  */
 
-$baseUrl = 'http://localhost:8000';
+// Get base URL from environment or use default
+$baseUrl = getenv('API_BASE_URL') ?: 'http://localhost:8000';
 
 echo "=== Authentication Verification ===\n\n";
 

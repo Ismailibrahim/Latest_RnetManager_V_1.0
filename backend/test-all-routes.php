@@ -5,7 +5,8 @@
  * Tests all API routes and reports their status
  */
 
-$baseUrl = 'http://localhost:8000';
+// Get base URL from environment or use default
+$baseUrl = getenv('API_BASE_URL') ?: 'http://localhost:8000';
 $results = [
     'success' => [],
     'auth_required' => [],

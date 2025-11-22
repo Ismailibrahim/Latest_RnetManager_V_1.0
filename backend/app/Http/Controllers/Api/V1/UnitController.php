@@ -27,15 +27,20 @@ class UnitController extends Controller
         $this->authorize('viewAny', Unit::class);
 
         $perPage = $this->resolvePerPage($request);
+        $user = $request->user();
 
         $query = Unit::query()
-            ->where('landlord_id', $request->user()->landlord_id)
             ->with([
                 'unitType:id,name',
                 'property:id,name,landlord_id',
             ])
             ->withCount('assets')
             ->latest();
+
+        // Super admins can view all units, others only their landlord's
+        if (! $user->isSuperAdmin()) {
+            $query->where('landlord_id', $user->landlord_id);
+        }
 
         if ($request->filled('property_id')) {
             $query->where('property_id', $request->integer('property_id'));
@@ -62,7 +67,19 @@ class UnitController extends Controller
         }
 
         $data = $request->validated();
-        $data['landlord_id'] = $request->user()->landlord_id;
+        $user = $request->user();
+
+        // Super admins must specify landlord_id when creating units
+        if ($user->isSuperAdmin() && ! isset($data['landlord_id'])) {
+            return response()->json([
+                'message' => 'Super admin must specify landlord_id when creating units.',
+                'errors' => [
+                    'landlord_id' => ['The landlord_id field is required for super admin users.'],
+                ],
+            ], 422);
+        }
+
+        $data['landlord_id'] = $user->isSuperAdmin() ? $data['landlord_id'] : $user->landlord_id;
         $data['is_occupied'] = $data['is_occupied'] ?? false;
 
         $unit = Unit::create($data);
@@ -81,8 +98,11 @@ class UnitController extends Controller
     {
         $this->authorize('view', $unit);
 
+        $user = $request->user();
+
         // Ensure unit belongs to authenticated user's landlord (defense in depth)
-        if ($unit->landlord_id !== $request->user()->landlord_id) {
+        // Super admins can view any unit
+        if (! $user->isSuperAdmin() && $unit->landlord_id !== $user->landlord_id) {
             abort(403, 'Unauthorized access to this unit.');
         }
 
@@ -99,31 +119,62 @@ class UnitController extends Controller
     {
         $this->authorize('update', $unit);
 
+        $user = $request->user();
+
         // Ensure unit belongs to authenticated user's landlord (defense in depth)
-        if ($unit->landlord_id !== $request->user()->landlord_id) {
+        // Super admins can update any unit
+        if (! $user->isSuperAdmin() && $unit->landlord_id !== $user->landlord_id) {
             abort(403, 'Unauthorized access to this unit.');
         }
 
         $validated = $request->validated();
 
         // If property_id is being updated, verify it belongs to the same landlord
+        // Super admins can update to any property
         if (isset($validated['property_id']) && $validated['property_id'] !== $unit->property_id) {
-            $property = Property::where('id', $validated['property_id'])
-                ->where('landlord_id', $request->user()->landlord_id)
-                ->first();
+            $propertyQuery = Property::where('id', $validated['property_id']);
+            
+            if (! $user->isSuperAdmin()) {
+                $propertyQuery->where('landlord_id', $user->landlord_id);
+            }
+            
+            $property = $propertyQuery->first();
 
             if (! $property) {
                 return response()->json([
-                    'message' => 'The selected property does not belong to your landlord account.',
+                    'message' => $user->isSuperAdmin() 
+                        ? 'The selected property does not exist.' 
+                        : 'The selected property does not belong to your landlord account.',
                     'errors' => [
                         'property_id' => ['Invalid property selected.'],
                     ],
                 ], 422);
             }
+            
+            // If super admin is updating property, ensure landlord_id matches the property's landlord
+            if ($user->isSuperAdmin() && isset($validated['landlord_id'])) {
+                if ($property->landlord_id !== (int) $validated['landlord_id']) {
+                    return response()->json([
+                        'message' => 'The property does not belong to the specified landlord.',
+                        'errors' => [
+                            'property_id' => ['Property and landlord do not match.'],
+                        ],
+                    ], 422);
+                }
+            }
         }
 
         if (! empty($validated)) {
-            $validated['landlord_id'] = $request->user()->landlord_id;
+            // Super admins can update landlord_id, others keep their landlord
+            if (! $user->isSuperAdmin()) {
+                // Regular users cannot change landlord_id
+                $validated['landlord_id'] = $user->landlord_id;
+            } else {
+                // Super admins must provide landlord_id if updating
+                if (! isset($validated['landlord_id'])) {
+                    $validated['landlord_id'] = $unit->landlord_id; // Keep existing
+                }
+            }
             $unit->update($validated);
         }
 

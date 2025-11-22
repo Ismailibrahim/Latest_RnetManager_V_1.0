@@ -22,6 +22,9 @@ import {
   formatPaymentMethodLabel,
 } from "@/hooks/usePaymentMethods";
 import { usePendingCharges } from "@/hooks/usePendingCharges";
+import { getCurrencyOptions, getDefaultCurrency } from "@/utils/currency-config";
+import { API_BASE_URL } from "@/utils/api-config";
+import { Banknote } from "lucide-react";
 
 const PAYMENT_TYPES = [
   {
@@ -66,6 +69,13 @@ const PAYMENT_TYPES = [
     flowDirection: "outgoing",
     requiresTenantUnit: false,
   },
+  {
+    value: "advance_rent",
+    label: "Advance Rent",
+    description: "Collect advance rent payment for future months. Automatically applies to invoices within the coverage period.",
+    flowDirection: "income",
+    requiresTenantUnit: true,
+  },
 ];
 
 const STATUS_OPTIONS = [
@@ -83,7 +93,7 @@ const INITIAL_FORM = {
   payment_type: "",
   tenant_unit_id: "",
   amount: "",
-  currency: "MVR",
+  currency: getDefaultCurrency(),
   description: "",
   due_date: "",
   transaction_date: "",
@@ -91,6 +101,8 @@ const INITIAL_FORM = {
   payment_method: "",
   reference_number: "",
   metadata: {},
+  advance_rent_months: "",
+  advance_rent_amount: "",
 };
 
 export default function CollectPaymentPage() {
@@ -104,11 +116,8 @@ export default function CollectPaymentPage() {
     error: paymentMethodsLoadError,
     refresh: refreshPaymentMethods,
   } = usePaymentMethods();
-  // Currency options are hardcoded: MVR and USD
-  const currencyOptions = [
-    { value: "MVR", label: "MVR - Maldivian Rufiyaa" },
-    { value: "USD", label: "USD - US Dollar" },
-  ];
+  // Currency options from environment configuration
+  const currencyOptions = getCurrencyOptions();
   // Tenant units are automatically filtered by the logged-in owner's landlord_id on the backend.
   // The backend TenantUnitController filters by $request->user()->landlord_id,
   // ensuring only tenant units (and their associated properties) belonging to the current owner are returned.
@@ -142,6 +151,36 @@ export default function CollectPaymentPage() {
     const id = Number(formData.tenant_unit_id);
     return tenantUnits.find((unit) => unit?.id === id) ?? null;
   }, [tenantUnits, formData.tenant_unit_id]);
+
+  // Auto-calculate advance rent amount when months or tenant unit changes
+  const [amountManuallyEdited, setAmountManuallyEdited] = useState(false);
+  
+  useEffect(() => {
+    if (
+      formData.payment_type === "advance_rent" &&
+      formData.advance_rent_months &&
+      selectedTenantUnit?.monthly_rent &&
+      !amountManuallyEdited
+    ) {
+      const months = Number(formData.advance_rent_months);
+      const monthlyRent = Number(selectedTenantUnit.monthly_rent);
+      
+      if (months > 0 && monthlyRent > 0) {
+        const calculated = months * monthlyRent;
+        setFormData((prev) => ({
+          ...prev,
+          advance_rent_amount: String(calculated),
+        }));
+      }
+    }
+  }, [formData.payment_type, formData.advance_rent_months, selectedTenantUnit, amountManuallyEdited]);
+
+  // Reset manual edit flag when payment type changes
+  useEffect(() => {
+    if (formData.payment_type !== "advance_rent") {
+      setAmountManuallyEdited(false);
+    }
+  }, [formData.payment_type]);
 
   const templatesForType = useMemo(() => {
     if (!formData.payment_type) {
@@ -222,6 +261,14 @@ export default function CollectPaymentPage() {
 
   const handleChange = (event) => {
     const { name, value } = event.target;
+    
+    // Track manual edits to advance rent amount
+    if (name === "advance_rent_amount") {
+      setAmountManuallyEdited(true);
+    } else if (name === "advance_rent_months") {
+      setAmountManuallyEdited(false); // Reset when months change
+    }
+    
     setFormData((current) => ({
       ...current,
       [name]: value,
@@ -270,7 +317,7 @@ export default function CollectPaymentPage() {
           ? String(charge.tenant_unit_id)
           : current.tenant_unit_id,
         amount: amountValue,
-        currency: charge.currency ?? current.currency ?? "MVR",
+        currency: charge.currency ?? current.currency ?? getDefaultCurrency(),
         due_date: charge.due_date ?? current.due_date,
         description:
           charge.description && charge.description.trim().length > 0
@@ -325,16 +372,32 @@ export default function CollectPaymentPage() {
     }
 
     if (currentStep === 2) {
-      if (!formData.amount || Number(formData.amount) <= 0) {
-        errors.amount = "Amount must be greater than 0.";
-      }
+      // Special validation for advance rent
+      if (formData.payment_type === "advance_rent") {
+        if (!formData.advance_rent_months || Number(formData.advance_rent_months) < 1 || Number(formData.advance_rent_months) > 12) {
+          errors.advance_rent_months = "Advance rent months must be between 1 and 12.";
+        }
 
-      if (!formData.currency || formData.currency.length !== 3) {
-        errors.currency = "Currency should be a 3-letter ISO code.";
-      }
+        if (!formData.advance_rent_amount || Number(formData.advance_rent_amount) <= 0) {
+          errors.advance_rent_amount = "Advance rent amount must be greater than 0.";
+        }
 
-      if (selectedType?.requiresTenantUnit && !formData.tenant_unit_id) {
-        errors.tenant_unit_id = "Select a tenant and unit for this payment.";
+        if (!formData.tenant_unit_id) {
+          errors.tenant_unit_id = "Select a tenant and unit for advance rent collection.";
+        }
+      } else {
+        // Regular payment validation
+        if (!formData.amount || Number(formData.amount) <= 0) {
+          errors.amount = "Amount must be greater than 0.";
+        }
+
+        if (!formData.currency || formData.currency.length !== 3) {
+          errors.currency = "Currency should be a 3-letter ISO code.";
+        }
+
+        if (selectedType?.requiresTenantUnit && !formData.tenant_unit_id) {
+          errors.tenant_unit_id = "Select a tenant and unit for this payment.";
+        }
       }
     }
 
@@ -386,14 +449,71 @@ export default function CollectPaymentPage() {
 
     try {
       for (const item of queue) {
-        const payload = buildPayload(item.form, item.charge);
-        const response = await createPayment(payload);
-        collected.push({
-          response,
-          form: item.form,
-          summary: item.summary,
-          charge: item.charge,
-        });
+        // Handle advance rent separately
+        if (item.form.payment_type === "advance_rent") {
+          const token = localStorage.getItem("auth_token");
+          if (!token) {
+            throw new Error("You must be logged in before collecting advance rent.");
+          }
+
+          if (!item.form.tenant_unit_id) {
+            throw new Error("Please select a tenant unit.");
+          }
+
+          const payload = {
+            advance_rent_months: Number(item.form.advance_rent_months),
+            advance_rent_amount: Number(item.form.advance_rent_amount),
+            payment_method: item.form.payment_method || null,
+            transaction_date: item.form.transaction_date || new Date().toISOString().split("T")[0],
+            reference_number: item.form.reference_number || null,
+            notes: item.form.description || null,
+          };
+
+          const response = await fetch(
+            `${API_BASE_URL}/tenant-units/${item.form.tenant_unit_id}/advance-rent`,
+            {
+              method: "POST",
+              headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify(payload),
+            }
+          );
+
+          if (response.status === 422) {
+            const validationPayload = await response.json();
+            setFieldErrors(normalizeErrors(validationPayload?.errors ?? {}));
+            throw new Error(validationPayload?.message ?? "Validation failed.");
+          }
+
+          if (!response.ok) {
+            const apiPayload = await response.json().catch(() => ({}));
+            throw new Error(
+              apiPayload?.message ??
+              `Unable to collect advance rent (HTTP ${response.status}).`
+            );
+          }
+
+          const responseData = await response.json();
+          collected.push({
+            response: { ...responseData, composite_id: `advance_rent:${item.form.tenant_unit_id}` },
+            form: item.form,
+            summary: item.summary,
+            charge: item.charge,
+          });
+        } else {
+          // Regular payment flow
+          const payload = buildPayload(item.form, item.charge);
+          const response = await createPayment(payload);
+          collected.push({
+            response,
+            form: item.form,
+            summary: item.summary,
+            charge: item.charge,
+          });
+        }
       }
 
       setResults(collected);
@@ -727,7 +847,7 @@ function DetailsForm({
               />
             )}
 
-            {formData.tenant_unit_id && (
+            {formData.tenant_unit_id && selectedType?.value !== "advance_rent" && (
               <PendingChargesPanel
                 charges={pendingCharges}
                 grouped={pendingChargesGrouped}
@@ -740,28 +860,104 @@ function DetailsForm({
               />
             )}
 
-            <InputField
-              label="Amount"
-              name="amount"
-              type="number"
-              min="0"
-              step="0.01"
-              value={formData.amount}
-              onChange={onChange}
-              placeholder="0.00"
-              error={errors?.amount}
-            />
+            {selectedType?.value === "advance_rent" ? (
+              <>
+                {selectedTenantUnit && (
+                  <div className="md:col-span-2 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                    <p className="text-xs font-semibold text-primary mb-2">Lease Information</p>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <span className="text-slate-500">Monthly Rent:</span>
+                        <p className="font-semibold text-slate-900">
+                          {new Intl.NumberFormat(undefined, {
+                            style: "currency",
+                            currency: formData.currency || getDefaultCurrency(),
+                          }).format(Number(selectedTenantUnit.monthly_rent || 0))}
+                        </p>
+                      </div>
+                      {selectedTenantUnit.advance_rent_amount > 0 && (
+                        <div>
+                          <span className="text-slate-500">Existing Advance Rent:</span>
+                          <p className="font-semibold text-amber-600">
+                            {new Intl.NumberFormat(undefined, {
+                              style: "currency",
+                              currency: formData.currency || getDefaultCurrency(),
+                            }).format(Number(selectedTenantUnit.advance_rent_amount || 0))}
+                            {" "}({selectedTenantUnit.advance_rent_months} months)
+                          </p>
+                          <p className="text-xs text-amber-600 mt-1">
+                            Note: Collecting new advance rent will replace the existing amount.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <InputField
+                  label="Advance Rent (Months)"
+                  name="advance_rent_months"
+                  type="number"
+                  min="1"
+                  max="12"
+                  step="1"
+                  value={formData.advance_rent_months}
+                  onChange={onChange}
+                  placeholder="1"
+                  error={errors?.advance_rent_months}
+                  helper="Number of months to collect in advance (1-12)"
+                />
+                <InputField
+                  label="Advance Rent Amount"
+                  name="advance_rent_amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={formData.advance_rent_amount}
+                  onChange={onChange}
+                  placeholder="0.00"
+                  error={errors?.advance_rent_amount}
+                  helper={
+                    selectedTenantUnit && formData.advance_rent_months
+                      ? `Auto-calculated: ${new Intl.NumberFormat(undefined, {
+                          style: "currency",
+                          currency: formData.currency || getDefaultCurrency(),
+                        }).format(
+                          Number(selectedTenantUnit.monthly_rent || 0) *
+                            Number(formData.advance_rent_months || 0)
+                        )}`
+                      : "Total amount to collect. Auto-calculated from months, but can be edited."
+                  }
+                />
+              </>
+            ) : (
+              <InputField
+                label="Amount"
+                name="amount"
+                type="number"
+                min="0"
+                step="0.01"
+                value={formData.amount}
+                onChange={onChange}
+                placeholder="0.00"
+                error={errors?.amount}
+              />
+            )}
 
-            <InputField
-              label="Currency"
-              name="currency"
-              value={formData.currency}
-              onChange={onChange}
-              as="select"
-            >
-              <option value="MVR">MVR - Maldivian Rufiyaa</option>
-              <option value="USD">USD - US Dollar</option>
-            </InputField>
+            {selectedType?.value !== "advance_rent" && (
+              <InputField
+                label="Currency"
+                name="currency"
+                value={formData.currency}
+                onChange={onChange}
+                as="select"
+              >
+                {currencyOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </InputField>
+            )}
 
             <PaymentMethodField
               value={formData.payment_method}
@@ -780,19 +976,21 @@ function DetailsForm({
               placeholder="Optional reference or invoice code"
             />
 
-            <InputField
-              label="Status"
-              name="status"
-              value={formData.status}
-              onChange={onChange}
-              as="select"
-            >
-              {STATUS_OPTIONS.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </InputField>
+            {selectedType?.value !== "advance_rent" && (
+              <InputField
+                label="Status"
+                name="status"
+                value={formData.status}
+                onChange={onChange}
+                as="select"
+              >
+                {STATUS_OPTIONS.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </InputField>
+            )}
 
             <InputField
               label="Transaction date"
@@ -800,20 +998,26 @@ function DetailsForm({
               value={formData.transaction_date}
               onChange={onChange}
               type="date"
-              helper="When the payment was received or paid out."
+              helper={
+                selectedType?.value === "advance_rent"
+                  ? "Date when advance rent was collected."
+                  : "When the payment was received or paid out."
+              }
             />
 
-            <InputField
-              label="Due date"
-              name="due_date"
-              value={formData.due_date}
-              onChange={onChange}
-              type="date"
-            />
+            {selectedType?.value !== "advance_rent" && (
+              <InputField
+                label="Due date"
+                name="due_date"
+                value={formData.due_date}
+                onChange={onChange}
+                type="date"
+              />
+            )}
 
             <div className="md:col-span-2">
               <label className="text-sm font-medium text-slate-700">
-                Description
+                {selectedType?.value === "advance_rent" ? "Notes" : "Description"}
               </label>
               <textarea
                 name="description"
@@ -821,7 +1025,11 @@ function DetailsForm({
                 onChange={onChange}
                 rows={4}
                 className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                placeholder="Add a short note about this payment..."
+                placeholder={
+                  selectedType?.value === "advance_rent"
+                    ? "Additional notes about this advance rent collection..."
+                    : "Add a short note about this payment..."
+                }
               />
             </div>
           </div>
@@ -869,11 +1077,13 @@ function ReviewStep({
   onSubmit,
   paymentMethodLabels,
 }) {
-  const totalAmount = payments.reduce(
-    (acc, item) => acc + (Number(item.form.amount ?? 0) || 0),
-    0
-  );
-  const currency = payments[0]?.form?.currency ?? "MVR";
+  const totalAmount = payments.reduce((acc, item) => {
+    if (item.form.payment_type === "advance_rent") {
+      return acc + (Number(item.form.advance_rent_amount ?? 0) || 0);
+    }
+    return acc + (Number(item.form.amount ?? 0) || 0);
+  }, 0);
+  const currency = payments[0]?.form?.currency ?? getDefaultCurrency();
 
   return (
     <div className="space-y-6">
@@ -882,7 +1092,9 @@ function ReviewStep({
           Review payment details
         </h2>
         <p className="mt-2 text-sm text-slate-600">
-          Double-check everything before posting to the unified ledger.
+          {payments.some((p) => p.form.payment_type === "advance_rent")
+            ? "Double-check everything before collecting advance rent."
+            : "Double-check everything before posting to the unified ledger."}
         </p>
 
         <div className="mt-6 space-y-3">
@@ -890,10 +1102,16 @@ function ReviewStep({
             const typeMeta = PAYMENT_TYPES.find(
               (type) => type.value === item.form.payment_type
             );
-            const amountLabel = formatAmount(
-              Number(item.form.amount ?? 0),
-              item.form.currency ?? "MVR"
-            );
+            const isAdvanceRent = item.form.payment_type === "advance_rent";
+            const amountLabel = isAdvanceRent
+              ? formatAmount(
+                  Number(item.form.advance_rent_amount ?? 0),
+                  item.form.currency ?? getDefaultCurrency()
+                )
+              : formatAmount(
+                  Number(item.form.amount ?? 0),
+                  item.form.currency ?? getDefaultCurrency()
+                );
             const paymentMethodLabel = item.form.payment_method
               ? paymentMethodLabels?.get(item.form.payment_method) ??
                 formatPaymentMethodLabel(item.form.payment_method)
@@ -912,7 +1130,7 @@ function ReviewStep({
               linkedCharge && chargeOriginalAmount
                 ? formatAmount(
                     chargeOriginalAmount,
-                    linkedCharge.currency ?? item.form.currency ?? "MVR"
+                    linkedCharge.currency ?? item.form.currency ?? getDefaultCurrency()
                   )
                 : null;
             const chargeTimelineParts = [];
@@ -943,14 +1161,22 @@ function ReviewStep({
                           ? `Tenant unit #${item.form.tenant_unit_id}`
                           : "No tenant selected")}
                     </p>
+                    {isAdvanceRent && item.form.advance_rent_months && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        {item.form.advance_rent_months} month
+                        {Number(item.form.advance_rent_months) !== 1 ? "s" : ""} in advance
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold text-slate-900">
                       {amountLabel}
                     </p>
-                    <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">
-                      Status • {item.form.status}
-                    </p>
+                    {!isAdvanceRent && (
+                      <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">
+                        Status • {item.form.status}
+                      </p>
+                    )}
                     {paymentMethodLabel && (
                       <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">
                         Method • {paymentMethodLabel}
@@ -1011,7 +1237,9 @@ function ReviewStep({
           className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
         >
           {loading && <Loader2 size={16} className="animate-spin" />}
-          Confirm & create {payments.length > 1 ? "payments" : "payment"}
+          {payments.some((p) => p.form.payment_type === "advance_rent")
+            ? `Confirm & collect advance rent${payments.length > 1 ? "s" : ""}`
+            : `Confirm & create ${payments.length > 1 ? "payments" : "payment"}`}
         </button>
       </div>
     </div>
@@ -1025,8 +1253,14 @@ function SuccessStep({
   paymentMethodLabels,
 }) {
   const count = results.length;
-  const heading =
-    count === 1 ? "Payment created successfully" : "Payments created successfully";
+  const hasAdvanceRent = results.some((r) => r.form.payment_type === "advance_rent");
+  const heading = hasAdvanceRent
+    ? count === 1
+      ? "Advance rent collected successfully"
+      : "Payments collected successfully"
+    : count === 1
+    ? "Payment created successfully"
+    : "Payments created successfully";
 
   return (
     <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 p-8 text-center shadow-sm">
@@ -1035,9 +1269,9 @@ function SuccessStep({
       </div>
       <h2 className="mt-4 text-2xl font-semibold text-emerald-700">{heading}</h2>
       <p className="mt-2 text-sm text-emerald-700/90">
-        The unified ledger has been updated with
-        {count === 1 ? " this payment." : ` these ${count} payments.`} You can review
-        them or collect another payment right away.
+        {hasAdvanceRent
+          ? `Advance rent has been recorded${count > 1 ? " for multiple tenant units" : ""}. Invoices within the coverage period will be automatically paid.`
+          : `The unified ledger has been updated with${count === 1 ? " this payment." : ` these ${count} payments.`} You can review them or collect another payment right away.`}
       </p>
 
       <div className="mt-6 flex flex-wrap justify-center gap-3">
@@ -1102,6 +1336,9 @@ function SuccessStep({
                   (item.form.tenant_unit_id
                     ? `Tenant unit #${item.form.tenant_unit_id}`
                     : "No tenant")}
+                {isAdvanceRent && item.form.advance_rent_months && (
+                  <> • {item.form.advance_rent_months} month{Number(item.form.advance_rent_months) !== 1 ? "s" : ""}</>
+                )}
               </p>
               {paymentMethodLabel && (
                 <p className="text-xs uppercase tracking-wide text-emerald-500">
@@ -1355,10 +1592,10 @@ function formatAmount(value, currency) {
   try {
     return new Intl.NumberFormat(undefined, {
       style: "currency",
-      currency: currency ?? "MVR",
+      currency: currency ?? getDefaultCurrency(),
     }).format(amount);
   } catch {
-    return `${amount.toFixed(2)} ${currency ?? "MVR"}`;
+    return `${amount.toFixed(2)} ${currency ?? getDefaultCurrency()}`;
   }
 }
 
@@ -1516,7 +1753,7 @@ function TemplatePanel({
             );
             const amountLabel = formatAmount(
               Number(item.form.amount ?? 0),
-              item.form.currency ?? "MVR"
+              item.form.currency ?? getDefaultCurrency()
             );
 
             return (
@@ -1649,14 +1886,14 @@ function PendingChargesPanel({
                   const isSelected = selectedCharge?.id === charge.id;
                   const amountLabel = formatAmount(
                     Number(charge.amount ?? charge.original_amount ?? 0),
-                    charge.currency ?? "MVR"
+                    charge.currency ?? getDefaultCurrency()
                   );
                   const originalAmountLabel =
                     charge.original_amount != null &&
                     charge.original_amount !== charge.amount
                       ? formatAmount(
                           Number(charge.original_amount),
-                          charge.currency ?? "MVR"
+                          charge.currency ?? getDefaultCurrency()
                         )
                       : null;
                   const dueLabel = charge.due_date ?? charge.issued_date ?? null;

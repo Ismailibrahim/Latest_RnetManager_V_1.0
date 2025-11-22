@@ -29,6 +29,9 @@ use App\Http\Controllers\Api\V1\UnitOccupancyHistoryController;
 use App\Http\Controllers\Api\V1\UnitTypeController;
 use App\Http\Controllers\Api\V1\UnifiedPaymentController;
 use App\Http\Controllers\Api\V1\VendorController;
+use App\Http\Controllers\Api\V1\Mobile\MobilePropertyController;
+use App\Http\Controllers\Api\V1\Mobile\MobileUnitController;
+use App\Http\Controllers\Api\V1\Mobile\MobilePaymentController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 
@@ -260,5 +263,19 @@ Route::prefix('v1')->group(function (): void {
             ->name('api.v1.sms-templates.set-default');
         Route::post('sms-templates/{smsTemplate}/preview', [SmsTemplateController::class, 'preview'])
             ->name('api.v1.sms-templates.preview');
+
+        // Mobile API routes - optimized endpoints for mobile app
+        Route::prefix('mobile')->group(function (): void {
+            Route::get('properties', [MobilePropertyController::class, 'index'])
+                ->name('api.v1.mobile.properties.index');
+            Route::get('units', [MobileUnitController::class, 'index'])
+                ->name('api.v1.mobile.units.index');
+            Route::get('units/{unit}', [MobileUnitController::class, 'show'])
+                ->name('api.v1.mobile.units.show');
+            Route::get('units/{unit}/invoices', [MobileUnitController::class, 'invoices'])
+                ->name('api.v1.mobile.units.invoices');
+            Route::post('payments', [MobilePaymentController::class, 'store'])
+                ->name('api.v1.mobile.payments.store');
+        });
     });
 });

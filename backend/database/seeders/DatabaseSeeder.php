@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
             UnitTypeSeeder::class,
             AssetTypeSeeder::class,
             DemoDataSeeder::class,
+            ComprehensiveReportDataSeeder::class,
         ]);
     }
 }

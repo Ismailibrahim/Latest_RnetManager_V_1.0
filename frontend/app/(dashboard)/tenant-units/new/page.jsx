@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { formatMVR } from "@/lib/currency";
 import { API_BASE_URL } from "@/utils/api-config";
+import { formatCurrencyNoDecimals } from "@/lib/currency-formatter";
 
 const statusOptions = [
   { label: "Active", value: "active" },
@@ -1127,18 +1128,7 @@ function buildUnitLabel(unit) {
 }
 
 function formatCurrency(value) {
-  const amount = Number(value);
-
-  if (value === null || value === undefined || Number.isNaN(amount)) {
-    return null;
-  }
-
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "MVR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
+  return formatCurrencyNoDecimals(value);
 }
 
 function nameToApiKey(name) {

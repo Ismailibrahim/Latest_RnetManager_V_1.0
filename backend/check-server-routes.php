@@ -1,7 +1,8 @@
 <?php
 
 // Check what routes the server actually has registered
-$ch = curl_init('http://localhost:8000/api/v1/');
+$baseUrl = getenv('API_BASE_URL') ?: 'http://localhost:8000';
+$ch = curl_init($baseUrl . '/api/v1/');
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_TIMEOUT, 2);
 $rootResponse = curl_exec($ch);
@@ -16,7 +17,7 @@ if ($rootCode == 200) {
     
     // Test currencies-test
     echo "Testing /api/v1/currencies-test...\n";
-    $ch2 = curl_init('http://localhost:8000/api/v1/currencies-test');
+    $ch2 = curl_init($baseUrl . '/api/v1/currencies-test');
     curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch2, CURLOPT_TIMEOUT, 2);
     $testResponse = curl_exec($ch2);

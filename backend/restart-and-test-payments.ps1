@@ -11,7 +11,18 @@ Write-Host ""
 
 # Step 2: Clear all Laravel caches
 Write-Host "2. Clearing all Laravel caches..." -ForegroundColor Yellow
-$phpPath = "C:\laragon\bin\php\php-8.3.26-Win32-vs16-x64\php.exe"
+# Use PHP from PATH or environment variable, fallback to common Laragon path
+$phpPath = $env:PHP_PATH
+if (-not $phpPath) {
+    # Try to find PHP in PATH
+    $phpInPath = Get-Command php -ErrorAction SilentlyContinue
+    if ($phpInPath) {
+        $phpPath = $phpInPath.Source
+    } else {
+        # Fallback to Laragon default path (can be overridden via PHP_PATH env var)
+        $phpPath = "C:\laragon\bin\php\php-8.3.26-Win32-vs16-x64\php.exe"
+    }
+}
 Set-Location $PSScriptRoot
 
 & $phpPath artisan route:clear 2>&1 | Out-Null

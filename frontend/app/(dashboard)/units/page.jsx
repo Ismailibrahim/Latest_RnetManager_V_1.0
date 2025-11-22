@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { DataDisplay } from "@/components/DataDisplay";
 import { API_BASE_URL } from "@/utils/api-config";
+import { formatCurrency as formatCurrencyUtil } from "@/lib/currency-formatter";
 
 const occupancyFilters = [
   { label: "All occupancy states", value: "all" },
@@ -1011,18 +1012,7 @@ function EmptyState({ hasFilters }) {
 }
 
 function formatCurrency(value) {
-  const amount = Number(value);
-
-  if (value === null || value === undefined || Number.isNaN(amount)) {
-    return "—";
-  }
-
-  const formatted = new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-
-  return `MVR ${formatted}`;
+  return formatCurrencyUtil(value);
 }
 
 

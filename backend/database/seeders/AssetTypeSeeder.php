@@ -15,13 +15,7 @@ class AssetTypeSeeder extends Seeder
             ['name' => 'Washing Machine', 'category' => 'appliance'],
             ['name' => 'Water Heater', 'category' => 'appliance'],
             ['name' => 'Microwave', 'category' => 'appliance'],
-            ['name' => 'Television', 'category' => 'electronic'],
-          
-          
-           
-      
-          
-          
+            ['name' => 'Television', 'category' => 'electronic'],  
         ];
 
         foreach ($types as $type) {

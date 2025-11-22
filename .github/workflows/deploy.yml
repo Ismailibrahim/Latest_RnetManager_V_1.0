@@ -41,18 +41,27 @@ jobs:
             exit 1
           fi
           
-          # Check disk space (at least 1GB free)
-          AVAILABLE=$(df "$APP_DIR" | tail -1 | awk '{print $4}')
-          if [ "$AVAILABLE" -lt 1048576 ]; then
-            echo "⚠️  Warning: Low disk space (less than 1GB free)"
+          # Run pre-deployment validation script if available
+          if [ -f "$APP_DIR/scripts/pre-deployment-checks.sh" ]; then
+            chmod +x "$APP_DIR/scripts/pre-deployment-checks.sh"
+            bash "$APP_DIR/scripts/pre-deployment-checks.sh" || {
+              echo "⚠️  Pre-deployment checks had warnings, but continuing..."
+            }
+          else
+            # Basic checks if script not available
+            # Check disk space (at least 1GB free)
+            AVAILABLE=$(df "$APP_DIR" | tail -1 | awk '{print $4}')
+            if [ "$AVAILABLE" -lt 1048576 ]; then
+              echo "⚠️  Warning: Low disk space (less than 1GB free)"
+            fi
+            
+            # Check if deploy script exists
+            if [ ! -f "$APP_DIR/deploy.sh" ]; then
+              echo "⚠️  Warning: deploy.sh not found, will be created from config/deploy/deploy.sh"
+            fi
+            
+            echo "✅ Basic pre-deployment checks passed"
           fi
-          
-          # Check if deploy script exists
-          if [ ! -f "$APP_DIR/deploy.sh" ]; then
-            echo "⚠️  Warning: deploy.sh not found, will be created from config/deploy/deploy.sh"
-          fi
-          
-          echo "✅ Pre-deployment checks passed"
           EOF
 
       - name: 🚀 Deploy to VPS
@@ -81,6 +90,7 @@ jobs:
               --exclude="$APP_DIR/backend/vendor" \
               --exclude="$APP_DIR/backend/storage/logs/*" \
               --exclude="$APP_DIR/frontend/.next" \
+              --exclude="$APP_DIR/frontend/node_modules" \
               . 2>/dev/null || true
             echo "✅ Backup created: backup_$TIMESTAMP.tar.gz"
           fi
@@ -99,6 +109,7 @@ jobs:
           # Run deployment script
           echo "🚀 Running deployment script..."
           export APP_DIRECTORY="$APP_DIR"
+          export DEPLOY_ENV="production"
           bash "$APP_DIR/deploy.sh" || {
             echo "❌ Deployment failed!"
             exit 1
@@ -142,6 +153,24 @@ jobs:
             echo "✅ Nginx is running"
           else
             echo "⚠️  Nginx status unknown (may not be managed by systemd)"
+          fi
+          
+          # Check PHP-FPM
+          if systemctl is-active --quiet php8.2-fpm 2>/dev/null || systemctl is-active --quiet php8.3-fpm 2>/dev/null; then
+            echo "✅ PHP-FPM is running"
+          else
+            echo "⚠️  PHP-FPM status unknown"
+          fi
+          
+          # Check PM2 (Next.js frontend)
+          if command -v pm2 >/dev/null 2>&1; then
+            if pm2 list | grep -q "rentapp-frontend"; then
+              echo "✅ PM2 process (rentapp-frontend) is running"
+            else
+              echo "⚠️  PM2 process (rentapp-frontend) not found"
+            fi
+          else
+            echo "⚠️  PM2 not installed or not in PATH"
           fi
           
           echo "✅ Health checks completed"

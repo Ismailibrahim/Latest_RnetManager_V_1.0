@@ -4,7 +4,8 @@
  * Test route via actual HTTP request
  */
 
-$ch = curl_init('http://localhost:8000/api/v1/currencies-test');
+$baseUrl = getenv('API_BASE_URL') ?: 'http://localhost:8000';
+$ch = curl_init($baseUrl . '/api/v1/currencies-test');
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_TIMEOUT, 5);
 curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
@@ -14,7 +15,7 @@ $error = curl_error($ch);
 curl_close($ch);
 
 echo "=== HTTP Test Results ===\n\n";
-echo "URL: http://localhost:8000/api/v1/currencies-test\n";
+echo "URL: $baseUrl/api/v1/currencies-test\n";
 echo "HTTP Code: $httpCode\n";
 
 if ($error) {
@@ -28,7 +29,7 @@ if ($httpCode == 404) {
     echo "Testing other routes to verify server is working...\n\n";
     
     // Test root route
-    $ch2 = curl_init('http://localhost:8000/api/v1/');
+    $ch2 = curl_init($baseUrl . '/api/v1/');
     curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch2, CURLOPT_TIMEOUT, 5);
     $response2 = curl_exec($ch2);

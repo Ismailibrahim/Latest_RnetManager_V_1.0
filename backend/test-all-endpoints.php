@@ -5,7 +5,8 @@
  * Tests all main API endpoints one by one
  */
 
-$baseUrl = 'http://localhost:8000';
+// Get base URL from environment or use default
+$baseUrl = getenv('API_BASE_URL') ?: 'http://localhost:8000';
 $results = [];
 
 function testEndpoint($method, $url, $description, $headers = [], $body = null) {

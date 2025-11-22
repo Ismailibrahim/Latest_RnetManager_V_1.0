@@ -23,13 +23,25 @@ class StoreUnitRequest extends FormRequest
      */
     public function rules(): array
     {
-        $propertyRule = Rule::exists('properties', 'id')
-            ->where('landlord_id', $this->user()?->landlord_id);
+        $user = $this->user();
+        $isSuperAdmin = $user && $user->isSuperAdmin();
+
+        // Property validation rule
+        if ($isSuperAdmin) {
+            // Super admin can use any property, but must specify landlord_id
+            $propertyRule = Rule::exists('properties', 'id');
+            $landlordIdRule = ['required', 'integer', Rule::exists('landlords', 'id')];
+        } else {
+            // Regular users can only use their landlord's properties
+            $propertyRule = Rule::exists('properties', 'id')
+                ->where('landlord_id', $user?->landlord_id);
+            $landlordIdRule = [];
+        }
 
         $unitNumberRule = Rule::unique('units', 'unit_number')
             ->where(fn ($query) => $query->where('property_id', $this->input('property_id')));
 
-        return [
+        $rules = [
             'property_id' => ['required', 'integer', $propertyRule],
             'unit_type_id' => [
                 'required',
@@ -41,5 +53,12 @@ class StoreUnitRequest extends FormRequest
             'security_deposit' => ['nullable', 'numeric', 'min:0'],
             'is_occupied' => ['sometimes', 'boolean'],
         ];
+
+        // Add landlord_id rule for super admins
+        if ($isSuperAdmin) {
+            $rules['landlord_id'] = $landlordIdRule;
+        }
+
+        return $rules;
     }
 }

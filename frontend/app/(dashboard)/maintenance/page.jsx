@@ -647,7 +647,7 @@ export default function MaintenancePage() {
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {/* Total Expenses Card */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-sky-50/90 p-5 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -660,14 +660,14 @@ export default function MaintenancePage() {
                   {summaryStats.total} {summaryStats.total === 1 ? "expense" : "expenses"}
                 </p>
               </div>
-              <div className="rounded-full bg-primary/10 p-3">
+              <div className="rounded-full bg-white/70 p-3 text-primary shadow-sm">
                 <DollarSign className="h-6 w-6 text-primary" />
               </div>
             </div>
           </div>
 
           {/* By Type Card */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-sky-50/90 p-5 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md">
             <div className="mb-3 flex items-center gap-2">
               <Wrench className="h-4 w-4 text-slate-400" />
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -697,7 +697,7 @@ export default function MaintenancePage() {
           </div>
 
           {/* Billable vs Non-Billable Card */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-emerald-50/90 p-5 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md">
             <div className="mb-3 flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-slate-400" />
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -721,7 +721,7 @@ export default function MaintenancePage() {
           </div>
 
           {/* By Property Card */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md">
             <div className="mb-3 flex items-center gap-2">
               <Building2 className="h-4 w-4 text-slate-400" />
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -1150,189 +1150,194 @@ function MaintenanceRequestModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <h2 className="text-lg font-semibold text-slate-900">
-            {request ? "Edit Maintenance Expense" : "Record Maintenance Expense"}
+      <div className="w-full max-w-xl rounded-xl border border-slate-200 bg-white shadow-2xl max-h-[90vh] flex flex-col">
+        {/* Header - Fixed */}
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3 flex-shrink-0">
+          <h2 className="text-base font-semibold text-slate-900">
+            {request ? "Edit Expense" : "Record Expense"}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6">
-          {error && (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              {error}
-            </div>
-          )}
+        {/* Scrollable Content */}
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              {error && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-700">
+                  {error}
+                </div>
+              )}
 
-          <div className="space-y-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Unit <span className="text-red-500">*</span>
-              </label>
-              <select
-                required
-                value={formData.unit_id}
-                onChange={(e) =>
-                  setFormData({ ...formData, unit_id: e.target.value })
-                }
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-              >
-                <option value="">Select a unit</option>
-                {units.map((unit) => (
-                  <option key={unit.id} value={unit.id}>
-                    {unit.unit_number ?? `Unit #${unit.id}`} -{" "}
-                    {unit.property?.name ?? "Unknown Property"}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Description <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                required
-                value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
-                rows={3}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Cost (MVR) <span className="text-red-500">*</span>
-                </label>
-                <input
-                  required
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.cost}
-                  onChange={(e) =>
-                    setFormData({ ...formData, cost: e.target.value })
-                  }
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Maintenance Date <span className="text-red-500">*</span>
-                </label>
-                <input
-                  required
-                  type="date"
-                  value={formData.maintenance_date}
-                  onChange={(e) =>
-                    setFormData({ ...formData, maintenance_date: e.target.value })
-                  }
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Type
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Unit <span className="text-red-500">*</span>
                 </label>
                 <select
-                  value={formData.type}
+                  required
+                  value={formData.unit_id}
                   onChange={(e) =>
-                    setFormData({ ...formData, type: e.target.value })
+                    setFormData({ ...formData, unit_id: e.target.value })
                   }
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
                 >
-                  <option value="repair">Repair</option>
-                  <option value="replacement">Replacement</option>
-                  <option value="service">Service</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Asset
-                </label>
-                <select
-                  value={formData.asset_id}
-                  onChange={(e) =>
-                    setFormData({ ...formData, asset_id: e.target.value })
-                  }
-                  disabled={!formData.unit_id || loadingAssets}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:bg-slate-50 disabled:text-slate-400"
-                >
-                  <option value="">No asset</option>
-                  {assets.map((asset) => (
-                    <option key={asset.id} value={asset.id}>
-                      {asset.name}
+                  <option value="">Select a unit</option>
+                  {units.map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.unit_number ?? `Unit #${unit.id}`} -{" "}
+                      {unit.property?.name ?? "Unknown Property"}
                     </option>
                   ))}
                 </select>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Location
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Description <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={formData.location}
+                <textarea
+                  required
+                  value={formData.description}
                   onChange={(e) =>
-                    setFormData({ ...formData, location: e.target.value })
+                    setFormData({ ...formData, description: e.target.value })
                   }
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  rows={2}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none"
                 />
               </div>
 
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Serviced By
-                </label>
-                <input
-                  type="text"
-                  value={formData.serviced_by}
-                  onChange={(e) =>
-                    setFormData({ ...formData, serviced_by: e.target.value })
-                  }
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Invoice Number
-              </label>
-              <input
-                type="text"
-                value={formData.invoice_number}
-                onChange={(e) =>
-                  setFormData({ ...formData, invoice_number: e.target.value })
-                }
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-
-            <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-              <h3 className="mb-3 text-sm font-semibold text-slate-900">
-                Billing Options
-              </h3>
-              <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Cost (MVR) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    required
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.cost}
+                    onChange={(e) =>
+                      setFormData({ ...formData, cost: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    required
+                    type="date"
+                    value={formData.maintenance_date}
+                    onChange={(e) =>
+                      setFormData({ ...formData, maintenance_date: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Type
+                  </label>
+                  <select
+                    value={formData.type}
+                    onChange={(e) =>
+                      setFormData({ ...formData, type: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="repair">Repair</option>
+                    <option value="replacement">Replacement</option>
+                    <option value="service">Service</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Asset
+                  </label>
+                  <select
+                    value={formData.asset_id}
+                    onChange={(e) =>
+                      setFormData({ ...formData, asset_id: e.target.value })
+                    }
+                    disabled={!formData.unit_id || loadingAssets}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:bg-slate-50 disabled:text-slate-400"
+                  >
+                    <option value="">No asset</option>
+                    {assets.map((asset) => (
+                      <option key={asset.id} value={asset.id}>
+                        {asset.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Location
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.location}
+                    onChange={(e) =>
+                      setFormData({ ...formData, location: e.target.value })
+                    }
+                    placeholder="e.g., Living room, Kitchen"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Serviced By
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.serviced_by}
+                    onChange={(e) =>
+                      setFormData({ ...formData, serviced_by: e.target.value })
+                    }
+                    placeholder="Vendor/Contractor name"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Vendor Invoice Number
+                </label>
+                <input
+                  type="text"
+                  value={formData.invoice_number}
+                  onChange={(e) =>
+                    setFormData({ ...formData, invoice_number: e.target.value })
+                  }
+                  placeholder="Optional - external invoice number"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+                <h3 className="mb-2 text-xs font-semibold text-slate-900">
+                  Billing Options
+                </h3>
+                <div className="space-y-2.5">
                   <label className="flex items-start gap-2">
                     <input
                       type="checkbox"
@@ -1343,17 +1348,15 @@ function MaintenanceRequestModal({
                       className="mt-0.5 rounded border-slate-300 text-primary focus:ring-primary"
                     />
                     <div className="flex-1">
-                      <span className="text-sm font-medium text-slate-700">
-                        Is Billable
+                      <span className="text-xs font-medium text-slate-700">
+                        Billable Expense
                       </span>
                       <p className="mt-0.5 text-xs text-slate-500">
-                        Mark this maintenance as a billable expense. Uncheck if this is a non-billable maintenance (e.g., routine inspection).
+                        Uncheck for non-billable expenses (e.g., routine inspection).
                       </p>
                     </div>
                   </label>
-                </div>
 
-                <div>
                   <label className="flex items-start gap-2">
                     <input
                       type="checkbox"
@@ -1368,66 +1371,58 @@ function MaintenanceRequestModal({
                       className="mt-0.5 rounded border-slate-300 text-primary focus:ring-primary disabled:opacity-50"
                     />
                     <div className="flex-1">
-                      <span className="text-sm font-medium text-slate-700">
+                      <span className="text-xs font-medium text-slate-700">
                         Billed to Tenant
                       </span>
                       <p className="mt-0.5 text-xs text-slate-500">
-                        Check this if the tenant should be charged for this maintenance. Requires "Is Billable" to be checked. You can create a Maintenance Invoice separately to bill the tenant.
+                        Tenant will be charged. Create invoice separately to bill.
                       </p>
                     </div>
                   </label>
-                </div>
 
-                {formData.billed_to_tenant && (
-                  <div className="ml-7">
-                    <label className="mb-1 block text-sm font-medium text-slate-700">
-                      Tenant Share (MVR) <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      required={formData.billed_to_tenant}
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={formData.tenant_share}
-                      onChange={(e) =>
-                        setFormData({ ...formData, tenant_share: e.target.value })
-                      }
-                      placeholder="0.00"
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                    />
-                    <p className="mt-1 text-xs text-slate-500">
-                      Amount the tenant should pay. This can be the full cost or a partial amount.
-                    </p>
-                  </div>
-                )}
-              </div>
-              <div className="mt-3 rounded-md bg-blue-50 border border-blue-200 p-2">
-                <p className="text-xs text-blue-800">
-                  <strong>Note:</strong> To create a formal invoice for the tenant, go to{" "}
-                  <strong>Maintenance Invoices</strong> and create an invoice there. You can optionally link it to this maintenance request.
-                </p>
+                  {formData.billed_to_tenant && (
+                    <div className="ml-6">
+                      <label className="mb-1 block text-xs font-medium text-slate-700">
+                        Tenant Share (MVR) <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        required={formData.billed_to_tenant}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={formData.tenant_share}
+                        onChange={(e) =>
+                          setFormData({ ...formData, tenant_share: e.target.value })
+                        }
+                        placeholder="0.00"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="mt-6 flex items-center justify-end gap-3">
+          {/* Footer - Fixed */}
+          <div className="border-t border-slate-200 px-5 py-3 flex items-center justify-end gap-3 flex-shrink-0 bg-slate-50/50">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:opacity-50"
+              className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white transition hover:bg-primary/90 disabled:opacity-50"
             >
               {submitting
                 ? "Saving..."
                 : request
-                  ? "Update Expense"
-                  : "Record Expense"}
+                  ? "Update"
+                  : "Record"}
             </button>
           </div>
         </form>

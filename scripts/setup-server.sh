@@ -81,6 +81,16 @@ else
     log "Node.js already installed: $(node --version)"
 fi
 
+# Install PM2 globally
+log_info "📦 Installing PM2 (Node process manager)..."
+if ! command -v pm2 &> /dev/null; then
+    sudo npm install -g pm2
+    pm2 startup systemd -u $USER --hp $HOME || true
+    log "PM2 installed and startup script generated"
+else
+    log "PM2 already installed: $(pm2 --version)"
+fi
+
 # Install Nginx
 log_info "🌐 Installing Nginx..."
 if ! command -v nginx &> /dev/null; then
@@ -161,7 +171,14 @@ fi
 
 # Setup Nginx configuration
 log_info "🌐 Setting up Nginx configuration..."
-if [ -f "$APP_DIR/config/nginx/rentapp.conf" ]; then
+if [ -f "$APP_DIR/config/nginx/rentapp-site.conf" ]; then
+    sudo cp "$APP_DIR/config/nginx/rentapp-site.conf" /etc/nginx/sites-available/rentapp
+    sudo sed -i "s/YOUR_DOMAIN_OR_IP/$(hostname -I | awk '{print $1}')/g" /etc/nginx/sites-available/rentapp || true
+    sudo ln -sf /etc/nginx/sites-available/rentapp /etc/nginx/sites-enabled/
+    sudo rm -f /etc/nginx/sites-enabled/default
+    sudo nginx -t && sudo systemctl reload nginx
+    log "Nginx configuration updated (update server_name in /etc/nginx/sites-available/rentapp with your domain)"
+elif [ -f "$APP_DIR/config/nginx/rentapp.conf" ]; then
     sudo cp "$APP_DIR/config/nginx/rentapp.conf" /etc/nginx/sites-available/rentapp
     sudo ln -sf /etc/nginx/sites-available/rentapp /etc/nginx/sites-enabled/
     sudo rm -f /etc/nginx/sites-enabled/default
@@ -199,6 +216,18 @@ if [ -f "$APP_DIR/config/deploy/deploy.sh" ]; then
     log_info "📋 Setting up deployment script..."
     cp "$APP_DIR/config/deploy/deploy.sh" "$APP_DIR/deploy.sh"
     chmod +x "$APP_DIR/deploy.sh"
+fi
+
+# Create logs directory
+log_info "📁 Creating logs directory..."
+mkdir -p "$APP_DIR/logs"
+
+# Setup PM2 ecosystem file if it exists
+if [ -f "$APP_DIR/ecosystem.config.js" ]; then
+    log_info "📋 Setting up PM2 ecosystem configuration..."
+    cd "$APP_DIR"
+    pm2 start ecosystem.config.js || pm2 save || true
+    log "PM2 ecosystem configured"
 fi
 
 # Summary

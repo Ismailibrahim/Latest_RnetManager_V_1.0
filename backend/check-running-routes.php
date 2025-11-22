@@ -5,7 +5,8 @@
  * This will help identify if there's a cache issue
  */
 
-$ch = curl_init('http://localhost:8000/api/v1/');
+$baseUrl = getenv('API_BASE_URL') ?: 'http://localhost:8000';
+$ch = curl_init($baseUrl . '/api/v1/');
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_TIMEOUT, 2);
 $rootResponse = curl_exec($ch);

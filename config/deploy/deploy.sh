@@ -85,6 +85,9 @@ cd "$APP_DIR" || {
     exit 1
 }
 
+# Create logs directory if it doesn't exist
+mkdir -p "$APP_DIR/logs"
+
 # Pull latest code
 log_info "📥 Pulling latest code from main branch..."
 if ! git fetch --all; then
@@ -124,10 +127,27 @@ if [ -d "$BACKEND_DIR" ]; then
         exit 1
     fi
     
+    # Database backup before migrations
+    log_info "Creating database backup before migrations..."
+    if [ -f "$APP_DIR/scripts/backup-database.sh" ]; then
+        bash "$APP_DIR/scripts/backup-database.sh" || {
+            log_warning "Database backup failed, but continuing with deployment..."
+        }
+    else
+        log_warning "Database backup script not found, skipping backup"
+    fi
+    
+    # Enable maintenance mode
+    log_info "Enabling maintenance mode..."
+    php artisan down --render="errors::503" --retry=60 || {
+        log_warning "Failed to enable maintenance mode, continuing..."
+    }
+    
     # Run migrations
     log_info "Running database migrations..."
     if ! php artisan migrate --force; then
         log_error "Database migrations failed"
+        php artisan up || true
         exit 1
     fi
     
@@ -166,6 +186,22 @@ if [ -d "$BACKEND_DIR" ]; then
     chmod -R 775 storage bootstrap/cache 2>/dev/null || true
     chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
     
+    # Restart queue workers if supervisor is configured
+    log_info "Restarting queue workers..."
+    if command -v supervisorctl &> /dev/null; then
+        supervisorctl restart rentapp-queue-worker:* || {
+            log_warning "Queue workers not configured or restart failed"
+        }
+    else
+        log_warning "Supervisor not available, queue workers not restarted"
+    fi
+    
+    # Disable maintenance mode
+    log_info "Disabling maintenance mode..."
+    php artisan up || {
+        log_warning "Failed to disable maintenance mode"
+    }
+    
     log "✅ Backend setup complete"
 else
     log_error "Backend directory not found: $BACKEND_DIR"
@@ -197,24 +233,92 @@ if [ -d "$FRONTEND_DIR" ]; then
         exit 1
     fi
     
+    # Restart PM2 process if PM2 is available and ecosystem.config.js exists
+    if command -v pm2 &> /dev/null && [ -f "$APP_DIR/ecosystem.config.js" ]; then
+        log_info "Restarting PM2 process..."
+        cd "$APP_DIR"
+        pm2 restart ecosystem.config.js --update-env || {
+            # If restart fails, try to start it
+            pm2 start ecosystem.config.js || {
+                log_warning "PM2 restart/start failed, continuing..."
+            }
+        }
+        pm2 save || true
+        log "✅ PM2 process restarted"
+    else
+        log_warning "PM2 not available or ecosystem.config.js not found, skipping PM2 restart"
+    fi
+    
     log "✅ Frontend setup complete"
 else
     log_error "Frontend directory not found: $FRONTEND_DIR"
     exit 1
 fi
 
-# Restart services (optional - uncomment if needed)
-# log_info "🔄 Restarting services..."
-# sudo systemctl restart nginx || true
-# sudo systemctl restart php8.2-fpm || sudo systemctl restart php8.3-fpm || true
+# Restart services
+log_info "🔄 Restarting services..."
+sudo systemctl restart nginx || true
+sudo systemctl restart php8.2-fpm || sudo systemctl restart php8.3-fpm || true
 
 # Health check
 log_info "🏥 Running post-deployment health check..."
 cd "$BACKEND_DIR"
-if php artisan route:list 2>/dev/null | grep -q "api/v1/health\|api.health"; then
-    log "✅ Health endpoint route found"
+
+# Check if services are running
+log_info "Checking service status..."
+if systemctl is-active --quiet nginx 2>/dev/null; then
+    log "✅ Nginx is running"
 else
-    log_warning "Health endpoint route check skipped (routes may not be loaded)"
+    log_warning "Nginx may not be running"
+fi
+
+if systemctl is-active --quiet php8.2-fpm 2>/dev/null || systemctl is-active --quiet php8.3-fpm 2>/dev/null; then
+    log "✅ PHP-FPM is running"
+else
+    log_warning "PHP-FPM may not be running"
+fi
+
+if command -v pm2 &> /dev/null; then
+    if pm2 list | grep -q "rentapp-frontend"; then
+        log "✅ PM2 process (rentapp-frontend) is running"
+    else
+        log_warning "PM2 process (rentapp-frontend) not found"
+    fi
+fi
+
+# Check if queue workers are running
+if command -v supervisorctl &> /dev/null; then
+    if supervisorctl status rentapp-queue-worker:* 2>/dev/null | grep -q "RUNNING"; then
+        log "✅ Queue workers are running"
+    else
+        log_warning "Queue workers may not be running"
+    fi
+fi
+
+# HTTP health check (if APP_URL is set)
+if [ -n "$APP_URL" ] && command -v curl &> /dev/null; then
+    log_info "Performing HTTP health check..."
+    HEALTH_URL="${APP_URL}/api/v1/health"
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$HEALTH_URL" 2>/dev/null || echo "000")
+    if [ "$HTTP_CODE" = "200" ]; then
+        log "✅ HTTP health check passed (HTTP $HTTP_CODE)"
+    else
+        log_warning "HTTP health check returned HTTP $HTTP_CODE (endpoint may not exist)"
+    fi
+else
+    if php artisan route:list 2>/dev/null | grep -q "api/v1/health\|api.health"; then
+        log "✅ Health endpoint route found"
+    else
+        log_warning "Health endpoint route check skipped (routes may not be loaded)"
+    fi
+fi
+
+# Run post-deployment tasks
+if [ -f "$APP_DIR/scripts/post-deployment-tasks.sh" ]; then
+    log_info "Running post-deployment optimization tasks..."
+    bash "$APP_DIR/scripts/post-deployment-tasks.sh" || {
+        log_warning "Post-deployment tasks failed, but deployment is complete"
+    }
 fi
 
 log "✅ Deployment complete!"
@@ -224,4 +328,9 @@ log "   - Commit: $COMMIT_HASH"
 log "   - Backend: ✅"
 log "   - Frontend: ✅"
 log "   - Timestamp: $(date)"
+log ""
+log "💡 Next steps:"
+log "   - Monitor logs: pm2 logs rentapp-frontend"
+log "   - Check queue workers: supervisorctl status rentapp-queue-worker:*"
+log "   - View Laravel logs: tail -f $BACKEND_DIR/storage/logs/laravel.log"
 

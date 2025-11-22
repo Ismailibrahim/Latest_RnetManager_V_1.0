@@ -9,6 +9,11 @@ trait HandlesLandlordAuthorization
 {
     protected function sameLandlord(User $user, Model $model): bool
     {
+        // Super admins can access all resources regardless of landlord
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
         if (isset($model->landlord_id)) {
             return (int) $model->landlord_id === (int) $user->landlord_id;
         }
@@ -42,12 +47,12 @@ trait HandlesLandlordAuthorization
 
     protected function canManage(User $user): bool
     {
-        return $user->isOwner() || $user->isAdmin() || $user->isManager();
+        return $user->isSuperAdmin() || $user->isOwner() || $user->isAdmin() || $user->isManager();
     }
 
     protected function canDelete(User $user): bool
     {
-        return $user->isOwner() || $user->isAdmin();
+        return $user->isSuperAdmin() || $user->isOwner() || $user->isAdmin();
     }
 }
 

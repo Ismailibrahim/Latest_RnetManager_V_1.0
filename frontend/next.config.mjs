@@ -3,6 +3,10 @@ const nextConfig = {
   // Enable React strict mode for better development experience
   reactStrictMode: true,
 
+  // Enable standalone output for optimized production builds
+  // This creates a minimal server.js file that can be run independently
+  output: 'standalone',
+
   // Optimize images
   images: {
     formats: ["image/avif", "image/webp"],

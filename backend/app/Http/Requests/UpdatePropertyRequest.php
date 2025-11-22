@@ -29,10 +29,18 @@ class UpdatePropertyRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
+        $user = $this->user();
+        $rules = [
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'address' => ['sometimes', 'required', 'string'],
             'type' => ['sometimes', 'required', 'string', Rule::in(['residential', 'commercial'])],
         ];
+
+        // Super admins can optionally update landlord_id
+        if ($user && $user->isSuperAdmin()) {
+            $rules['landlord_id'] = ['sometimes', 'required', 'integer', Rule::exists('landlords', 'id')];
+        }
+
+        return $rules;
     }
 }

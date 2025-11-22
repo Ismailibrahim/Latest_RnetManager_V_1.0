@@ -23,6 +23,7 @@ import {
   CircleDollarSign,
   LineChart,
   BarChart,
+  Banknote,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -38,6 +39,7 @@ const navigation = [
   { name: "Collect Payment", href: "/payments/collect", icon: CircleDollarSign },
   { name: "Unified Payments", href: "/unified-payments", icon: ArrowLeftRight },
   { name: "Rent Invoices", href: "/rent-invoices", icon: Receipt },
+  { name: "Advance Rent", href: "/advance-rent", icon: Banknote },
   { name: "Deposit Refunds", href: "/security-deposit-refunds", icon: ShieldCheck },
   { name: "Payment Methods", href: "/payment-methods", icon: CreditCard },
   { name: "Maintenance Expenses", href: "/maintenance", icon: Wrench },
@@ -78,7 +80,10 @@ export function Sidebar({ onNavigate }) {
       <nav className="space-y-2">
         {navigation.map((item) => {
           const Icon = item.icon;
-          const active = pathname === item.href;
+          // For home route, use exact match; for others, check if pathname starts with href
+          const active = item.href === "/" 
+            ? pathname === item.href 
+            : pathname === item.href || pathname.startsWith(item.href + "/");
 
           return (
             <Link

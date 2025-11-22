@@ -23,10 +23,18 @@ class StorePropertyRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
+        $user = $this->user();
+        $rules = [
             'name' => ['required', 'string', 'max:255'],
             'address' => ['required', 'string'],
             'type' => ['required', 'string', Rule::in(['residential', 'commercial'])],
         ];
+
+        // Super admins must specify landlord_id when creating properties
+        if ($user && $user->isSuperAdmin()) {
+            $rules['landlord_id'] = ['required', 'integer', Rule::exists('landlords', 'id')];
+        }
+
+        return $rules;
     }
 }
