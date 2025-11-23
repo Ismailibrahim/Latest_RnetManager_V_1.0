@@ -38,7 +38,7 @@ class MobileUnitResource extends JsonResource
             'unpaid_invoices_count' => (int) $unpaidCount,
             
             // Current tenant (if occupied)
-            'current_tenant' => $this->when($tenantUnit && $tenantUnit->relationLoaded('tenant'), function () use ($tenantUnit) {
+            'current_tenant' => $this->when($tenantUnit && $tenantUnit->relationLoaded('tenant') && $tenantUnit->tenant !== null, function () use ($tenantUnit) {
                 return [
                     'id' => $tenantUnit->tenant->id,
                     'full_name' => $tenantUnit->tenant->full_name,

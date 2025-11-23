@@ -36,7 +36,9 @@ class MobileInvoiceResource extends JsonResource
             
             // Tenant info if loaded
             'tenant' => $this->when(
-                $this->relationLoaded('tenantUnit') && $this->tenantUnit?->relationLoaded('tenant'),
+                $this->relationLoaded('tenantUnit') && 
+                $this->tenantUnit?->relationLoaded('tenant') && 
+                $this->tenantUnit->tenant !== null,
                 fn () => [
                     'id' => $this->tenantUnit->tenant->id,
                     'full_name' => $this->tenantUnit->tenant->full_name,

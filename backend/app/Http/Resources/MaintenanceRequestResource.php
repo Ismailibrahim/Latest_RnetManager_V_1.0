@@ -34,10 +34,22 @@ class MaintenanceRequestResource extends JsonResource
                 'id' => $this->unit->id,
                 'unit_number' => $this->unit->unit_number,
                 'property_id' => $this->unit->property_id,
+                'is_occupied' => (bool) $this->unit->is_occupied,
                 'property' => $this->unit->relationLoaded('property') && $this->unit->property ? [
                     'id' => $this->unit->property->id,
                     'name' => $this->unit->property->name,
                 ] : null,
+                'current_tenant' => $this->when(
+                    $this->unit->is_occupied && 
+                    $this->unit->relationLoaded('tenantUnits') && 
+                    $this->unit->tenantUnits->isNotEmpty() &&
+                    $this->unit->tenantUnits->first()->relationLoaded('tenant') &&
+                    $this->unit->tenantUnits->first()->tenant !== null,
+                    fn () => [
+                        'id' => $this->unit->tenantUnits->first()->tenant->id,
+                        'full_name' => $this->unit->tenantUnits->first()->tenant->full_name,
+                    ]
+                ),
             ]),
             'asset' => $this->whenLoaded('asset', fn () => [
                 'id' => $this->asset->id,
