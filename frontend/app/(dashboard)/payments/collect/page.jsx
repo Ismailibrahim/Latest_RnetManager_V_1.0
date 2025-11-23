@@ -196,7 +196,14 @@ export default function CollectPaymentPage() {
     const updated = pendingCharges.find((item) => item.id === linkedCharge.id);
 
     if (!updated) {
-      setLinkedCharge(null);
+      // Don't clear linkedCharge if it's not in pendingCharges - it might have been paid
+      // or filtered out, but we still need it for the payment submission
+      console.log('[Payment Collection] Charge not found in pendingCharges, but preserving it:', {
+        charge_id: linkedCharge.id,
+        charge_source_type: linkedCharge.source_type,
+        charge_source_id: linkedCharge.source_id,
+      });
+      // Keep the linkedCharge - don't clear it
       return;
     }
 
@@ -214,16 +221,27 @@ export default function CollectPaymentPage() {
       return [];
     }
 
-    return [
-      {
-        id: "current",
-        form: formData,
-        summary: selectedTenantUnit
-          ? buildTenantSummary(selectedTenantUnit)
-          : null,
-        charge: linkedCharge,
-      },
-    ];
+    const payment = {
+      id: "current",
+      form: formData,
+      summary: selectedTenantUnit
+        ? buildTenantSummary(selectedTenantUnit)
+        : null,
+      charge: linkedCharge,
+    };
+    
+    // Debug: Log when pendingPayments is computed
+    if (linkedCharge) {
+      console.log('[Payment Collection] pendingPayments computed with charge:', {
+        charge_id: linkedCharge.id,
+        charge_source_type: linkedCharge.source_type,
+        charge_source_id: linkedCharge.source_id,
+      });
+    } else {
+      console.log('[Payment Collection] pendingPayments computed WITHOUT charge');
+    }
+    
+    return [payment];
   }, [batch, formData, selectedTenantUnit, linkedCharge]);
 
   const canAddToBatch =
@@ -280,6 +298,14 @@ export default function CollectPaymentPage() {
       return;
     }
 
+    console.log('[Payment Collection] Charge selected:', {
+      id: charge.id,
+      source_type: charge.source_type,
+      source_id: charge.source_id,
+      suggested_payment_type: charge.suggested_payment_type,
+      full_charge: charge,
+    });
+    
     setLinkedCharge(charge);
 
     setFormData((current) => {
@@ -424,6 +450,22 @@ export default function CollectPaymentPage() {
 
   const handleSubmit = async () => {
     const queue = pendingPayments;
+    
+    console.log('[Payment Collection] Submitting payments:', {
+      queue_length: queue.length,
+      queue_items: queue.map(item => ({
+        id: item.id,
+        payment_type: item.form?.payment_type,
+        has_charge: !!item.charge,
+        charge_source_type: item.charge?.source_type,
+        charge_source_id: item.charge?.source_id,
+      })),
+      linkedCharge: linkedCharge ? {
+        id: linkedCharge.id,
+        source_type: linkedCharge.source_type,
+        source_id: linkedCharge.source_id,
+      } : null,
+    });
 
     if (queue.length === 0) {
       if (!validateStep(2)) {
@@ -443,6 +485,30 @@ export default function CollectPaymentPage() {
 
     try {
       for (const item of queue) {
+        // If item doesn't have charge but we have linkedCharge, use it
+        // This handles the case where linkedCharge exists but wasn't included in pendingPayments
+        const charge = item.charge || linkedCharge;
+        
+        console.log('[Payment Collection] Processing item:', {
+          item_id: item.id,
+          has_item_charge: !!item.charge,
+          has_linkedCharge: !!linkedCharge,
+          item_charge_source_type: item.charge?.source_type,
+          item_charge_source_id: item.charge?.source_id,
+          linkedCharge_source_type: linkedCharge?.source_type,
+          linkedCharge_source_id: linkedCharge?.source_id,
+          final_charge_source_type: charge?.source_type,
+          final_charge_source_id: charge?.source_id,
+        });
+        
+        if (!item.charge && linkedCharge) {
+          console.log('[Payment Collection] Using linkedCharge for item:', {
+            item_id: item.id,
+            linkedCharge_source_type: linkedCharge.source_type,
+            linkedCharge_source_id: linkedCharge.source_id,
+          });
+        }
+        
         // Handle advance rent separately
         if (item.form.payment_type === "advance_rent") {
           const token = localStorage.getItem("auth_token");
@@ -505,7 +571,9 @@ export default function CollectPaymentPage() {
           });
         } else {
           // Regular payment flow
-          const payload = buildPayload(item.form, item.charge);
+          // Use charge from item, or fallback to linkedCharge if item doesn't have it
+          const charge = item.charge || linkedCharge;
+          const payload = buildPayload(item.form, charge);
           // Debug: Log payload to verify source_type and source_id are set
           if (item.charge) {
             console.log('Payment payload with charge:', {
@@ -541,6 +609,33 @@ export default function CollectPaymentPage() {
       setFormData(INITIAL_FORM);
       setLinkedCharge(null);
       setSubmissionError(null);
+      
+      // Check if any payment was for a maintenance invoice and trigger refresh
+      const hasMaintenanceInvoicePayment = collected.some(
+        (item) => {
+          const isMaintenanceInvoice = item.charge?.source_type === 'maintenance_invoice' || 
+                                      item.form.payment_type === 'maintenance_expense' ||
+                                      item.response?.data?.source_type === 'maintenance_invoice';
+          if (isMaintenanceInvoice) {
+            console.log('[Payment Collection] Maintenance invoice payment detected:', {
+              charge_source_type: item.charge?.source_type,
+              charge_source_id: item.charge?.source_id,
+              form_payment_type: item.form.payment_type,
+              response_source_type: item.response?.data?.source_type,
+              response_source_id: item.response?.data?.source_id,
+            });
+          }
+          return isMaintenanceInvoice;
+        }
+      );
+      
+      if (hasMaintenanceInvoicePayment) {
+        // Signal that maintenance invoice payment was created
+        const timestamp = Date.now().toString();
+        console.log('[Payment Collection] Setting maintenance invoice payment flag:', timestamp);
+        localStorage.setItem('maintenance_invoice_payment_created', timestamp);
+      }
+      
       // Refresh pending charges after successful payment to update the list
       // Use a delay to ensure backend has updated the invoice status
       // Also clear linked charge to force refresh

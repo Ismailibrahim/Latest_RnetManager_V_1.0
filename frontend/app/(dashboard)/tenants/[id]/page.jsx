@@ -675,6 +675,14 @@ export default function TenantDetailsPage({ params }) {
                               </span>
                             </div>
                             <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+                              {lease?.id && (
+                                <Link
+                                  href={`/tenant-units/${lease.id}`}
+                                  className="font-semibold text-primary transition hover:text-primary/80"
+                                >
+                                  View Lease Details →
+                                </Link>
+                              )}
                               {unitId ? (
                                 <Link
                                   href={`/units/${unitId}`}

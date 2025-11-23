@@ -156,25 +156,44 @@ export default function Home() {
     // Calculate active tenants
     const activeTenants = tenants.filter((t) => t.status === "active");
 
-    // Calculate rent collected (from financial records with type 'rent' or 'income')
+    // Calculate rent collected (from paid rent invoices and completed financial records)
     const currentMonth = new Date();
     currentMonth.setDate(1);
     currentMonth.setHours(0, 0, 0, 0);
+    const endOfMonth = new Date(currentMonth);
+    endOfMonth.setMonth(endOfMonth.getMonth() + 1);
+    endOfMonth.setDate(0); // Last day of current month
+    endOfMonth.setHours(23, 59, 59, 999);
 
-    const rentCollected = financialRecords
+    // Calculate from paid rent invoices
+    const rentFromInvoices = rentInvoices
+      .filter((inv) => {
+        if (inv.status !== "paid" || !inv.paid_date) return false;
+        const paidDate = new Date(inv.paid_date);
+        return paidDate >= currentMonth && paidDate <= endOfMonth;
+      })
+      .reduce((sum, inv) => {
+        const rentAmount = Number(inv.rent_amount || 0);
+        const lateFee = Number(inv.late_fee || 0);
+        const advanceRent = Number(inv.advance_rent_applied || 0);
+        return sum + rentAmount + lateFee - advanceRent;
+      }, 0);
+
+    // Calculate from completed financial records (type='rent')
+    const rentFromFinancialRecords = financialRecords
       .filter((record) => {
-        const recordDate = new Date(record.date || record.created_at);
-        return (
-          recordDate >= currentMonth &&
-          (record.type === "rent" ||
-            record.type === "income" ||
-            record.category?.toLowerCase().includes("rent"))
-        );
+        if (record.type !== "rent" || record.status !== "completed" || !record.paid_date) {
+          return false;
+        }
+        const paidDate = new Date(record.paid_date);
+        return paidDate >= currentMonth && paidDate <= endOfMonth;
       })
       .reduce((sum, record) => {
         const amount = Number(record.amount) || 0;
-        return sum + (record.transaction_type === "credit" ? amount : -amount);
+        return sum + amount;
       }, 0);
+
+    const rentCollected = rentFromInvoices + rentFromFinancialRecords;
 
     // Calculate upcoming renewals (leases ending in next 30 days)
     const now = new Date();
@@ -202,13 +221,15 @@ export default function Home() {
       return dueDate >= now && dueDate <= oneWeekFromNow;
     }).length;
 
-    // Calculate outstanding rent
+    // Calculate outstanding rent (unpaid invoices)
     const outstandingRent = rentInvoices
       .filter((inv) => inv.status !== "paid")
       .reduce((sum, inv) => {
-        const amount = Number(inv.total_amount || inv.amount || 0);
-        const paid = Number(inv.amount_paid || 0);
-        return sum + (amount - paid);
+        const rentAmount = Number(inv.rent_amount || 0);
+        const lateFee = Number(inv.late_fee || 0);
+        const advanceRent = Number(inv.advance_rent_applied || 0);
+        // Total amount = rent_amount + late_fee - advance_rent_applied
+        return sum + rentAmount + lateFee - advanceRent;
       }, 0);
 
     // Calculate security deposits held

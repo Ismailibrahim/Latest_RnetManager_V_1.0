@@ -25,6 +25,13 @@ Schedule::command('rent:generate-auto-invoices')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Check for expired subscriptions - runs daily at midnight
+Schedule::command('subscriptions:check-expiry')
+    ->daily()
+    ->at('00:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Example: Check for lease expiries (uncomment and implement when ready)
 // Schedule::command('leases:check-expiry')
 //     ->daily()

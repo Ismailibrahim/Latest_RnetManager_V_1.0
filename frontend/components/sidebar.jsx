@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   ArrowLeftRight,
   Building2,
@@ -24,8 +25,10 @@ import {
   LineChart,
   BarChart,
   Banknote,
+  Shield,
 } from "lucide-react";
 import clsx from "clsx";
+import { API_BASE_URL } from "@/utils/api-config";
 
 const navigation = [
   { name: "Overview", href: "/", icon: Home },
@@ -54,12 +57,40 @@ const navigation = [
 
 export function Sidebar({ onNavigate }) {
   const pathname = usePathname();
+  const [userRole, setUserRole] = useState(null);
+
+  useEffect(() => {
+    async function fetchUserRole() {
+      try {
+        const token = localStorage.getItem("auth_token");
+        if (!token) return;
+
+        const response = await fetch(`${API_BASE_URL}/account`, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const payload = await response.json();
+          setUserRole(payload?.user?.role);
+        }
+      } catch {
+        // Ignore errors
+      }
+    }
+
+    fetchUserRole();
+  }, []);
 
   const handleLinkClick = () => {
     if (onNavigate) {
       onNavigate();
     }
   };
+
+  const isSuperAdmin = userRole === "super_admin";
 
   return (
     <aside className="flex min-h-screen flex-col overflow-y-auto border-r border-slate-200 bg-white px-5 py-6 text-slate-700 shadow-sm">
@@ -108,6 +139,39 @@ export function Sidebar({ onNavigate }) {
             </Link>
           );
         })}
+
+        {/* Admin Section - Only visible to super_admin */}
+        {isSuperAdmin && (
+          <>
+            <div className="my-4 border-t border-slate-200"></div>
+            <div className="px-3 py-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Admin
+              </p>
+            </div>
+            <Link
+              href="/admin/subscriptions"
+              onClick={handleLinkClick}
+              className={clsx(
+                "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                pathname === "/admin/subscriptions" || pathname.startsWith("/admin/")
+                  ? "bg-primary/15 text-primary"
+                  : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+              )}
+            >
+              <Shield
+                size={18}
+                className={clsx(
+                  "transition-colors",
+                  pathname === "/admin/subscriptions" || pathname.startsWith("/admin/")
+                    ? "text-primary"
+                    : "text-slate-400 group-hover:text-slate-900"
+                )}
+              />
+              Subscription Management
+            </Link>
+          </>
+        )}
       </nav>
 
       <div className="mt-auto rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-600">

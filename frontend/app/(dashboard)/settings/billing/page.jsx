@@ -177,11 +177,55 @@ export default function BillingSettingsPage() {
           </p>
         </div>
         <div className="flex flex-col gap-2 text-sm text-slate-600">
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-success" />
-            Next renewal on{" "}
-            <strong>{formatDate(plan?.next_renewal_date)}</strong>
-          </div>
+          {plan?.subscription_expires_at ? (
+            <>
+              <div className="flex items-center gap-2">
+                {plan?.is_expired ? (
+                  <span className="h-2 w-2 rounded-full bg-red-500" />
+                ) : plan?.is_expiring_soon ? (
+                  <span className="h-2 w-2 rounded-full bg-amber-500" />
+                ) : (
+                  <span className="h-2 w-2 rounded-full bg-success" />
+                )}
+                {plan?.is_expired ? (
+                  <>
+                    Subscription expired on{" "}
+                    <strong className="text-red-600">
+                      {formatDate(plan?.subscription_expires_at)}
+                    </strong>
+                  </>
+                ) : (
+                  <>
+                    Expires on{" "}
+                    <strong>{formatDate(plan?.subscription_expires_at)}</strong>
+                    {plan?.days_until_expiry !== null && (
+                      <span className="text-xs">
+                        ({plan.days_until_expiry} day
+                        {plan.days_until_expiry !== 1 ? "s" : ""} left)
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+              {plan?.is_expiring_soon && !plan?.is_expired && (
+                <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                  <AlertCircle className="h-4 w-4" />
+                  Your subscription expires soon. Please renew to continue service.
+                </div>
+              )}
+              {plan?.is_expired && (
+                <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  <AlertCircle className="h-4 w-4" />
+                  Your subscription has expired. Please contact support to renew.
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-success" />
+              <strong>Never expires</strong> (Basic tier)
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4 text-warning" />
             Need help? Contact <strong>billing@rentapp.test</strong>

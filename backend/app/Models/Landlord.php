@@ -15,11 +15,90 @@ class Landlord extends Model
     protected $fillable = [
         'company_name',
         'subscription_tier',
+        'subscription_started_at',
+        'subscription_expires_at',
+        'subscription_status',
+        'subscription_auto_renew',
     ];
 
     public const TIER_BASIC = 'basic';
     public const TIER_PRO = 'pro';
     public const TIER_ENTERPRISE = 'enterprise';
+
+    public const STATUS_ACTIVE = 'active';
+    public const STATUS_EXPIRED = 'expired';
+    public const STATUS_SUSPENDED = 'suspended';
+    public const STATUS_CANCELLED = 'cancelled';
+
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'subscription_started_at' => 'date',
+            'subscription_expires_at' => 'date',
+            'subscription_auto_renew' => 'boolean',
+        ];
+    }
+
+    /**
+     * Check if subscription is currently active.
+     */
+    public function isSubscriptionActive(): bool
+    {
+        if ($this->subscription_status !== self::STATUS_ACTIVE) {
+            return false;
+        }
+
+        // Basic tier never expires
+        if ($this->subscription_tier === self::TIER_BASIC) {
+            return true;
+        }
+
+        // Check if expired
+        if ($this->subscription_expires_at && $this->subscription_expires_at->isPast()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Check if subscription is expired.
+     */
+    public function isExpired(): bool
+    {
+        if ($this->subscription_status === self::STATUS_EXPIRED) {
+            return true;
+        }
+
+        // Basic tier never expires
+        if ($this->subscription_tier === self::TIER_BASIC) {
+            return false;
+        }
+
+        // Check if expiry date has passed
+        if ($this->subscription_expires_at && $this->subscription_expires_at->isPast()) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Get days until expiry (negative if expired).
+     */
+    public function daysUntilExpiry(): ?int
+    {
+        if ($this->subscription_tier === self::TIER_BASIC || !$this->subscription_expires_at) {
+            return null; // Never expires
+        }
+
+        return now()->diffInDays($this->subscription_expires_at, false);
+    }
 
     public function users(): HasMany
     {

@@ -226,6 +226,27 @@ class UnifiedPaymentService
             }
         }
 
+        // Validate that linked invoice is not already paid (if linked to a maintenance invoice)
+        if ($sourceType === 'maintenance_invoice' && $sourceId) {
+            // Extract numeric ID if source_id is in format "type:id" (e.g., "maintenance_invoice:123")
+            $numericId = is_string($sourceId) && str_contains($sourceId, ':')
+                ? (int) explode(':', $sourceId, 2)[1]
+                : (int) $sourceId;
+
+            if ($numericId > 0) {
+                $invoice = MaintenanceInvoice::withoutGlobalScopes()
+                    ->where('id', $numericId)
+                    ->where('landlord_id', $user->landlord_id)
+                    ->first();
+
+                if ($invoice && $invoice->status === 'paid') {
+                    throw ValidationException::withMessages([
+                        'source_id' => 'This invoice has already been paid and cannot receive additional payments.',
+                    ]);
+                }
+            }
+        }
+
         // Payment method is stored as-is (string) - no normalization needed
         // unified_payment_entries.payment_method is VARCHAR, so it can store payment method names directly
         $paymentMethod = Arr::get($payload, 'payment_method');
@@ -714,82 +735,70 @@ class UnifiedPaymentService
                 'grand_total' => $totalAmount,
             ]);
             
-            // Update the invoice - try using the model instance first, then fall back to update()
-            // This ensures model events fire but we bypass global scopes
-            $invoiceToUpdate = MaintenanceInvoice::withoutGlobalScopes()
-                ->where('id', $invoiceId)
-                ->where('landlord_id', $landlordId)
-                ->first();
-            
-            if (!$invoiceToUpdate) {
-                \Log::error('Cannot find invoice to update', [
-                    'invoice_id' => $invoiceId,
-                    'landlord_id' => $landlordId,
-                ]);
-                return;
-            }
-            
-            $invoiceToUpdate->status = 'paid';
-            $invoiceToUpdate->paid_date = $paidDate;
+            // Update the invoice using model instance to ensure model events fire
+            // Use withoutGlobalScopes to bypass the global scope that depends on Auth::user()
+            $invoice->status = 'paid';
+            $invoice->paid_date = $paidDate;
             if ($paymentMethod) {
-                $invoiceToUpdate->payment_method = $paymentMethod;
+                $invoice->payment_method = $paymentMethod;
             }
             
             try {
-                $invoiceToUpdate->save();
-                $updated = 1;
+                $invoice->save();
+                
+                \Log::info('Maintenance invoice status updated to paid', [
+                    'invoice_id' => $invoiceId,
+                    'new_status' => $invoice->status,
+                    'paid_date' => $invoice->paid_date,
+                ]);
             } catch (\Exception $e) {
-                \Log::error('Failed to save maintenance invoice', [
+                \Log::error('Failed to save maintenance invoice, trying direct update', [
                     'invoice_id' => $invoiceId,
                     'error' => $e->getMessage(),
                     'trace' => $e->getTraceAsString(),
                 ]);
-                // Try direct update as fallback
+                
+                // Try direct update as fallback - include payment_method in the update
+                $updateData = [
+                    'status' => 'paid',
+                    'paid_date' => $paidDate,
+                ];
+                
+                if ($paymentMethod) {
+                    $updateData['payment_method'] = $paymentMethod;
+                }
+                
                 $updated = MaintenanceInvoice::withoutGlobalScopes()
                     ->where('id', $invoiceId)
                     ->where('landlord_id', $landlordId)
-                    ->update([
-                        'status' => 'paid',
-                        'paid_date' => $paidDate,
+                    ->update($updateData);
+                
+                if ($updated === 0) {
+                    \Log::error('Maintenance invoice direct update returned 0 rows', [
+                        'invoice_id' => $invoiceId,
+                        'landlord_id' => $landlordId,
+                        'invoice_exists' => MaintenanceInvoice::withoutGlobalScopes()->where('id', $invoiceId)->exists(),
+                        'invoice_landlord_id' => MaintenanceInvoice::withoutGlobalScopes()->where('id', $invoiceId)->value('landlord_id'),
                     ]);
-            }
-            
-            \Log::info('Maintenance invoice status update attempted', [
-                'invoice_id' => $invoiceId,
-                'rows_updated' => $updated,
-                'paid_date' => $paidDate,
-                'payment_method' => $paymentMethod,
-            ]);
-            
-            if ($updated === 0) {
-                \Log::error('Maintenance invoice update returned 0 rows - invoice may not exist or landlord_id mismatch', [
-                    'invoice_id' => $invoiceId,
-                    'landlord_id' => $landlordId,
-                    'invoice_exists' => MaintenanceInvoice::withoutGlobalScopes()->where('id', $invoiceId)->exists(),
-                    'invoice_landlord_id' => MaintenanceInvoice::withoutGlobalScopes()->where('id', $invoiceId)->value('landlord_id'),
-                ]);
+                } else {
+                    // Reload the invoice instance after direct update
+                    $invoice = MaintenanceInvoice::withoutGlobalScopes()
+                        ->where('id', $invoiceId)
+                        ->where('landlord_id', $landlordId)
+                        ->first();
+                }
             }
             
             // Reload invoice to verify it was saved correctly
-            $invoice = MaintenanceInvoice::withoutGlobalScopes()
-                ->where('id', $invoiceId)
-                ->where('landlord_id', $landlordId)
-                ->first();
-                
-            if ($invoice && $invoice->status === 'paid') {
-                \Log::info('Maintenance invoice status verified as paid', [
-                    'invoice_id' => $invoiceId,
-                    'status' => $invoice->status,
-                    'paid_date' => $invoice->paid_date,
-                ]);
-            } else {
-                \Log::error('Maintenance invoice status was not saved correctly', [
-                    'invoice_id' => $invoiceId,
-                    'expected_status' => 'paid',
-                    'actual_status' => $invoice?->status ?? 'not found',
-                    'rows_updated' => $updated,
-                    'invoice_found' => $invoice !== null,
-                ]);
+            if ($invoice) {
+                $invoice->refresh();
+                if ($invoice->status !== 'paid') {
+                    \Log::error('Maintenance invoice status was not saved correctly', [
+                        'invoice_id' => $invoiceId,
+                        'expected_status' => 'paid',
+                        'actual_status' => $invoice->status,
+                    ]);
+                }
             }
         } elseif ($isPartial) {
             // For partial payments, we keep the invoice as 'sent' or 'overdue' but record the partial payment
@@ -828,64 +837,74 @@ class UnifiedPaymentService
         $isFullyPaid = ! $isPartial && $paymentAmount >= $totalAmount - 0.01; // Allow small rounding differences
 
         if ($isFullyPaid) {
-            // Update the invoice using model instance to ensure proper saving
-            $invoiceToUpdate = MaintenanceInvoice::withoutGlobalScopes()
-                ->where('invoice_number', $invoiceNumber)
-                ->where('landlord_id', $landlordId)
-                ->first();
-            
-            if (!$invoiceToUpdate) {
-                \Log::error('Cannot find invoice to update by invoice number', [
-                    'invoice_number' => $invoiceNumber,
-                    'landlord_id' => $landlordId,
-                ]);
-                return;
-            }
-            
-            $invoiceToUpdate->status = 'paid';
-            $invoiceToUpdate->paid_date = $paidDate;
+            // Update the invoice using model instance to ensure model events fire
+            $invoice->status = 'paid';
+            $invoice->paid_date = $paidDate;
             if ($paymentMethod) {
-                $invoiceToUpdate->payment_method = $paymentMethod;
+                $invoice->payment_method = $paymentMethod;
             }
             
             try {
-                $invoiceToUpdate->save();
-                $updated = 1;
+                $invoice->save();
+                
+                \Log::info('Maintenance invoice status updated to paid via financial record', [
+                    'invoice_number' => $invoiceNumber,
+                    'new_status' => $invoice->status,
+                    'paid_date' => $invoice->paid_date,
+                ]);
             } catch (\Exception $e) {
-                \Log::error('Failed to save maintenance invoice by invoice number', [
+                \Log::error('Failed to save maintenance invoice by invoice number, trying direct update', [
                     'invoice_number' => $invoiceNumber,
                     'error' => $e->getMessage(),
                 ]);
-                // Try direct update as fallback
+                
+                // Try direct update as fallback - include payment_method in the update
+                $updateData = [
+                    'status' => 'paid',
+                    'paid_date' => $paidDate,
+                ];
+                
+                if ($paymentMethod) {
+                    $updateData['payment_method'] = $paymentMethod;
+                }
+                
                 $updated = MaintenanceInvoice::withoutGlobalScopes()
                     ->where('invoice_number', $invoiceNumber)
                     ->where('landlord_id', $landlordId)
-                    ->update([
-                        'status' => 'paid',
-                        'paid_date' => $paidDate,
+                    ->update($updateData);
+                
+                if ($updated === 0) {
+                    \Log::error('Maintenance invoice direct update returned 0 rows', [
+                        'invoice_number' => $invoiceNumber,
+                        'landlord_id' => $landlordId,
                     ]);
+                } else {
+                    // Reload the invoice instance after direct update
+                    $invoice = MaintenanceInvoice::withoutGlobalScopes()
+                        ->where('invoice_number', $invoiceNumber)
+                        ->where('landlord_id', $landlordId)
+                        ->first();
+                }
             }
             
-            \Log::info('Maintenance invoice status update attempted via financial record', [
-                'invoice_number' => $invoiceNumber,
-                'rows_updated' => $updated,
-                'paid_date' => $paidDate,
-                'payment_method' => $paymentMethod,
-            ]);
-            
-            // Reload invoice to verify
-            $invoice = MaintenanceInvoice::withoutGlobalScopes()
-                ->where('invoice_number', $invoiceNumber)
-                ->where('landlord_id', $landlordId)
-                ->first();
+            // Reload invoice to verify it was saved correctly
+            if ($invoice) {
+                $invoice->refresh();
                 
-            if ($invoice && $invoice->status === 'paid') {
-                \Log::info('Maintenance invoice status verified as paid via financial record', [
-                    'invoice_number' => $invoiceNumber,
-                    'invoice_id' => $invoice->id,
-                    'status' => $invoice->status,
-                    'paid_date' => $invoice->paid_date,
-                ]);
+                if ($invoice->status === 'paid') {
+                    \Log::info('Maintenance invoice status verified as paid via financial record', [
+                        'invoice_number' => $invoiceNumber,
+                        'invoice_id' => $invoice->id,
+                        'status' => $invoice->status,
+                        'paid_date' => $invoice->paid_date,
+                    ]);
+                } else {
+                    \Log::error('Maintenance invoice status was not saved correctly via financial record', [
+                        'invoice_number' => $invoiceNumber,
+                        'expected_status' => 'paid',
+                        'actual_status' => $invoice->status,
+                    ]);
+                }
             }
         } elseif ($isPartial) {
             \Log::info('Partial payment received for maintenance invoice via financial record', [

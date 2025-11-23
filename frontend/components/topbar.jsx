@@ -207,6 +207,7 @@ export function Topbar() {
         <div className="flex items-center gap-4">
           <button
             type="button"
+            onClick={() => router.push("/notifications")}
             className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:text-primary"
             aria-label="Notifications"
           >

@@ -36,13 +36,24 @@ class BillingSettingsController extends Controller
 
         $subscriptionLimit = $landlord->subscriptionLimit;
 
+        $daysUntilExpiry = $landlord->daysUntilExpiry();
+        $isExpiringSoon = $daysUntilExpiry !== null && $daysUntilExpiry >= 0 && $daysUntilExpiry <= 7;
+        $isExpired = $landlord->isExpired();
+
         $plan = [
             'tier' => $landlord->subscription_tier,
             'name' => Str::headline($landlord->subscription_tier ?? 'unknown'),
             'monthly_price' => $subscriptionLimit?->monthly_price ?? 0,
             'currency' => 'USD',
-            'status' => 'active',
-            'next_renewal_date' => now()->addMonthNoOverflow()->startOfMonth()->toDateString(),
+            'status' => $landlord->subscription_status ?? 'active',
+            'subscription_started_at' => $landlord->subscription_started_at?->toDateString(),
+            'subscription_expires_at' => $landlord->subscription_expires_at?->toDateString(),
+            'subscription_auto_renew' => (bool) $landlord->subscription_auto_renew,
+            'days_until_expiry' => $daysUntilExpiry,
+            'is_active' => $landlord->isSubscriptionActive(),
+            'is_expired' => $isExpired,
+            'is_expiring_soon' => $isExpiringSoon,
+            'next_renewal_date' => $landlord->subscription_expires_at?->toDateString() ?? null,
             'features' => $subscriptionLimit?->features ?? [],
             'limits' => [
                 'properties' => $subscriptionLimit?->max_properties,

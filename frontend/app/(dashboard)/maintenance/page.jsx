@@ -885,6 +885,11 @@ export default function MaintenancePage() {
                       <div className="text-xs text-slate-500">
                         Unit {item.unit?.unit_number ?? `#${item.unit_id}`}
                       </div>
+                      {item.unit?.is_occupied && item.unit?.current_tenant && (
+                        <div className="mt-1 text-xs font-medium text-primary">
+                          Tenant: {item.unit.current_tenant.full_name}
+                        </div>
+                      )}
                     </div>
                   ),
                 },
@@ -1475,6 +1480,11 @@ function MaintenanceRequestCard({ request, onEdit, onDelete, deletingId, isInvoi
             {request.unit?.property?.name ?? "Unknown Property"} - Unit{" "}
             {request.unit?.unit_number ?? `#${request.unit_id}`}
           </p>
+          {request.unit?.is_occupied && request.unit?.current_tenant && (
+            <p className="mt-1 text-sm font-medium text-primary">
+              Tenant: {request.unit.current_tenant.full_name}
+            </p>
+          )}
         </div>
         <div className="flex flex-col items-end gap-2">
           <TypeBadge type={request.type ?? "repair"} />

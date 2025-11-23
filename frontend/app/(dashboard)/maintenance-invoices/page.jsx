@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   AlertTriangle,
   ClipboardCheck,
@@ -55,7 +55,7 @@ const emptyLineItem = {
 };
 
 export default function MaintenanceInvoicesPage() {
-  const searchParams = useSearchParams();
+  const pathname = usePathname();
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -162,30 +162,84 @@ export default function MaintenanceInvoicesPage() {
     };
   }, [refreshKey, statusFilter]);
 
-  // Auto-refresh when window gains focus, but only if user was away for more than 2 seconds
-  // This prevents excessive refreshes when just switching tabs briefly
+  // Force refresh when navigating to this page (more aggressive approach)
   useEffect(() => {
-    let blurTime = null;
-    
-    const handleBlur = () => {
-      blurTime = Date.now();
-    };
-    
-    const handleFocus = () => {
-      // Only refresh if user was away for more than 2 seconds
-      if (blurTime && Date.now() - blurTime > 2000) {
-        setRefreshKey((value) => value + 1);
-      }
-      blurTime = null;
-    };
+    if (pathname === '/maintenance-invoices') {
+      // Always refresh when navigating to this page (with a small delay to avoid duplicate calls)
+      const timeoutId = setTimeout(() => {
+        console.log('[Maintenance Invoices] Pathname changed to maintenance-invoices, refreshing...');
+        setRefreshKey((prev) => prev + 1);
+      }, 2000);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [pathname]);
 
-    window.addEventListener('blur', handleBlur);
+  // Auto-refresh mechanism to ensure invoice status updates are reflected
+  // Listens for payment creation events via localStorage and refreshes when navigating back
+  useEffect(() => {
+    const checkForPaymentUpdate = () => {
+      if (pathname !== '/maintenance-invoices') {
+        return;
+      }
+      
+      const paymentFlag = localStorage.getItem('maintenance_invoice_payment_created');
+      if (paymentFlag) {
+        const paymentTime = parseInt(paymentFlag, 10);
+        const now = Date.now();
+        // Only refresh if payment was created in the last 30 seconds
+        if (now - paymentTime < 30000) {
+          console.log('[Maintenance Invoices] Payment detected, refreshing in 1.5s...', {
+            paymentTime,
+            now,
+            age: now - paymentTime,
+          });
+          // Clear the flag
+          localStorage.removeItem('maintenance_invoice_payment_created');
+          // Delay to ensure backend has finished updating status
+          setTimeout(() => {
+            console.log('[Maintenance Invoices] Refreshing invoice list...');
+            setRefreshKey((prev) => prev + 1);
+          }, 1500);
+        } else {
+          // Flag is too old, clear it
+          localStorage.removeItem('maintenance_invoice_payment_created');
+        }
+      }
+    };
+    
+    // Check immediately when component mounts or pathname changes to this page
+    checkForPaymentUpdate();
+    
+    // Also listen for storage events (when payment is created in another tab/window)
+    const handleStorageChange = (e) => {
+      if (e.key === 'maintenance_invoice_payment_created') {
+        checkForPaymentUpdate();
+      }
+    };
+    
+    // Also refresh when page becomes visible (navigating back from payment collection)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkForPaymentUpdate();
+      }
+    };
+    
+    // Also check on window focus (when switching back to tab)
+    const handleFocus = () => {
+      checkForPaymentUpdate();
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
+    
     return () => {
-      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('storage', handleStorageChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
     let isMounted = true;
@@ -238,8 +292,20 @@ export default function MaintenanceInvoicesPage() {
         const requestsPayload = await requestsResponse.json();
         if (!isMounted) return;
 
-        setTenantUnits(Array.isArray(unitsPayload?.data) ? unitsPayload.data : []);
-        setMaintenanceRequests(Array.isArray(requestsPayload?.data) ? requestsPayload.data : []);
+        const tenantUnitsData = Array.isArray(unitsPayload?.data) ? unitsPayload.data : [];
+        const maintenanceRequestsData = Array.isArray(requestsPayload?.data) ? requestsPayload.data : [];
+
+        // Debug logging (remove in production if needed)
+        if (tenantUnitsData.length === 0) {
+          console.warn('No tenant units found. Response:', unitsPayload);
+          console.warn('Request URL:', `${API_BASE_URL}/tenant-units?per_page=200&status=active`);
+        } else {
+          // Log first tenant unit to verify structure
+          console.log('Sample tenant unit data:', tenantUnitsData[0]);
+        }
+
+        setTenantUnits(tenantUnitsData);
+        setMaintenanceRequests(maintenanceRequestsData);
       } catch (err) {
         if (err.name === "AbortError") {
           return;
@@ -269,8 +335,9 @@ export default function MaintenanceInvoicesPage() {
 
   // Handle URL parameters to pre-fill form from "Create Invoice" button
   useEffect(() => {
-    const maintenanceRequestId = searchParams.get("maintenance_request_id");
-    const unitId = searchParams.get("unit_id");
+    const params = new URLSearchParams(window.location.search);
+    const maintenanceRequestId = params.get("maintenance_request_id");
+    const unitId = params.get("unit_id");
 
     if (maintenanceRequestId && maintenanceRequests.length > 0 && tenantUnits.length > 0) {
       const request = maintenanceRequests.find((r) => String(r.id) === maintenanceRequestId);
@@ -319,7 +386,7 @@ export default function MaintenanceInvoicesPage() {
         }
       }
     }
-  }, [searchParams, maintenanceRequests, tenantUnits]);
+  }, [maintenanceRequests, tenantUnits]);
 
   const tenantUnitMap = useMemo(() => {
     return tenantUnits.reduce((acc, unit) => {
@@ -394,15 +461,24 @@ export default function MaintenanceInvoicesPage() {
   }, [filteredInvoices]);
 
   const tenantUnitOptions = useMemo(() => {
+    if (!Array.isArray(tenantUnits) || tenantUnits.length === 0) {
+      return [];
+    }
+
     return tenantUnits
       .map((unit) => {
+        if (!unit || !unit.id) {
+          return null;
+        }
+
         const labelParts = [
-          unit?.tenant?.full_name ?? `Tenant #${unit?.tenant_id}`,
-          unit?.unit?.unit_number ?? (unit?.unit?.id ? `Unit #${unit.unit.id}` : `Unit #${unit?.unit_id}`),
+          unit?.tenant?.full_name ?? `Tenant #${unit?.tenant_id ?? 'N/A'}`,
+          unit?.unit?.unit_number ?? (unit?.unit?.id ? `Unit #${unit.unit.id}` : `Unit #${unit?.unit_id ?? 'N/A'}`),
         ].filter(Boolean);
 
         return { value: String(unit.id), label: labelParts.join(" · ") };
       })
+      .filter(Boolean)
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [tenantUnits]);
 
@@ -1396,6 +1472,7 @@ export default function MaintenanceInvoicesPage() {
         tenantUnitOptions={tenantUnitOptions}
         maintenanceRequestOptions={maintenanceRequestOptions}
         optionsLoading={optionsLoading}
+        optionsError={optionsError}
         systemSettings={systemSettings}
       />
 
@@ -1706,6 +1783,7 @@ function MaintenanceInvoiceFormPanel({
   tenantUnitOptions,
   maintenanceRequestOptions,
   optionsLoading,
+  optionsError,
   systemSettings,
 }) {
   if (!open) return null;
@@ -1750,6 +1828,20 @@ function MaintenanceInvoiceFormPanel({
           </div>
         ) : null}
 
+        {!optionsLoading && tenantUnitOptions.length === 0 ? (
+          <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-700">
+            <AlertTriangle size={18} className="mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-medium">No tenant units available</p>
+              <p className="mt-1 text-xs text-amber-600">
+                {optionsError 
+                  ? `Error loading tenant units: ${optionsError}` 
+                  : "You need to create at least one active tenant-unit assignment before generating maintenance invoices."}
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <FormField
@@ -1768,7 +1860,11 @@ function MaintenanceInvoiceFormPanel({
                 className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <option value="" disabled>
-                  Select tenant unit
+                  {optionsLoading 
+                    ? "Loading tenant units..." 
+                    : tenantUnitOptions.length === 0 
+                    ? "No tenant units available" 
+                    : "Select tenant unit"}
                 </option>
                 {tenantUnitOptions.map((option) => (
                   <option key={option.value} value={option.value}>

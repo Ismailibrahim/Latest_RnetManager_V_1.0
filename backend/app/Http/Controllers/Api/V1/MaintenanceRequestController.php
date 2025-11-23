@@ -23,7 +23,16 @@ class MaintenanceRequestController extends Controller
 
         $query = MaintenanceRequest::query()
             ->where('landlord_id', $request->user()->landlord_id)
-            ->with(['unit.property:id,name', 'unit:id,unit_number,property_id', 'asset:id,name'])
+            ->with([
+                'unit.property:id,name',
+                'unit:id,unit_number,property_id,is_occupied',
+                'unit.tenantUnits' => function ($q) {
+                    $q->where('status', 'active')
+                      ->with('tenant:id,full_name')
+                      ->limit(1);
+                },
+                'asset:id,name'
+            ])
             ->latest('maintenance_date');
 
         if ($request->filled('unit_id')) {
@@ -58,7 +67,16 @@ class MaintenanceRequestController extends Controller
         $data['landlord_id'] = $request->user()->landlord_id;
 
         $maintenanceRequest = MaintenanceRequest::create($data);
-        $maintenanceRequest->load(['unit.property:id,name', 'unit:id,unit_number,property_id', 'asset:id,name']);
+        $maintenanceRequest->load([
+            'unit.property:id,name',
+            'unit:id,unit_number,property_id,is_occupied',
+            'unit.tenantUnits' => function ($q) {
+                $q->where('status', 'active')
+                  ->with('tenant:id,full_name')
+                  ->limit(1);
+            },
+            'asset:id,name'
+        ]);
 
         return MaintenanceRequestResource::make($maintenanceRequest)
             ->response()
@@ -74,7 +92,16 @@ class MaintenanceRequestController extends Controller
             abort(403, 'Unauthorized access to this maintenance request.');
         }
 
-        $maintenanceRequest->load(['unit.property:id,name', 'unit:id,unit_number,property_id', 'asset:id,name']);
+        $maintenanceRequest->load([
+            'unit.property:id,name',
+            'unit:id,unit_number,property_id,is_occupied',
+            'unit.tenantUnits' => function ($q) {
+                $q->where('status', 'active')
+                  ->with('tenant:id,full_name')
+                  ->limit(1);
+            },
+            'asset:id,name'
+        ]);
 
         return MaintenanceRequestResource::make($maintenanceRequest);
     }
@@ -94,7 +121,16 @@ class MaintenanceRequestController extends Controller
             $maintenanceRequest->update($validated);
         }
 
-        $maintenanceRequest->load(['unit.property:id,name', 'unit:id,unit_number,property_id', 'asset:id,name']);
+        $maintenanceRequest->load([
+            'unit.property:id,name',
+            'unit:id,unit_number,property_id,is_occupied',
+            'unit.tenantUnits' => function ($q) {
+                $q->where('status', 'active')
+                  ->with('tenant:id,full_name')
+                  ->limit(1);
+            },
+            'asset:id,name'
+        ]);
 
         return MaintenanceRequestResource::make($maintenanceRequest);
     }

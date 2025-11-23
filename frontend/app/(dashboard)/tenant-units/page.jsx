@@ -519,6 +519,13 @@ function TenantUnitsPageContent() {
                   label: "Actions",
                   render: (_, item) => (
                     <div className="flex items-center gap-2">
+                      <Link
+                        href={`/tenant-units/${item.id}`}
+                        className="text-sm font-semibold text-primary transition hover:text-primary/80"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        View Details →
+                      </Link>
                       {item?.status === "active" && (
                         <button
                           type="button"
@@ -535,10 +542,10 @@ function TenantUnitsPageContent() {
                       {item?.tenant_id && (
                         <Link
                           href={`/tenants/${item.tenant_id}`}
-                          className="text-sm font-semibold text-primary transition hover:text-primary/80"
+                          className="text-xs font-semibold text-slate-500 transition hover:text-primary"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          View Tenant →
+                          View Tenant
                         </Link>
                       )}
                       {item?.unit_id && (
@@ -564,8 +571,8 @@ function TenantUnitsPageContent() {
                 />
               )}
               onRowClick={(lease) => {
-                if (lease?.tenant_id) {
-                  window.location.href = `/tenants/${lease.tenant_id}`;
+                if (lease?.id) {
+                  window.location.href = `/tenant-units/${lease.id}`;
                 }
               }}
             />
@@ -857,6 +864,13 @@ function LeaseCard({ lease, onEndLease }) {
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
         <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href={`/tenant-units/${lease.id}`}
+            className="text-sm font-semibold text-primary transition hover:text-primary/80"
+            onClick={(e) => e.stopPropagation()}
+          >
+            View Details →
+          </Link>
           {lease?.status === "active" && onEndLease && (
             <button
               type="button"
@@ -872,15 +886,17 @@ function LeaseCard({ lease, onEndLease }) {
           {lease?.tenant_id ? (
             <Link
               href={`/tenants/${lease.tenant_id}`}
-              className="text-sm font-semibold text-primary transition hover:text-primary/80"
+              className="text-xs font-semibold text-slate-500 transition hover:text-primary"
+              onClick={(e) => e.stopPropagation()}
             >
-              View tenant →
+              View tenant
             </Link>
           ) : null}
           {lease?.unit_id ? (
             <Link
               href={`/units/${lease.unit_id}`}
               className="text-xs font-semibold text-slate-500 transition hover:text-primary"
+              onClick={(e) => e.stopPropagation()}
             >
               View unit
             </Link>
@@ -889,6 +905,7 @@ function LeaseCard({ lease, onEndLease }) {
             <Link
               href={`/properties/${propertyId}`}
               className="text-xs font-semibold text-slate-500 transition hover:text-primary"
+              onClick={(e) => e.stopPropagation()}
             >
               View property
             </Link>

@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\V1\VendorController;
 use App\Http\Controllers\Api\V1\Mobile\MobilePropertyController;
 use App\Http\Controllers\Api\V1\Mobile\MobileUnitController;
 use App\Http\Controllers\Api\V1\Mobile\MobilePaymentController;
+use App\Http\Controllers\Api\V1\Admin\AdminLandlordController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 
@@ -353,6 +354,22 @@ Route::prefix('v1')->group(function (): void {
                 ->name('api.v1.mobile.units.invoices');
             Route::post('payments', [MobilePaymentController::class, 'store'])
                 ->name('api.v1.mobile.payments.store');
+        });
+
+        // Admin routes - only accessible to super_admin users
+        Route::prefix('admin')->group(function (): void {
+            Route::get('landlords', [AdminLandlordController::class, 'index'])
+                ->name('api.v1.admin.landlords.index');
+            Route::get('landlords/{landlord}', [AdminLandlordController::class, 'show'])
+                ->name('api.v1.admin.landlords.show');
+            Route::patch('landlords/{landlord}/subscription', [AdminLandlordController::class, 'updateSubscription'])
+                ->name('api.v1.admin.landlords.subscription.update');
+            Route::post('landlords/{landlord}/subscription/extend', [AdminLandlordController::class, 'extendSubscription'])
+                ->name('api.v1.admin.landlords.subscription.extend');
+            Route::post('landlords/{landlord}/subscription/suspend', [AdminLandlordController::class, 'suspendSubscription'])
+                ->name('api.v1.admin.landlords.subscription.suspend');
+            Route::post('landlords/{landlord}/subscription/activate', [AdminLandlordController::class, 'activateSubscription'])
+                ->name('api.v1.admin.landlords.subscription.activate');
         });
     });
 });
