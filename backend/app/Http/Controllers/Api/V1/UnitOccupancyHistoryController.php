@@ -74,7 +74,8 @@ class UnitOccupancyHistoryController extends Controller
 
         // Ensure unit occupancy history's unit belongs to authenticated user's landlord (defense in depth)
         $unitOccupancyHistory->load('unit');
-        if (! $unitOccupancyHistory->unit || $unitOccupancyHistory->unit->landlord_id !== $request->user()->landlord_id) {
+        $landlordId = $this->getLandlordId($request);
+        if (! $unitOccupancyHistory->unit || $unitOccupancyHistory->unit->landlord_id !== $landlordId) {
             abort(403, 'Unauthorized access to this unit occupancy history.');
         }
 

@@ -27,8 +27,9 @@ class TenantController extends Controller
 
         $perPage = $this->resolvePerPage($request);
 
+        $landlordId = $this->getLandlordId($request);
         $query = Tenant::query()
-            ->where('landlord_id', $request->user()->landlord_id)
+            ->where('landlord_id', $landlordId)
             ->with(['nationality:id,name'])
             ->withCount([
                 'tenantUnits',
@@ -60,7 +61,7 @@ class TenantController extends Controller
     public function store(StoreTenantRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $data['landlord_id'] = $request->user()->landlord_id;
+        $data['landlord_id'] = $this->getLandlordId($request);
         $data['status'] = $data['status'] ?? 'active';
 
         $tenant = Tenant::create($data);

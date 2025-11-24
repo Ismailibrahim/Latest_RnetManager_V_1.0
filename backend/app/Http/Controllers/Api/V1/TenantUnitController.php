@@ -28,8 +28,9 @@ class TenantUnitController extends Controller
 
         $perPage = $this->resolvePerPage($request);
 
+        $landlordId = $this->getLandlordId($request);
         $query = TenantUnit::query()
-            ->where('landlord_id', $request->user()->landlord_id)
+            ->where('landlord_id', $landlordId)
             ->with(['unit:id,unit_number,property_id', 'unit.property:id,name', 'tenant:id,full_name'])
             ->latest();
 
@@ -55,7 +56,7 @@ class TenantUnitController extends Controller
     public function store(StoreTenantUnitRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $data['landlord_id'] = $request->user()->landlord_id;
+        $data['landlord_id'] = $this->getLandlordId($request);
         $data['status'] = $data['status'] ?? 'active';
 
         if (array_key_exists('lease_document_path', $data)) {

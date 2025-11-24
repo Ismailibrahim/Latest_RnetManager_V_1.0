@@ -22,7 +22,7 @@ class MobileUnitController extends Controller
     {
         $this->authorize('viewAny', Unit::class);
 
-        $landlordId = $request->user()->landlord_id;
+        $landlordId = $this->getLandlordId($request);
 
         $query = Unit::query()
             ->where('landlord_id', $landlordId)
@@ -111,7 +111,7 @@ class MobileUnitController extends Controller
             abort(403, 'Unauthorized access to this unit.');
         }
 
-        $landlordId = $request->user()->landlord_id;
+        $landlordId = $this->getLandlordId($request);
 
         // Load relationships
         $unit->load([
@@ -166,7 +166,7 @@ class MobileUnitController extends Controller
             abort(403, 'Unauthorized access to this unit.');
         }
 
-        $landlordId = $request->user()->landlord_id;
+        $landlordId = $this->getLandlordId($request);
 
         // Get active tenant unit for this unit
         $tenantUnit = \App\Models\TenantUnit::query()

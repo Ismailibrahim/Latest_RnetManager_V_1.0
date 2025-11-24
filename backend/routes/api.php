@@ -75,75 +75,78 @@ Route::prefix('v1')->group(function (): void {
         ]);
     });
     
-    // Debug endpoint to check CORS config
-    Route::get('/cors-debug', function (Request $request) {
-        return response()->json([
-            'cors_config' => config('cors'),
-            'origin' => $request->headers->get('Origin'),
-            'method' => $request->getMethod(),
-            'path' => $request->path(),
-            'middleware' => $request->route()?->middleware() ?? [],
-        ]);
-    });
+    // Debug endpoints - only available in debug mode
+    if (config('app.debug')) {
+        // Debug endpoint to check CORS config
+        Route::get('/cors-debug', function (Request $request) {
+            return response()->json([
+                'cors_config' => config('cors'),
+                'origin' => $request->headers->get('Origin'),
+                'method' => $request->getMethod(),
+                'path' => $request->path(),
+                'middleware' => $request->route()?->middleware() ?? [],
+            ]);
+        });
 
-    // CORS test endpoint (no auth required)
-    Route::get('/cors-test', function (Request $request) {
-        return response()->json([
-            'status' => 'ok',
-            'message' => 'CORS is working!',
-            'origin' => $request->headers->get('Origin'),
-            'referer' => $request->headers->get('Referer'),
-            'timestamp' => now()->toIso8601String(),
-        ]);
-    })->name('api.v1.cors-test');
-    
-    // OPTIONS test endpoint - explicitly handle OPTIONS requests
-    // This endpoint ALWAYS sets CORS headers, bypassing all middleware
-    Route::match(['OPTIONS', 'GET'], '/cors-options-test', function (Request $request) {
-        if ($request->getMethod() === 'OPTIONS') {
-            $origin = $request->headers->get('Origin');
-            $referer = $request->headers->get('Referer');
-            
-            // Extract origin from Referer if Origin is missing
-            if (!$origin && $referer) {
-                $parsedReferer = parse_url($referer);
-                if ($parsedReferer && isset($parsedReferer['scheme']) && isset($parsedReferer['host'])) {
-                    $port = isset($parsedReferer['port']) ? ':' . $parsedReferer['port'] : '';
-                    $origin = $parsedReferer['scheme'] . '://' . $parsedReferer['host'] . $port;
+        // CORS test endpoint (no auth required)
+        Route::get('/cors-test', function (Request $request) {
+            return response()->json([
+                'status' => 'ok',
+                'message' => 'CORS is working!',
+                'origin' => $request->headers->get('Origin'),
+                'referer' => $request->headers->get('Referer'),
+                'timestamp' => now()->toIso8601String(),
+            ]);
+        })->name('api.v1.cors-test');
+        
+        // OPTIONS test endpoint - explicitly handle OPTIONS requests
+        // This endpoint ALWAYS sets CORS headers, bypassing all middleware
+        Route::match(['OPTIONS', 'GET'], '/cors-options-test', function (Request $request) {
+            if ($request->getMethod() === 'OPTIONS') {
+                $origin = $request->headers->get('Origin');
+                $referer = $request->headers->get('Referer');
+                
+                // Extract origin from Referer if Origin is missing
+                if (!$origin && $referer) {
+                    $parsedReferer = parse_url($referer);
+                    if ($parsedReferer && isset($parsedReferer['scheme']) && isset($parsedReferer['host'])) {
+                        $port = isset($parsedReferer['port']) ? ':' . $parsedReferer['port'] : '';
+                        $origin = $parsedReferer['scheme'] . '://' . $parsedReferer['host'] . $port;
+                    }
                 }
+                
+                $allowOrigin = $origin ?: 'http://localhost:3000';
+                
+                // Create response and FORCE headers
+                $response = response()->noContent(204);
+                
+                // Use header() function directly to ensure headers are set
+                header('Access-Control-Allow-Origin: ' . $allowOrigin);
+                header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
+                header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Accept');
+                header('Access-Control-Allow-Credentials: true');
+                header('Access-Control-Max-Age: 86400');
+                
+                // Also set via response object
+                $response->headers->set('Access-Control-Allow-Origin', $allowOrigin, true);
+                $response->headers->set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS', true);
+                $response->headers->set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept', true);
+                $response->headers->set('Access-Control-Allow-Credentials', 'true', true);
+                $response->headers->set('Access-Control-Max-Age', '86400', true);
+                
+                error_log('OPTIONS Test Endpoint: Setting CORS headers - Origin: ' . $allowOrigin);
+                
+                return $response;
             }
             
-            $allowOrigin = $origin ?: 'http://localhost:3000';
-            
-            // Create response and FORCE headers
-            $response = response()->noContent(204);
-            
-            // Use header() function directly to ensure headers are set
-            header('Access-Control-Allow-Origin: ' . $allowOrigin);
-            header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
-            header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Accept');
-            header('Access-Control-Allow-Credentials: true');
-            header('Access-Control-Max-Age: 86400');
-            
-            // Also set via response object
-            $response->headers->set('Access-Control-Allow-Origin', $allowOrigin, true);
-            $response->headers->set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS', true);
-            $response->headers->set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept', true);
-            $response->headers->set('Access-Control-Allow-Credentials', 'true', true);
-            $response->headers->set('Access-Control-Max-Age', '86400', true);
-            
-            error_log('OPTIONS Test Endpoint: Setting CORS headers - Origin: ' . $allowOrigin);
-            
-            return $response;
-        }
-        
-        return response()->json([
-            'status' => 'ok',
-            'message' => 'OPTIONS test endpoint works!',
-            'method' => $request->getMethod(),
-            'origin' => $request->headers->get('Origin'),
-        ]);
-    })->name('api.v1.cors-options-test');
+            return response()->json([
+                'status' => 'ok',
+                'message' => 'OPTIONS test endpoint works!',
+                'method' => $request->getMethod(),
+                'origin' => $request->headers->get('Origin'),
+            ]);
+        })->name('api.v1.cors-options-test');
+    }
 
     // Health check endpoints
     Route::get('/health', [\App\Http\Controllers\Api\V1\HealthController::class, 'check'])
@@ -234,8 +237,9 @@ Route::prefix('v1')->group(function (): void {
         Route::post('maintenance-invoices/{maintenance_invoice}/link-payments', [MaintenanceInvoiceController::class, 'linkPayments'])
             ->name('api.v1.maintenance-invoices.link-payments');
         
-        // Debug route to check maintenance invoice payment linking
-        Route::get('debug/maintenance-invoice-payments', function (Request $request) {
+        // Debug route to check maintenance invoice payment linking (debug mode only)
+        if (config('app.debug')) {
+            Route::get('debug/maintenance-invoice-payments', function (Request $request) {
             $user = $request->user();
             if (!$user || !$user->landlord_id) {
                 return response()->json(['error' => 'Unauthorized'], 401);

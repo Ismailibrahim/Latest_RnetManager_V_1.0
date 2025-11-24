@@ -20,8 +20,9 @@ class MobilePropertyController extends Controller
     {
         $this->authorize('viewAny', Property::class);
 
+        $landlordId = $this->getLandlordId($request);
         $query = Property::query()
-            ->where('landlord_id', $request->user()->landlord_id)
+            ->where('landlord_id', $landlordId)
             ->withCount('units')
             ->latest();
 

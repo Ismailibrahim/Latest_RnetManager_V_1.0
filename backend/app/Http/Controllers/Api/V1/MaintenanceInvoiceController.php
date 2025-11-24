@@ -21,8 +21,9 @@ class MaintenanceInvoiceController extends Controller
 
         $perPage = $this->resolvePerPage($request);
 
+        $landlordId = $this->getLandlordId($request);
         $query = MaintenanceInvoice::query()
-            ->where('landlord_id', $request->user()->landlord_id)
+            ->where('landlord_id', $landlordId)
             ->with([
                 'tenantUnit.tenant:id,full_name',
                 'tenantUnit.unit:id,unit_number,property_id',
@@ -61,7 +62,7 @@ class MaintenanceInvoiceController extends Controller
     public function store(StoreMaintenanceInvoiceRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $data['landlord_id'] = $request->user()->landlord_id;
+        $data['landlord_id'] = $this->getLandlordId($request);
         // Ensure status aligns with enum ['sent','paid','overdue','cancelled']
         $data['status'] = $data['status'] ?? 'sent';
 
@@ -92,7 +93,8 @@ class MaintenanceInvoiceController extends Controller
         $this->authorize('view', $maintenanceInvoice);
 
         // Ensure maintenance invoice belongs to authenticated user's landlord (defense in depth)
-        if ($maintenanceInvoice->landlord_id !== $request->user()->landlord_id) {
+        $landlordId = $this->getLandlordId($request);
+        if ($maintenanceInvoice->landlord_id !== $landlordId) {
             abort(403, 'Unauthorized access to this maintenance invoice.');
         }
 
@@ -110,7 +112,8 @@ class MaintenanceInvoiceController extends Controller
         $this->authorize('update', $maintenanceInvoice);
 
         // Ensure maintenance invoice belongs to authenticated user's landlord (defense in depth)
-        if ($maintenanceInvoice->landlord_id !== $request->user()->landlord_id) {
+        $landlordId = $this->getLandlordId($request);
+        if ($maintenanceInvoice->landlord_id !== $landlordId) {
             abort(403, 'Unauthorized access to this maintenance invoice.');
         }
 

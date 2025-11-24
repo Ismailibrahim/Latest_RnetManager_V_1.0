@@ -29,8 +29,9 @@ class RentInvoiceController extends Controller
 
         $perPage = $this->resolvePerPage($request);
 
+        $landlordId = $this->getLandlordId($request);
         $query = RentInvoice::query()
-            ->where('landlord_id', $request->user()->landlord_id)
+            ->where('landlord_id', $landlordId)
             ->with('tenantUnit.tenant:id,full_name')
             ->latest('invoice_date');
 
@@ -52,7 +53,7 @@ class RentInvoiceController extends Controller
     public function store(StoreRentInvoiceRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $data['landlord_id'] = $request->user()->landlord_id;
+        $data['landlord_id'] = $this->getLandlordId($request);
         $data['status'] = $data['status'] ?? 'generated';
         
         // Initialize advance rent fields

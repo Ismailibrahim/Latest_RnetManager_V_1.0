@@ -46,7 +46,7 @@ class MobilePaymentController extends Controller
             'description' => ['nullable', 'string', 'max:500'],
         ]);
 
-        $user = $request->user();
+        $user = $this->getAuthenticatedUser($request);
         $landlordId = $user->landlord_id;
 
         // Determine tenant_unit_id

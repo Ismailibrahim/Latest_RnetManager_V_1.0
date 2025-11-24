@@ -58,9 +58,10 @@ export function useAdminSubscriptions() {
       const queryString = params.toString();
       const url = `${API_BASE_URL}/admin/landlords${queryString ? `?${queryString}` : ""}`;
 
-      // Debug: Log the URL being called (remove in production if needed)
+      // Debug logging (only in development)
       if (process.env.NODE_ENV === 'development') {
-        console.log('[Admin Subscriptions] Fetching:', url);
+        // Using logger would require importing, keeping console for now but could be improved
+        // logger.debug('[Admin Subscriptions] Fetching:', url);
       }
 
       const response = await fetch(url, {
@@ -104,12 +105,8 @@ Troubleshooting:
         ).toString();
         const url = `${API_BASE_URL}/admin/landlords${queryString ? `?${queryString}` : ""}`;
         
-        console.error('[Admin Subscriptions] Fetch error:', {
-          message: err.message,
-          url: url,
-          apiBaseUrl: API_BASE_URL,
-          hasToken: !!token,
-        });
+        // Error details are included in the thrown error message
+        // Logging can be added here if needed, but error is already thrown to caller
         
         setError(errorMessage);
         throw new Error(errorMessage);

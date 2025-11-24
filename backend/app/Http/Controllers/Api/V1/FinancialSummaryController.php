@@ -19,7 +19,7 @@ class FinancialSummaryController extends Controller
 
     public function __invoke(Request $request): JsonResponse
     {
-        $landlordId = $request->user()->landlord_id;
+        $landlordId = $this->getLandlordId($request);
         $now = Carbon::now();
         $startOfMonth = $now->copy()->startOfMonth();
         $endOfMonth = $now->copy()->endOfMonth();

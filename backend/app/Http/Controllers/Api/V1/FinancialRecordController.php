@@ -21,8 +21,9 @@ class FinancialRecordController extends Controller
 
         $perPage = $this->resolvePerPage($request);
 
+        $landlordId = $this->getLandlordId($request);
         $query = FinancialRecord::query()
-            ->where('landlord_id', $request->user()->landlord_id)
+            ->where('landlord_id', $landlordId)
             ->with(['tenantUnit.tenant:id,full_name', 'tenantUnit.unit:id,unit_number,property_id'])
             ->latest('transaction_date');
 
@@ -55,7 +56,7 @@ class FinancialRecordController extends Controller
     public function store(StoreFinancialRecordRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $data['landlord_id'] = $request->user()->landlord_id;
+        $data['landlord_id'] = $this->getLandlordId($request);
 
         $record = FinancialRecord::create($data);
         $record->load(['tenantUnit.tenant:id,full_name', 'tenantUnit.unit:id,unit_number,property_id']);
@@ -70,7 +71,8 @@ class FinancialRecordController extends Controller
         $this->authorize('view', $financialRecord);
 
         // Ensure financial record belongs to authenticated user's landlord (defense in depth)
-        if ($financialRecord->landlord_id !== $request->user()->landlord_id) {
+        $landlordId = $this->getLandlordId($request);
+        if ($financialRecord->landlord_id !== $landlordId) {
             abort(403, 'Unauthorized access to this financial record.');
         }
 
@@ -88,7 +90,8 @@ class FinancialRecordController extends Controller
         $this->authorize('update', $financialRecord);
 
         // Ensure financial record belongs to authenticated user's landlord (defense in depth)
-        if ($financialRecord->landlord_id !== $request->user()->landlord_id) {
+        $landlordId = $this->getLandlordId($request);
+        if ($financialRecord->landlord_id !== $landlordId) {
             abort(403, 'Unauthorized access to this financial record.');
         }
 

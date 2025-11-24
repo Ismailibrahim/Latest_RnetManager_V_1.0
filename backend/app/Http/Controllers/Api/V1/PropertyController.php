@@ -23,7 +23,7 @@ class PropertyController extends Controller
         $this->authorize('viewAny', Property::class);
 
         $perPage = $this->resolvePerPage($request);
-        $user = $request->user();
+        $user = $this->getAuthenticatedUser($request);
 
         $query = Property::query()
             ->withCount('units')
@@ -31,7 +31,8 @@ class PropertyController extends Controller
 
         // Super admins can view all properties, others only their landlord's
         if (! $user->isSuperAdmin()) {
-            $query->where('landlord_id', $user->landlord_id);
+            $landlordId = $this->getLandlordId($request);
+            $query->where('landlord_id', $landlordId);
         }
 
         $properties = $query->paginate($perPage)->withQueryString();

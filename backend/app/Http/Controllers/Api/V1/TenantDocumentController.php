@@ -62,7 +62,7 @@ class TenantDocumentController extends Controller
         $document = TenantDocument::query()->create([
             'tenant_id' => $tenant->id,
             'landlord_id' => $tenant->landlord_id,
-            'uploaded_by' => $request->user()->id ?? null,
+            'uploaded_by' => $this->getAuthenticatedUser($request)->id,
             'category' => $category,
             'title' => $validated['title'] ?? pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME),
             'disk' => $disk,

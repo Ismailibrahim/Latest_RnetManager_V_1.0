@@ -20,9 +20,10 @@ class MaintenanceRequestController extends Controller
         $this->authorize('viewAny', MaintenanceRequest::class);
 
         $perPage = $this->resolvePerPage($request);
+        $landlordId = $this->getLandlordId($request);
 
         $query = MaintenanceRequest::query()
-            ->where('landlord_id', $request->user()->landlord_id)
+            ->where('landlord_id', $landlordId)
             ->with([
                 'unit.property:id,name',
                 'unit:id,unit_number,property_id,is_occupied',
@@ -64,7 +65,7 @@ class MaintenanceRequestController extends Controller
     public function store(StoreMaintenanceRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $data['landlord_id'] = $request->user()->landlord_id;
+        $data['landlord_id'] = $this->getLandlordId($request);
 
         $maintenanceRequest = MaintenanceRequest::create($data);
         $maintenanceRequest->load([
@@ -111,7 +112,8 @@ class MaintenanceRequestController extends Controller
         $this->authorize('update', $maintenanceRequest);
 
         // Ensure maintenance request belongs to authenticated user's landlord (defense in depth)
-        if ($maintenanceRequest->landlord_id !== $request->user()->landlord_id) {
+        $landlordId = $this->getLandlordId($request);
+        if ($maintenanceRequest->landlord_id !== $landlordId) {
             abort(403, 'Unauthorized access to this maintenance request.');
         }
 

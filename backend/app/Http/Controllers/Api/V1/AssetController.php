@@ -24,7 +24,7 @@ class AssetController extends Controller
 
         $query = Asset::query()
             ->whereHas('unit', function ($q) use ($request) {
-                $q->where('landlord_id', $request->user()->landlord_id);
+                $q->where('landlord_id', $this->getLandlordId($request));
             })
             ->with(['assetType:id,name,category', 'unit:id,unit_number,property_id', 'tenant:id,full_name'])
             ->latest('created_at');

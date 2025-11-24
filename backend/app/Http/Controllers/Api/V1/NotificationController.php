@@ -21,8 +21,9 @@ class NotificationController extends Controller
 
         $perPage = $this->resolvePerPage($request);
 
+        $landlordId = $this->getLandlordId($request);
         $query = Notification::query()
-            ->where('landlord_id', $request->user()->landlord_id)
+            ->where('landlord_id', $landlordId)
             ->latest();
 
         if ($request->filled('is_read')) {

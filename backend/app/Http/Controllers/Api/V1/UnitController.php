@@ -27,7 +27,7 @@ class UnitController extends Controller
         $this->authorize('viewAny', Unit::class);
 
         $perPage = $this->resolvePerPage($request);
-        $user = $request->user();
+        $user = $this->getAuthenticatedUser($request);
 
         $query = Unit::query()
             ->with([
@@ -39,7 +39,8 @@ class UnitController extends Controller
 
         // Super admins can view all units, others only their landlord's
         if (! $user->isSuperAdmin()) {
-            $query->where('landlord_id', $user->landlord_id);
+            $landlordId = $this->getLandlordId($request);
+            $query->where('landlord_id', $landlordId);
         }
 
         if ($request->filled('property_id')) {

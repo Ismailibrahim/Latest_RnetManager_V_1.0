@@ -16,8 +16,9 @@ class VendorController extends Controller
     {
         $perPage = max(1, min(1000, (int) ($request->input('per_page', 25))));
 
+        $landlordId = $this->getLandlordId($request);
         $query = Vendor::query()
-            ->where('landlord_id', $request->user()->landlord_id)
+            ->where('landlord_id', $landlordId)
             ->latest();
 
         if ($request->filled('service_category')) {
@@ -51,7 +52,7 @@ class VendorController extends Controller
         ]);
 
         $vendor = Vendor::create([
-            'landlord_id' => $request->user()->landlord_id,
+            'landlord_id' => $this->getLandlordId($request),
             ...$data,
         ]);
 

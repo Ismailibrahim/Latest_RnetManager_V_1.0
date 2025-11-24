@@ -21,8 +21,9 @@ class SecurityDepositRefundController extends Controller
 
         $perPage = $this->resolvePerPage($request);
 
+        $landlordId = $this->getLandlordId($request);
         $query = SecurityDepositRefund::query()
-            ->where('landlord_id', $request->user()->landlord_id)
+            ->where('landlord_id', $landlordId)
             ->with([
                 'tenantUnit.tenant:id,full_name',
                 'tenantUnit.unit:id,unit_number,property_id',
@@ -56,7 +57,7 @@ class SecurityDepositRefundController extends Controller
     public function store(StoreSecurityDepositRefundRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $data['landlord_id'] = $request->user()->landlord_id;
+        $data['landlord_id'] = $this->getLandlordId($request);
 
         $refund = SecurityDepositRefund::create($data);
         $refund->load([

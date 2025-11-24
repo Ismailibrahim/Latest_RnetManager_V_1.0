@@ -26,7 +26,7 @@ class UnifiedPaymentController extends Controller
         $perPage = $this->resolvePerPage($request);
 
         $query = UnifiedPayment::query()
-            ->forLandlord($request->user()->landlord_id)
+            ->forLandlord($this->getLandlordId($request))
             ->orderByDesc('transaction_date')
             ->orderByDesc('composite_id');
 
@@ -84,7 +84,7 @@ class UnifiedPaymentController extends Controller
         $this->authorize('create', UnifiedPaymentEntry::class);
 
         try {
-            $entry = $service->create($request->validated(), $request->user());
+            $entry = $service->create($request->validated(), $this->getAuthenticatedUser($request));
         } catch (\Illuminate\Validation\ValidationException $e) {
             // Re-throw validation exceptions as-is
             throw $e;

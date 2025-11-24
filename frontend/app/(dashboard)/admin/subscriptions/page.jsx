@@ -18,8 +18,8 @@ import { useAdminSubscriptions } from "@/hooks/useAdminSubscriptions";
 import { SubscriptionStatusBadge } from "@/components/admin/SubscriptionStatusBadge";
 import { UpdateSubscriptionModal } from "@/components/admin/UpdateSubscriptionModal";
 import { ExtendSubscriptionModal } from "@/components/admin/ExtendSubscriptionModal";
-import { ConnectionTest } from "./connection-test";
 import { API_BASE_URL } from "@/utils/api-config";
+import { logger } from "@/utils/logger";
 
 const TIER_OPTIONS = [
   { value: "all", label: "All Tiers" },
@@ -60,6 +60,7 @@ export default function AdminSubscriptionsPage() {
   const [expiresAfter, setExpiresAfter] = useState("");
   const [sortBy, setSortBy] = useState("id");
   const [sortOrder, setSortOrder] = useState("desc");
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Modals
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
@@ -80,6 +81,7 @@ export default function AdminSubscriptionsPage() {
           sort_by: sortBy,
           sort_order: sortOrder,
           per_page: 50,
+          page: currentPage,
         };
 
         const response = await fetchAllLandlords(filters);
@@ -118,6 +120,7 @@ export default function AdminSubscriptionsPage() {
     };
   }, [
     refreshKey,
+    currentPage,
     search,
     tierFilter,
     statusFilter,
@@ -246,9 +249,6 @@ export default function AdminSubscriptionsPage() {
               </ol>
             </div>
           </div>
-          
-          {/* Connection Test Component */}
-          <ConnectionTest />
         </div>
       )}
 
@@ -285,8 +285,11 @@ export default function AdminSubscriptionsPage() {
 
           {/* Status Filter */}
           <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setCurrentPage(1); // Reset to first page when filter changes
+                }}
             className="min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
           >
             {STATUS_OPTIONS.map((option) => (
@@ -330,8 +333,11 @@ export default function AdminSubscriptionsPage() {
           </select>
 
           <select
-            value={sortOrder}
-            onChange={(e) => setSortOrder(e.target.value)}
+                value={sortOrder}
+                onChange={(e) => {
+                  setSortOrder(e.target.value);
+                  setCurrentPage(1); // Reset to first page when sort changes
+                }}
             className="min-w-[100px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
           >
             <option value="asc">Asc</option>
@@ -548,19 +554,24 @@ export default function AdminSubscriptionsPage() {
                 type="button"
                 disabled={pagination.current_page === 1}
                 onClick={() => {
-                  // TODO: Implement pagination
-                  setRefreshKey((k) => k + 1);
+                  if (pagination.current_page > 1) {
+                    setCurrentPage(pagination.current_page - 1);
+                  }
                 }}
                 className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
               >
                 Previous
               </button>
+              <span className="px-3 py-1.5 text-xs font-medium text-slate-600">
+                Page {pagination.current_page} of {pagination.last_page}
+              </span>
               <button
                 type="button"
                 disabled={pagination.current_page >= pagination.last_page}
                 onClick={() => {
-                  // TODO: Implement pagination
-                  setRefreshKey((k) => k + 1);
+                  if (pagination.current_page < pagination.last_page) {
+                    setCurrentPage(pagination.current_page + 1);
+                  }
                 }}
                 className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
               >
