@@ -10,6 +10,14 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+
+
+    env:
+      APP_DIRECTORY: ${{ secrets.APP_DIRECTORY }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      APP_URL: ${{ secrets.APP_URL }}
+
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
