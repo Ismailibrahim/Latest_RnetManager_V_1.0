@@ -106,7 +106,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no "${{ env.SSH_USER }}@${{ env.SSH_HOST }}" <<'EOF'
           set -e
-          APP_DIR="/var/www/Rent_V2"
+          APP_DIR="/var/www/webapp"
           APP_URL="${APP_URL:-}"
           if [ -z "$APP_URL" ]; then
             APP_URL="http://${SSH_HOST}"
@@ -127,7 +127,7 @@ jobs:
             echo "⚠️  curl not available, skipping health check"
           fi
 
-          if systemctl is-active --quiet nginx 2>/divnull; then
+          if systemctl is-active --quiet nginx 2>/dev/null; then
             echo "✅ Nginx is running"
           else
             echo "⚠️  Nginx status unknown"
