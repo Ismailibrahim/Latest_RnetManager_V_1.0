@@ -225,6 +225,12 @@ if [ -d "$FRONTEND_DIR" ]; then
         log_error "npm ci failed"
         exit 1
     fi
+
+    # Ensure lightningcss native bindings are available on the target platform
+    log_info "Rebuilding lightningcss native bindings..."
+    npm rebuild lightningcss || {
+        log_warning "lightningcss rebuild failed, continuing..."
+    }
     
     # Build for production
     log_info "Building frontend for production..."
