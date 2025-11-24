@@ -13,7 +13,7 @@ jobs:
 
 
     env:
-      APP_DIRECTORY: ${{ secrets.APP_DIRECTORY }}
+      APP_DIRECTORY: /var/www/rentapp
       SSH_USER: ${{ secrets.SSH_USER }}
       SSH_HOST: ${{ secrets.SSH_HOST }}
       APP_URL: ${{ secrets.APP_URL }}
