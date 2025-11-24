@@ -305,6 +305,7 @@ Route::prefix('v1')->group(function (): void {
                 'should_be_paid' => $totalPaid >= (float) $invoice->grand_total - 0.01,
             ]);
         })->middleware('auth:sanctum');
+        }
         Route::apiResource('assets', AssetController::class)->names('api.v1.assets');
         Route::apiResource('asset-types', AssetTypeController::class)->parameters([
             'asset-types' => 'asset_type',

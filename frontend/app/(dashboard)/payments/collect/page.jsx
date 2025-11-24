@@ -198,13 +198,16 @@ export default function CollectPaymentPage() {
     if (!updated) {
       // Don't clear linkedCharge if it's not in pendingCharges - it might have been paid
       // or filtered out, but we still need it for the payment submission
-      // Charge not found in pendingCharges, but preserving it
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[Payment Collection] Charge not found in pendingCharges, but preserving it:', {
-        charge_id: linkedCharge.id,
-        charge_source_type: linkedCharge.source_type,
-        charge_source_id: linkedCharge.source_id,
-      });
+      if (process.env.NODE_ENV === "development") {
+        console.log(
+          "[Payment Collection] Charge not found in pendingCharges, but preserving it:",
+          {
+            charge_id: linkedCharge.id,
+            charge_source_type: linkedCharge.source_type,
+            charge_source_id: linkedCharge.source_id,
+          }
+        );
+      }
       // Keep the linkedCharge - don't clear it
       return;
     }
