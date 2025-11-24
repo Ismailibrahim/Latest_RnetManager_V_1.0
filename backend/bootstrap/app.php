@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Middleware\CorsMiddleware;
+use App\Http\Middleware\ForceCors;
 use App\Http\Middleware\RequestDiagnosticsMiddleware;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -21,11 +21,21 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'abilities' => \Laravel\Sanctum\Http\Middleware\CheckAbilities::class,
             'ability' => \Laravel\Sanctum\Http\Middleware\CheckForAnyAbility::class,
-            'custom.cors' => CorsMiddleware::class,
             'diagnostics.request' => RequestDiagnosticsMiddleware::class,
         ]);
 
-        $middleware->appendToGroup('api', CorsMiddleware::class);
+        $middleware->validateCsrfTokens(except: [
+            // Allow all API routes to bypass CSRF
+            'api/*',
+        ]);
+
+        // Remove Laravel's HandleCors to prevent conflicts
+        $middleware->remove(\Illuminate\Http\Middleware\HandleCors::class);
+        
+        // Add ForceCors ONLY to API group (not global) to avoid duplication
+        // The route handler will catch OPTIONS first, middleware is backup
+        $middleware->prependToGroup('api', ForceCors::class);
+        
         $middleware->appendToGroup('api', RequestDiagnosticsMiddleware::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

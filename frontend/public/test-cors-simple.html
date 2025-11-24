@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple CORS Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background: #d4edda; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; border: 1px solid #f5c6cb; }
+        button { padding: 10px 20px; font-size: 16px; margin: 5px; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 3px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Simple CORS Test</h1>
+    <p>This page tests if CORS is working by making an OPTIONS request to the backend.</p>
+    
+    <button onclick="testOptions()">Test OPTIONS Request</button>
+    <button onclick="testGet()">Test GET Request</button>
+    <button onclick="clearResults()">Clear</button>
+    
+    <div id="results"></div>
+
+    <script>
+        const API_URL = 'http://localhost:8000/api/v1';
+        
+        function addResult(message, isSuccess) {
+            const div = document.createElement('div');
+            div.className = `result ${isSuccess ? 'success' : 'error'}`;
+            div.innerHTML = message;
+            document.getElementById('results').appendChild(div);
+        }
+        
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+        
+        async function testOptions() {
+            addResult('Testing OPTIONS request...', true);
+            
+            try {
+                const response = await fetch(`${API_URL}/admin/landlords`, {
+                    method: 'OPTIONS',
+                    mode: 'cors',
+                    credentials: 'include'
+                });
+                
+                const corsOrigin = response.headers.get('Access-Control-Allow-Origin');
+                const corsMethods = response.headers.get('Access-Control-Allow-Methods');
+                const corsHeaders = response.headers.get('Access-Control-Allow-Headers');
+                
+                if (corsOrigin) {
+                    addResult(`✅ SUCCESS! CORS headers present:<br>
+                        <pre>Status: ${response.status}
+Access-Control-Allow-Origin: ${corsOrigin}
+Access-Control-Allow-Methods: ${corsMethods || 'NOT SET'}
+Access-Control-Allow-Headers: ${corsHeaders || 'NOT SET'}</pre>`, true);
+                } else {
+                    addResult(`❌ FAILED! CORS headers MISSING<br>
+                        <pre>Status: ${response.status}
+Response Headers:
+${JSON.stringify([...response.headers.entries()], null, 2)}</pre>`, false);
+                }
+            } catch (error) {
+                addResult(`❌ ERROR: ${error.message}<br><br>
+                    This usually means:<br>
+                    1. Backend server is not running<br>
+                    2. CORS is blocking the request<br>
+                    3. Network error<br><br>
+                    Check: Is backend running at ${API_URL}?`, false);
+            }
+        }
+        
+        async function testGet() {
+            addResult('Testing GET request to cors-test endpoint...', true);
+            
+            try {
+                const response = await fetch(`${API_URL}/cors-test`, {
+                    method: 'GET',
+                    mode: 'cors'
+                });
+                
+                const data = await response.json();
+                const corsOrigin = response.headers.get('Access-Control-Allow-Origin');
+                
+                if (corsOrigin) {
+                    addResult(`✅ SUCCESS! GET request works with CORS:<br>
+                        <pre>${JSON.stringify(data, null, 2)}
+Access-Control-Allow-Origin: ${corsOrigin}</pre>`, true);
+                } else {
+                    addResult(`⚠️ GET works but CORS headers missing:<br>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>`, false);
+                }
+            } catch (error) {
+                addResult(`❌ ERROR: ${error.message}`, false);
+            }
+        }
+        
+        // Auto-run OPTIONS test on load
+        window.addEventListener('load', () => {
+            setTimeout(testOptions, 500);
+        });
+    </script>
+</body>
+</html>
+

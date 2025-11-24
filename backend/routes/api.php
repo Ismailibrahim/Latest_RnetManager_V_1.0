@@ -54,6 +54,19 @@ Route::get('/health', function () {
 })->middleware('throttle:60,1')->name('api.health');
 
 Route::prefix('v1')->group(function (): void {
+    // Handle ALL OPTIONS requests FIRST (before other routes)
+    Route::options('{any}', function (Request $request) {
+        $origin = $request->headers->get('Origin', 'http://localhost:3000');
+        $requestedHeaders = $request->headers->get('Access-Control-Request-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+        
+        return response('', 204)->withHeaders([
+            'Access-Control-Allow-Origin' => $origin,
+            'Access-Control-Allow-Methods' => 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers' => $requestedHeaders,
+            'Access-Control-Allow-Credentials' => 'true',
+            'Access-Control-Max-Age' => '86400',
+        ]);
+    })->where('any', '.*');
     
     Route::get('/', function () {
         return response()->json([
@@ -61,6 +74,76 @@ Route::prefix('v1')->group(function (): void {
             'message' => 'RentApplicaiton API v1 online',
         ]);
     });
+    
+    // Debug endpoint to check CORS config
+    Route::get('/cors-debug', function (Request $request) {
+        return response()->json([
+            'cors_config' => config('cors'),
+            'origin' => $request->headers->get('Origin'),
+            'method' => $request->getMethod(),
+            'path' => $request->path(),
+            'middleware' => $request->route()?->middleware() ?? [],
+        ]);
+    });
+
+    // CORS test endpoint (no auth required)
+    Route::get('/cors-test', function (Request $request) {
+        return response()->json([
+            'status' => 'ok',
+            'message' => 'CORS is working!',
+            'origin' => $request->headers->get('Origin'),
+            'referer' => $request->headers->get('Referer'),
+            'timestamp' => now()->toIso8601String(),
+        ]);
+    })->name('api.v1.cors-test');
+    
+    // OPTIONS test endpoint - explicitly handle OPTIONS requests
+    // This endpoint ALWAYS sets CORS headers, bypassing all middleware
+    Route::match(['OPTIONS', 'GET'], '/cors-options-test', function (Request $request) {
+        if ($request->getMethod() === 'OPTIONS') {
+            $origin = $request->headers->get('Origin');
+            $referer = $request->headers->get('Referer');
+            
+            // Extract origin from Referer if Origin is missing
+            if (!$origin && $referer) {
+                $parsedReferer = parse_url($referer);
+                if ($parsedReferer && isset($parsedReferer['scheme']) && isset($parsedReferer['host'])) {
+                    $port = isset($parsedReferer['port']) ? ':' . $parsedReferer['port'] : '';
+                    $origin = $parsedReferer['scheme'] . '://' . $parsedReferer['host'] . $port;
+                }
+            }
+            
+            $allowOrigin = $origin ?: 'http://localhost:3000';
+            
+            // Create response and FORCE headers
+            $response = response()->noContent(204);
+            
+            // Use header() function directly to ensure headers are set
+            header('Access-Control-Allow-Origin: ' . $allowOrigin);
+            header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
+            header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Accept');
+            header('Access-Control-Allow-Credentials: true');
+            header('Access-Control-Max-Age: 86400');
+            
+            // Also set via response object
+            $response->headers->set('Access-Control-Allow-Origin', $allowOrigin, true);
+            $response->headers->set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS', true);
+            $response->headers->set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept', true);
+            $response->headers->set('Access-Control-Allow-Credentials', 'true', true);
+            $response->headers->set('Access-Control-Max-Age', '86400', true);
+            
+            error_log('OPTIONS Test Endpoint: Setting CORS headers - Origin: ' . $allowOrigin);
+            
+            return $response;
+        }
+        
+        return response()->json([
+            'status' => 'ok',
+            'message' => 'OPTIONS test endpoint works!',
+            'method' => $request->getMethod(),
+            'origin' => $request->headers->get('Origin'),
+        ]);
+    })->name('api.v1.cors-options-test');
 
     // Health check endpoints
     Route::get('/health', [\App\Http\Controllers\Api\V1\HealthController::class, 'check'])
@@ -357,7 +440,8 @@ Route::prefix('v1')->group(function (): void {
         });
 
         // Admin routes - only accessible to super_admin users
-        Route::prefix('admin')->group(function (): void {
+        // Must be authenticated first, then controller middleware checks for super_admin
+        Route::middleware('auth:sanctum')->prefix('admin')->group(function (): void {
             Route::get('landlords', [AdminLandlordController::class, 'index'])
                 ->name('api.v1.admin.landlords.index');
             Route::get('landlords/{landlord}', [AdminLandlordController::class, 'show'])

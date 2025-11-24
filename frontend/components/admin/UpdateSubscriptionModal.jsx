@@ -21,12 +21,25 @@ export function UpdateSubscriptionModal({ landlord, onClose, onSuccess }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
+  // Helper function to format date for input field (YYYY-MM-DD)
+  const formatDateForInput = (dateString) => {
+    if (!dateString) return "";
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "";
+      // Return in YYYY-MM-DD format for date input
+      return date.toISOString().split("T")[0];
+    } catch {
+      return "";
+    }
+  };
+
   useEffect(() => {
     if (landlord) {
       setFormData({
         subscription_tier: landlord.subscription_tier || "basic",
-        subscription_expires_at: landlord.subscription_expires_at || "",
-        subscription_started_at: landlord.subscription_started_at || "",
+        subscription_expires_at: formatDateForInput(landlord.subscription_expires_at),
+        subscription_started_at: formatDateForInput(landlord.subscription_started_at),
         subscription_auto_renew: landlord.subscription_auto_renew || false,
       });
     }
@@ -204,22 +217,25 @@ export function UpdateSubscriptionModal({ landlord, onClose, onSuccess }) {
             {!isBasicTier && (
               <div>
                 <label className="mb-2 block text-sm font-medium text-slate-700">
-                  Expiry Date
+                  Subscription End Date <span className="text-slate-400">(optional)</span>
                 </label>
                 <input
                   type="date"
-                  value={formData.subscription_expires_at}
+                  value={formData.subscription_expires_at || ""}
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      subscription_expires_at: e.target.value,
+                      subscription_expires_at: e.target.value || null,
                     })
                   }
                   min={new Date().toISOString().split("T")[0]}
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  placeholder="Select end date"
                 />
                 <p className="mt-1 text-xs text-slate-500">
-                  Leave empty to set expiry based on tier (1 month from start)
+                  {formData.subscription_expires_at 
+                    ? `Subscription will expire on ${new Date(formData.subscription_expires_at).toLocaleDateString()}`
+                    : "Leave empty to set expiry based on tier (1 month from start date)"}
                 </p>
               </div>
             )}

@@ -65,7 +65,9 @@ try {
     /** @var Application $app */
     $app = require_once __DIR__.'/../bootstrap/app.php';
     
-    $app->handleRequest(Request::capture());
+    // Let Laravel handle everything - including CORS via ForceCors middleware
+    $response = $app->handleRequest(Request::capture());
+    $response->send();
 } catch (Throwable $e) {
     // Log the exception
     $logFile = __DIR__.'/../storage/logs/laravel.log';

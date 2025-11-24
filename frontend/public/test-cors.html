@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CORS Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #f5f5f5; }
+        .test { background: white; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .success { border-left: 4px solid green; }
+        .error { border-left: 4px solid red; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>CORS Connection Test</h1>
+    <button onclick="testConnection()">Test Backend Connection</button>
+    <div id="results"></div>
+
+    <script>
+        async function testConnection() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<div class="test">Testing...</div>';
+
+            // Test 1: Basic backend connection
+            try {
+                const r1 = await fetch('http://localhost:8000/api/v1/cors-test');
+                const data1 = await r1.json();
+                results.innerHTML += `<div class="test success">✅ Backend reachable: ${JSON.stringify(data1)}</div>`;
+            } catch(e) {
+                results.innerHTML += `<div class="test error">❌ Backend NOT reachable: ${e.message}<br>Start backend: cd backend && php artisan serve</div>`;
+                return;
+            }
+
+            // Test 2: CORS from this origin
+            try {
+                const r2 = await fetch('http://localhost:8000/api/v1/cors-test', {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' },
+                    mode: 'cors'
+                });
+                const data2 = await r2.json();
+                results.innerHTML += `<div class="test success">✅ CORS working! Response: ${JSON.stringify(data2)}</div>`;
+            } catch(e) {
+                results.innerHTML += `<div class="test error">❌ CORS blocked: ${e.message}<br>Check backend/config/cors.php and restart backend</div>`;
+            }
+
+            // Test 3: OPTIONS preflight for admin endpoint
+            try {
+                const r3a = await fetch('http://localhost:8000/api/v1/admin/landlords', {
+                    method: 'OPTIONS',
+                    headers: {
+                        'Origin': window.location.origin,
+                        'Access-Control-Request-Method': 'GET',
+                        'Access-Control-Request-Headers': 'Authorization, Accept'
+                    },
+                    mode: 'cors'
+                });
+                if (r3a.ok || r3a.status === 204) {
+                    const corsOrigin = r3a.headers.get('Access-Control-Allow-Origin');
+                    results.innerHTML += `<div class="test ${corsOrigin ? 'success' : 'error'}">${corsOrigin ? '✅' : '❌'} OPTIONS preflight: ${corsOrigin ? 'CORS headers present' : 'CORS headers MISSING'} (Origin: ${corsOrigin || 'NOT SET'})</div>`;
+                } else {
+                    results.innerHTML += `<div class="test error">❌ OPTIONS preflight failed: HTTP ${r3a.status}</div>`;
+                }
+            } catch(e) {
+                results.innerHTML += `<div class="test error">❌ OPTIONS preflight error: ${e.message}<br>This means CORS is blocking the request!</div>`;
+            }
+
+            // Test 4: Admin endpoint (requires auth)
+            const token = localStorage.getItem('auth_token');
+            if (token) {
+                try {
+                    const r3 = await fetch('http://localhost:8000/api/v1/admin/landlords', {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Authorization': 'Bearer ' + token
+                        },
+                        mode: 'cors',
+                        credentials: 'include'
+                    });
+                    if (r3.ok) {
+                        const data3 = await r3.json();
+                        results.innerHTML += `<div class="test success">✅ Admin endpoint works! Found ${data3?.data?.length || 0} landlords</div>`;
+                    } else {
+                        const error = await r3.json().catch(() => ({}));
+                        if (r3.status === 403) {
+                            results.innerHTML += `<div class="test error">❌ Admin endpoint: HTTP 403 Forbidden<br>You are NOT a super_admin user. Current role: ${error?.message || 'Unknown'}<br><br>Create super_admin: php artisan user:create "Super" "Admin" "admin@example.com" "Password123!" --role=super_admin</div>`;
+                        } else if (r3.status === 401) {
+                            results.innerHTML += `<div class="test error">❌ Admin endpoint: HTTP 401 Unauthorized<br>Please log out and log back in</div>`;
+                        } else {
+                            results.innerHTML += `<div class="test error">❌ Admin endpoint failed: HTTP ${r3.status} - ${error?.message || 'Unknown error'}</div>`;
+                        }
+                    }
+                } catch(e) {
+                    if (e.message === 'Failed to fetch') {
+                        results.innerHTML += `<div class="test error">❌ Admin endpoint: Failed to fetch<br><br>This usually means:<br>1. Backend server is not running<br>2. CORS is blocking the request (check OPTIONS test above)<br>3. Backend was not restarted after CORS fix<br><br>Check browser Network tab (F12) for the actual error</div>`;
+                    } else {
+                        results.innerHTML += `<div class="test error">❌ Admin endpoint error: ${e.message}</div>`;
+                    }
+                }
+            } else {
+                results.innerHTML += `<div class="test">ℹ️ No auth token - skipping admin endpoint test</div>`;
+            }
+        }
+
+        // Auto-run on load
+        window.onload = () => setTimeout(testConnection, 500);
+    </script>
+</body>
+</html>
+

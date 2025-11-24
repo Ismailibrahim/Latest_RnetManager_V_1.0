@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel Connection Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-result {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            border-left: 4px solid #ccc;
+        }
+        .success {
+            border-left-color: #10b981;
+            background: #f0fdf4;
+        }
+        .error {
+            border-left-color: #ef4444;
+            background: #fef2f2;
+        }
+        .info {
+            border-left-color: #3b82f6;
+            background: #eff6ff;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        pre {
+            background: #1f2937;
+            color: #f9fafb;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .status {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Admin Panel Connection Diagnostic</h1>
+    <p>This page will test your connection to the admin panel and identify any issues.</p>
+    
+    <button id="runTest" onclick="runAllTests()">Run All Tests</button>
+    <button onclick="clearResults()">Clear Results</button>
+    
+    <div id="results"></div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:8000/api/v1';
+        
+        function addResult(test, status, message, data = null) {
+            const resultsDiv = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `test-result ${status}`;
+            
+            const statusIcon = status === 'success' ? '✅' : status === 'error' ? '❌' : 'ℹ️';
+            div.innerHTML = `
+                <div class="status">${statusIcon} ${test}</div>
+                <div>${message}</div>
+                ${data ? `<pre>${JSON.stringify(data, null, 2)}</pre>` : ''}
+            `;
+            
+            resultsDiv.appendChild(div);
+        }
+        
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+        
+        async function runAllTests() {
+            clearResults();
+            const button = document.getElementById('runTest');
+            button.disabled = true;
+            button.textContent = 'Running Tests...';
+            
+            // Test 1: Check API URL
+            addResult('API Configuration', 'info', `Using: ${API_BASE_URL}`);
+            
+            // Test 2: Check token
+            const token = localStorage.getItem('auth_token');
+            if (!token) {
+                addResult('Authentication', 'error', 'No authentication token found. Please log in first.');
+                button.disabled = false;
+                button.textContent = 'Run All Tests';
+                return;
+            }
+            addResult('Authentication', 'success', 'Token found', { tokenPreview: token.substring(0, 20) + '...' });
+            
+            // Test 3: Backend reachable
+            addResult('Backend Server', 'info', 'Testing connection...');
+            try {
+                const healthResponse = await fetch(`${API_BASE_URL.replace('/api/v1', '')}/api/v1`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (healthResponse.ok || healthResponse.status < 500) {
+                    const healthData = await healthResponse.json().catch(() => ({}));
+                    addResult('Backend Server', 'success', `Reachable (HTTP ${healthResponse.status})`, healthData);
+                } else {
+                    addResult('Backend Server', 'error', `Not reachable (HTTP ${healthResponse.status})`);
+                    button.disabled = false;
+                    button.textContent = 'Run All Tests';
+                    return;
+                }
+            } catch (err) {
+                addResult('Backend Server', 'error', `Connection failed: ${err.message}\n\nMake sure backend is running: cd backend && php artisan serve`);
+                button.disabled = false;
+                button.textContent = 'Run All Tests';
+                return;
+            }
+            
+            // Test 4: Check user account
+            addResult('User Account', 'info', 'Checking your account...');
+            try {
+                const accountResponse = await fetch(`${API_BASE_URL}/account`, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (accountResponse.ok) {
+                    const accountData = await accountResponse.json();
+                    const role = accountData?.user?.role;
+                    const isSuperAdmin = role === 'super_admin';
+                    
+                    addResult('User Account', 'success', `Logged in as: ${accountData?.user?.email || 'Unknown'}`, {
+                        role: role,
+                        isSuperAdmin: isSuperAdmin,
+                        fullName: accountData?.user?.full_name
+                    });
+                    
+                    if (!isSuperAdmin) {
+                        addResult('Authorization', 'error', 
+                            `You are NOT a super_admin! Current role: ${role}\n\n` +
+                            `To create a super_admin user, run in backend terminal:\n` +
+                            `php artisan user:create "Super" "Admin" "admin@example.com" "Password123!" --role=super_admin\n\n` +
+                            `Then log out and log back in with that account.`
+                        );
+                        button.disabled = false;
+                        button.textContent = 'Run All Tests';
+                        return;
+                    } else {
+                        addResult('Authorization', 'success', 'You are a super_admin! ✅');
+                    }
+                } else {
+                    const errorData = await accountResponse.json().catch(() => ({}));
+                    addResult('User Account', 'error', `Failed (HTTP ${accountResponse.status}): ${errorData?.message || 'Unknown error'}`);
+                    button.disabled = false;
+                    button.textContent = 'Run All Tests';
+                    return;
+                }
+            } catch (err) {
+                addResult('User Account', 'error', `Request failed: ${err.message}`);
+                button.disabled = false;
+                button.textContent = 'Run All Tests';
+                return;
+            }
+            
+            // Test 5: Test admin endpoint
+            addResult('Admin Endpoint', 'info', 'Testing admin/landlords endpoint...');
+            try {
+                const adminResponse = await fetch(`${API_BASE_URL}/admin/landlords`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    mode: 'cors',
+                    credentials: 'include'
+                });
+                
+                const status = adminResponse.status;
+                if (status === 200) {
+                    const data = await adminResponse.json();
+                    addResult('Admin Endpoint', 'success', 
+                        `✅ SUCCESS! Admin endpoint is working!\n\nFound ${data?.data?.length || 0} landlords.`, 
+                        { total: data?.total || 0, currentPage: data?.current_page || 1 }
+                    );
+                } else if (status === 403) {
+                    const errorData = await adminResponse.json().catch(() => ({}));
+                    addResult('Admin Endpoint', 'error', 
+                        `Access denied (403 Forbidden)\n\n${errorData?.message || 'You must be a super_admin user to access this endpoint.'}`
+                    );
+                } else if (status === 401) {
+                    addResult('Admin Endpoint', 'error', 'Unauthorized (401). Please log out and log back in.');
+                } else {
+                    const errorData = await adminResponse.json().catch(() => ({}));
+                    addResult('Admin Endpoint', 'error', `Failed (HTTP ${status}): ${errorData?.message || 'Unknown error'}`);
+                }
+            } catch (err) {
+                if (err.message === 'Failed to fetch') {
+                    addResult('Admin Endpoint', 'error', 
+                        `Network error (Failed to fetch)\n\n` +
+                        `This usually means:\n` +
+                        `1. Backend server is not running - Start with: cd backend && php artisan serve\n` +
+                        `2. CORS is blocking the request - Check backend/config/cors.php\n` +
+                        `3. Backend was not restarted after CORS fix - Restart the backend server\n\n` +
+                        `Check browser Network tab (F12) for more details.`
+                    );
+                } else {
+                    addResult('Admin Endpoint', 'error', `Request failed: ${err.message}`);
+                }
+            }
+            
+            button.disabled = false;
+            button.textContent = 'Run All Tests';
+        }
+        
+        // Auto-run on page load
+        window.addEventListener('load', () => {
+            setTimeout(runAllTests, 500);
+        });
+    </script>
+</body>
+</html>
+

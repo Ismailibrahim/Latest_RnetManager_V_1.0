@@ -19,7 +19,8 @@ class AdminLandlordController extends Controller
     ) {
         // Only super admins can access these endpoints
         $this->middleware(function ($request, $next) {
-            if (!$request->user()?->isSuperAdmin()) {
+            $user = $request->user();
+            if (!$user || !$user->isSuperAdmin()) {
                 abort(403, 'Only super administrators can access this resource.');
             }
             return $next($request);
@@ -29,7 +30,7 @@ class AdminLandlordController extends Controller
     /**
      * List all landlords with subscription information.
      */
-    public function index(Request $request): JsonResponse
+    public function index(Request $request)
     {
         $perPage = $this->resolvePerPage($request);
 
@@ -218,16 +219,6 @@ class AdminLandlordController extends Controller
         $landlord->loadCount(['properties', 'units', 'users']);
 
         return LandlordResource::make($landlord)->response();
-    }
-
-    /**
-     * Resolve per page value from request.
-     */
-    private function resolvePerPage(Request $request): int
-    {
-        $perPage = $request->integer('per_page', 15);
-
-        return min(max($perPage, 1), 100);
     }
 }
 

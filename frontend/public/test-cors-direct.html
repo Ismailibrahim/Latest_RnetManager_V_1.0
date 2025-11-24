@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CORS Direct Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background: #d4edda; border-color: #c3e6cb; }
+        .error { background: #f8d7da; border-color: #f5c6cb; }
+        .info { background: #d1ecf1; border-color: #bee5eb; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>CORS Direct Test</h1>
+    <p>This page tests CORS directly from the browser.</p>
+    
+    <div class="test info">
+        <h3>Test 1: Basic API Endpoint</h3>
+        <button onclick="testBasic()">Test GET /api/v1</button>
+        <div id="result1"></div>
+    </div>
+    
+    <div class="test info">
+        <h3>Test 2: OPTIONS Preflight (CORS)</h3>
+        <button onclick="testOptions()">Test OPTIONS /api/v1/admin/landlords</button>
+        <div id="result2"></div>
+    </div>
+    
+    <div class="test info">
+        <h3>Test 3: Actual GET Request (with CORS)</h3>
+        <button onclick="testGet()">Test GET /api/v1/admin/landlords</button>
+        <div id="result3"></div>
+    </div>
+
+    <script>
+        async function testBasic() {
+            const resultDiv = document.getElementById('result1');
+            resultDiv.innerHTML = '<p>Testing...</p>';
+            
+            try {
+                const response = await fetch('http://localhost:8000/api/v1', {
+                    method: 'GET',
+                    mode: 'cors'
+                });
+                
+                const data = await response.json();
+                resultDiv.innerHTML = `
+                    <div class="success">
+                        <p><strong>✅ Success!</strong></p>
+                        <p>Status: ${response.status}</p>
+                        <p>CORS Origin: ${response.headers.get('Access-Control-Allow-Origin') || 'NOT SET'}</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <p><strong>❌ Error:</strong></p>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        async function testOptions() {
+            const resultDiv = document.getElementById('result2');
+            resultDiv.innerHTML = '<p>Testing OPTIONS preflight...</p>';
+            
+            try {
+                // Note: Browser automatically adds Origin header, don't set it manually
+                // Also, Access-Control-Request-* headers are set automatically by browser
+                const response = await fetch('http://localhost:8000/api/v1/admin/landlords', {
+                    method: 'OPTIONS',
+                    mode: 'cors',
+                    credentials: 'include'
+                }).catch(err => {
+                    resultDiv.innerHTML = `
+                        <div class="error">
+                            <p><strong>❌ Fetch Error:</strong></p>
+                            <p>${err.message}</p>
+                            <p><strong>This usually means:</strong></p>
+                            <ul>
+                                <li>CORS preflight failed (no CORS headers in response)</li>
+                                <li>Network error (server not reachable)</li>
+                                <li>Browser blocked the request</li>
+                            </ul>
+                            <p><strong>Check:</strong></p>
+                            <ul>
+                                <li>Open browser DevTools (F12) → Network tab</li>
+                                <li>Look for the OPTIONS request</li>
+                                <li>Check what status code it returned</li>
+                                <li>Check if CORS headers are in response</li>
+                            </ul>
+                        </div>
+                    `;
+                    throw err;
+                });
+                
+                const headers = {};
+                response.headers.forEach((value, key) => {
+                    headers[key] = value;
+                });
+                
+                const corsHeaders = {
+                    'Access-Control-Allow-Origin': response.headers.get('Access-Control-Allow-Origin'),
+                    'Access-Control-Allow-Methods': response.headers.get('Access-Control-Allow-Methods'),
+                    'Access-Control-Allow-Headers': response.headers.get('Access-Control-Allow-Headers'),
+                    'Access-Control-Allow-Credentials': response.headers.get('Access-Control-Allow-Credentials'),
+                };
+                
+                const hasCors = corsHeaders['Access-Control-Allow-Origin'] !== null;
+                
+                resultDiv.innerHTML = `
+                    <div class="${hasCors ? 'success' : 'error'}">
+                        <p><strong>${hasCors ? '✅ OPTIONS Success!' : '❌ OPTIONS Failed - CORS Headers Missing'}</strong></p>
+                        <p>Status: ${response.status}</p>
+                        <h4>CORS Headers:</h4>
+                        <pre>${JSON.stringify(corsHeaders, null, 2)}</pre>
+                        <h4>All Response Headers:</h4>
+                        <pre>${JSON.stringify(headers, null, 2)}</pre>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <p><strong>❌ Error:</strong></p>
+                        <p>${error.message}</p>
+                        <p>This usually means the backend server is not running.</p>
+                    </div>
+                `;
+            }
+        }
+        
+        async function testGet() {
+            const resultDiv = document.getElementById('result3');
+            resultDiv.innerHTML = '<p>Testing GET request...</p>';
+            
+            const token = localStorage.getItem('auth_token');
+            
+            try {
+                const response = await fetch('http://localhost:8000/api/v1/admin/landlords', {
+                    method: 'GET',
+                    mode: 'cors',
+                    headers: {
+                        'Authorization': token ? `Bearer ${token}` : '',
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                const headers = {};
+                response.headers.forEach((value, key) => {
+                    headers[key] = value;
+                });
+                
+                let data;
+                try {
+                    data = await response.json();
+                } catch (e) {
+                    data = await response.text();
+                }
+                
+                const corsOrigin = response.headers.get('Access-Control-Allow-Origin');
+                const hasCors = corsOrigin !== null;
+                
+                resultDiv.innerHTML = `
+                    <div class="${hasCors ? 'success' : 'error'}">
+                        <p><strong>${hasCors ? '✅ GET Success!' : '⚠️ GET Response (CORS may be missing)'}</strong></p>
+                        <p>Status: ${response.status}</p>
+                        <p>CORS Origin: ${corsOrigin || 'NOT SET'}</p>
+                        <h4>Response:</h4>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                        <h4>Response Headers:</h4>
+                        <pre>${JSON.stringify(headers, null, 2)}</pre>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <p><strong>❌ Error:</strong></p>
+                        <p>${error.message}</p>
+                        <p>This could be a CORS error or the backend is not running.</p>
+                    </div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>
+

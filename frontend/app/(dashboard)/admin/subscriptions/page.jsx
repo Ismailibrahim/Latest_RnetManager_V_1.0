@@ -18,6 +18,7 @@ import { useAdminSubscriptions } from "@/hooks/useAdminSubscriptions";
 import { SubscriptionStatusBadge } from "@/components/admin/SubscriptionStatusBadge";
 import { UpdateSubscriptionModal } from "@/components/admin/UpdateSubscriptionModal";
 import { ExtendSubscriptionModal } from "@/components/admin/ExtendSubscriptionModal";
+import { ConnectionTest } from "./connection-test";
 import { API_BASE_URL } from "@/utils/api-config";
 
 const TIER_OPTIONS = [
@@ -94,6 +95,19 @@ export default function AdminSubscriptionsPage() {
       } catch (err) {
         if (!isMounted) return;
         console.error("Failed to load landlords:", err);
+        
+        // Provide more helpful error message
+        let errorMessage = err.message || "Failed to load landlords. Please check your connection and try again.";
+        
+        // Check if it's a network error
+        if (err.message?.includes("Unable to connect")) {
+          errorMessage = `${err.message}\n\nTroubleshooting:\n1. Ensure backend is running: cd backend && php artisan serve\n2. Check CORS configuration in backend/config/cors.php\n3. Verify API URL in browser console`;
+        }
+        
+        setFlashMessage({
+          type: "error",
+          text: errorMessage,
+        });
       }
     }
 
@@ -218,9 +232,23 @@ export default function AdminSubscriptionsPage() {
 
       {/* Error Message */}
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          <p className="font-semibold">Error loading subscriptions</p>
-          <p className="mt-1">{error}</p>
+        <div className="space-y-4">
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            <p className="font-semibold">Error loading subscriptions</p>
+            <p className="mt-1 whitespace-pre-line">{error}</p>
+            <div className="mt-3 rounded border border-red-300 bg-red-100 p-3 text-xs">
+              <p className="font-semibold mb-2">Quick Browser Test:</p>
+              <p className="mb-2">Open browser console (F12) and check:</p>
+              <ol className="list-decimal list-inside space-y-1 text-xs">
+                <li>Is backend running? Test: <code className="bg-red-200 px-1 rounded">fetch('http://localhost:8000/api/v1')</code></li>
+                <li>Are you logged in? Check: <code className="bg-red-200 px-1 rounded">localStorage.getItem('auth_token')</code></li>
+                <li>What's your role? Test: <code className="bg-red-200 px-1 rounded">fetch('http://localhost:8000/api/v1/account', {`{headers: {Authorization: 'Bearer ' + localStorage.getItem('auth_token')}}`})</code></li>
+              </ol>
+            </div>
+          </div>
+          
+          {/* Connection Test Component */}
+          <ConnectionTest />
         </div>
       )}
 
