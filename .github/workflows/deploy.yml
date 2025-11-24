@@ -10,7 +10,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      APP_DIRECTORY: /var/www/rentapp
+      APP_DIRECTORY: /var/www/Rent_V2
       SSH_USER: ${{ secrets.SSH_USER }}
       SSH_HOST: ${{ secrets.SSH_HOST }}
       APP_URL: ${{ secrets.APP_URL }}
@@ -32,7 +32,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no "${{ env.SSH_USER }}@${{ env.SSH_HOST }}" <<'EOF'
           set -e
-          APP_DIR="/var/www/rentapp"
+          APP_DIR="/var/www/Rent_V2"
 
           echo "🔍 Running pre-deployment checks..."
 
@@ -62,7 +62,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no "${{ env.SSH_USER }}@${{ env.SSH_HOST }}" <<'EOF'
           set -e
-          APP_DIR="/var/www/rentapp"
+          APP_DIR="/var/www/Rent_V2"
           BACKUP_DIR="$APP_DIR/backups"
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
@@ -106,7 +106,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no "${{ env.SSH_USER }}@${{ env.SSH_HOST }}" <<'EOF'
           set -e
-          APP_DIR="/var/www/rentapp"
+          APP_DIR="/var/www/Rent_V2"
           APP_URL="${APP_URL:-}"
           if [ -z "$APP_URL" ]; then
             APP_URL="http://${SSH_HOST}"
