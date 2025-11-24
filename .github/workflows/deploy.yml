@@ -9,7 +9,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -21,45 +21,35 @@ jobs:
 
       - name: 🔍 Verify SSH connection
         run: |
-          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "echo '✅ SSH connection successful'"
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "echo '✅ SSH connection successful'"
 
       - name: 📋 Pre-deployment checks
         run: |
-          ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" <<'EOF'
           set -e
-          
           APP_DIR="${APP_DIRECTORY:-/var/www/webapp}"
-          
           echo "🔍 Running pre-deployment checks..."
-          
-          # Check if app directory exists
+
           if [ ! -d "$APP_DIR" ]; then
             echo "❌ Error: App directory not found: $APP_DIR"
             exit 1
           fi
-          
-          # Run pre-deployment validation script if available
+
           if [ -f "$APP_DIR/scripts/pre-deployment-checks.sh" ]; then
             chmod +x "$APP_DIR/scripts/pre-deployment-checks.sh"
             bash "$APP_DIR/scripts/pre-deployment-checks.sh" || {
               echo "⚠️  Pre-deployment checks had warnings, but continuing..."
             }
           else
-            # Basic checks if script not available
-            # Check disk space (at least 1GB free)
             AVAILABLE=$(df "$APP_DIR" | tail -1 | awk '{print $4}')
             if [ "$AVAILABLE" -lt 1048576 ]; then
               echo "⚠️  Warning: Low disk space (less than 1GB free)"
             fi
-            
-            # Check if deploy script exists
+
             if [ ! -f "$APP_DIR/deploy.sh" ]; then
               echo "⚠️  Warning: deploy.sh not found, will be created from config/deploy/deploy.sh"
             fi
-            
+
             echo "✅ Basic pre-deployment checks passed"
           fi
           EOF
@@ -67,21 +57,17 @@ jobs:
       - name: 🚀 Deploy to VPS
         id: deploy
         run: |
-          ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" <<'EOF'
           set -e
-          
           APP_DIR="${APP_DIRECTORY:-/var/www/webapp}"
           BACKUP_DIR="$APP_DIR/backups"
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-          
+
           echo "📂 Navigating to $APP_DIR"
           cd "$APP_DIR" || exit 1
-          
-          # Create backup directory
+
           mkdir -p "$BACKUP_DIR"
-          
-          # Backup current deployment (for rollback)
+
           echo "💾 Creating backup..."
           if [ -d "$APP_DIR/backend" ] && [ -d "$APP_DIR/frontend" ]; then
             tar -czf "$BACKUP_DIR/backup_$TIMESTAMP.tar.gz" \
@@ -94,8 +80,7 @@ jobs:
               . 2>/dev/null || true
             echo "✅ Backup created: backup_$TIMESTAMP.tar.gz"
           fi
-          
-          # Ensure deploy script exists and is executable
+
           if [ ! -f "$APP_DIR/deploy.sh" ]; then
             if [ -f "$APP_DIR/config/deploy/deploy.sh" ]; then
               cp "$APP_DIR/config/deploy/deploy.sh" "$APP_DIR/deploy.sh"
@@ -105,8 +90,7 @@ jobs:
               exit 1
             fi
           fi
-          
-          # Run deployment script
+
           echo "🚀 Running deployment script..."
           export APP_DIRECTORY="$APP_DIR"
           export DEPLOY_ENV="production"
@@ -114,29 +98,25 @@ jobs:
             echo "❌ Deployment failed!"
             exit 1
           }
-          
+
           echo "✅ Deployment script completed"
           EOF
 
       - name: 🏥 Health check
         run: |
-          ssh -o StrictHostKeyChecking=no \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << EOF
+          ssh -o StrictHostKeyChecking=no "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" <<'EOF'
           set -e
-          
+
           APP_DIR="${APP_DIRECTORY:-/var/www/webapp}"
           APP_URL="${{ secrets.APP_URL }}"
           if [ -z "$APP_URL" ]; then
             APP_URL="http://${{ secrets.SSH_HOST }}"
           fi
-          
+
           echo "🏥 Running health checks..."
           echo "Health check URL: $APP_URL/api/v1/health"
-          
-          # Wait a bit for services to stabilize
           sleep 5
-          
-          # Check backend health endpoint
+
           if command -v curl >/dev/null 2>&1; then
             HEALTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "$APP_URL/api/v1/health" || echo "000")
             if [ "$HEALTH_RESPONSE" = "200" ]; then
@@ -147,22 +127,19 @@ jobs:
           else
             echo "⚠️  curl not available, skipping health check"
           fi
-          
-          # Check if services are running
+
           if systemctl is-active --quiet nginx 2>/dev/null; then
             echo "✅ Nginx is running"
           else
-            echo "⚠️  Nginx status unknown (may not be managed by systemd)"
+            echo "⚠️  Nginx status unknown"
           fi
-          
-          # Check PHP-FPM
+
           if systemctl is-active --quiet php8.2-fpm 2>/dev/null || systemctl is-active --quiet php8.3-fpm 2>/dev/null; then
             echo "✅ PHP-FPM is running"
           else
             echo "⚠️  PHP-FPM status unknown"
           fi
-          
-          # Check PM2 (Next.js frontend)
+
           if command -v pm2 >/dev/null 2>&1; then
             if pm2 list | grep -q "rentapp-frontend"; then
               echo "✅ PM2 process (rentapp-frontend) is running"
@@ -172,17 +149,16 @@ jobs:
           else
             echo "⚠️  PM2 not installed or not in PATH"
           fi
-          
+
           echo "✅ Health checks completed"
           EOF
 
       - name: ✅ Deployment status
         run: |
-          echo "🎉 Deployment workflow completed successfully!"
-          echo "Check your VPS at: ${{ secrets.SSH_HOST }}"
+          echo "🎉 Deployment workflow completed!"
           APP_URL="${{ secrets.APP_URL }}"
           if [ -z "$APP_URL" ]; then
             APP_URL="http://${{ secrets.SSH_HOST }}"
           fi
+          echo "Check your VPS: $APP_URL"
           echo "Health endpoint: $APP_URL/api/v1/health"
-
