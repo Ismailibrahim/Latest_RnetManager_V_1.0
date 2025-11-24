@@ -4,14 +4,11 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch: # Allow manual triggering
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
-
-
     env:
       APP_DIRECTORY: /var/www/rentapp
       SSH_USER: ${{ secrets.SSH_USER }}
@@ -29,13 +26,14 @@ jobs:
 
       - name: 🔍 Verify SSH connection
         run: |
-          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "echo '✅ SSH connection successful'"
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${{ env.SSH_USER }}@${{ env.SSH_HOST }}" "echo '✅ SSH connection successful'"
 
       - name: 📋 Pre-deployment checks
         run: |
-          ssh -o StrictHostKeyChecking=no "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" <<'EOF'
+          ssh -o StrictHostKeyChecking=no "${{ env.SSH_USER }}@${{ env.SSH_HOST }}" <<'EOF'
           set -e
           APP_DIR="${APP_DIRECTORY:-/var/www/webapp}"
+
           echo "🔍 Running pre-deployment checks..."
 
           if [ ! -d "$APP_DIR" ]; then
@@ -45,9 +43,7 @@ jobs:
 
           if [ -f "$APP_DIR/scripts/pre-deployment-checks.sh" ]; then
             chmod +x "$APP_DIR/scripts/pre-deployment-checks.sh"
-            bash "$APP_DIR/scripts/pre-deployment-checks.sh" || {
-              echo "⚠️  Pre-deployment checks had warnings, but continuing..."
-            }
+            bash "$APP_DIR/scripts/pre-deployment-checks.sh" || echo "⚠️  Pre-deployment checks had warnings, continuing..."
           else
             AVAILABLE=$(df "$APP_DIR" | tail -1 | awk '{print $4}')
             if [ "$AVAILABLE" -lt 1048576 ]; then
@@ -55,7 +51,7 @@ jobs:
             fi
 
             if [ ! -f "$APP_DIR/deploy.sh" ]; then
-              echo "⚠️  Warning: deploy.sh not found, will be created from config/deploy/deploy.sh"
+              echo "⚠️  Warning: deploy.sh not found, will be copied from config/deploy/deploy.sh"
             fi
 
             echo "✅ Basic pre-deployment checks passed"
@@ -63,16 +59,15 @@ jobs:
           EOF
 
       - name: 🚀 Deploy to VPS
-        id: deploy
         run: |
-          ssh -o StrictHostKeyChecking=no "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" <<'EOF'
+          ssh -o StrictHostKeyChecking=no "${{ env.SSH_USER }}@${{ env.SSH_HOST }}" <<'EOF'
           set -e
           APP_DIR="${APP_DIRECTORY:-/var/www/webapp}"
           BACKUP_DIR="$APP_DIR/backups"
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
           echo "📂 Navigating to $APP_DIR"
-          cd "$APP_DIR" || exit 1
+          cd "$APP_DIR"
 
           mkdir -p "$BACKUP_DIR"
 
@@ -102,23 +97,20 @@ jobs:
           echo "🚀 Running deployment script..."
           export APP_DIRECTORY="$APP_DIR"
           export DEPLOY_ENV="production"
-          bash "$APP_DIR/deploy.sh" || {
-            echo "❌ Deployment failed!"
-            exit 1
-          }
+          bash "$APP_DIR/deploy.sh"
 
           echo "✅ Deployment script completed"
           EOF
 
       - name: 🏥 Health check
         run: |
-          ssh -o StrictHostKeyChecking=no "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" <<'EOF'
+          ssh -o StrictHostKeyChecking=no "${{ env.SSH_USER }}@${{ env.SSH_HOST }}" <<'EOF'
           set -e
 
           APP_DIR="${APP_DIRECTORY:-/var/www/webapp}"
-          APP_URL="${{ secrets.APP_URL }}"
+          APP_URL="${APP_URL:-}"
           if [ -z "$APP_URL" ]; then
-            APP_URL="http://${{ secrets.SSH_HOST }}"
+            APP_URL="http://${SSH_HOST}"
           fi
 
           echo "🏥 Running health checks..."
@@ -164,9 +156,9 @@ jobs:
       - name: ✅ Deployment status
         run: |
           echo "🎉 Deployment workflow completed!"
-          APP_URL="${{ secrets.APP_URL }}"
+          APP_URL="${{ env.APP_URL }}"
           if [ -z "$APP_URL" ]; then
-            APP_URL="http://${{ secrets.SSH_HOST }}"
+            APP_URL="http://${{ env.SSH_HOST }}"
           fi
           echo "Check your VPS: $APP_URL"
           echo "Health endpoint: $APP_URL/api/v1/health"
