@@ -279,9 +279,6 @@ export default function UnitsPage() {
       { total: 0, occupied: 0, rentSum: 0, rentCount: 0 },
     );
 
-    const averageRent =
-      totals.rentCount > 0 ? totals.rentSum / totals.rentCount : 0;
-
     return {
       total: totals.total,
       occupied: totals.occupied,
@@ -290,7 +287,7 @@ export default function UnitsPage() {
         totals.total > 0
           ? Math.round((totals.occupied / totals.total) * 100)
           : 0,
-      averageRent,
+      totalRent: totals.rentSum,
       rentTracked: totals.rentCount,
     };
   }, [filteredUnits]);
@@ -478,15 +475,15 @@ export default function UnitsPage() {
           }
         />
         <SummaryCard
-          title="Average rent (MVR)"
+          title="Total monthly rent (MVR)"
           value={
-            stats.averageRent > 0 ? formatCurrency(stats.averageRent) : "—"
+            stats.totalRent > 0 ? formatCurrency(stats.totalRent) : "—"
           }
           icon={<Wallet size={20} />}
           description={
             stats.rentTracked > 0
-              ? `Across ${stats.rentTracked} units`
-              : "Add rent amounts to track averages"
+              ? `From ${stats.rentTracked} ${stats.rentTracked === 1 ? 'unit' : 'units'}`
+              : "Add rent amounts to track total"
           }
         />
       </section>
@@ -560,8 +557,8 @@ export default function UnitsPage() {
         {flashMessage ? (
           <div
             className={`flex items-center gap-2 px-5 py-3 text-sm ${flashMessage.type === "error"
-                ? "border-b border-red-100 bg-red-50/80 text-red-700"
-                : "border-b border-slate-100 bg-slate-50/80 text-slate-700"
+              ? "border-b border-red-100 bg-red-50/80 text-red-700"
+              : "border-b border-slate-100 bg-slate-50/80 text-slate-700"
               }`}
           >
             {flashMessage.text}
@@ -937,8 +934,8 @@ function OccupancyBadge({ occupied }) {
   return (
     <span
       className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${occupied
-          ? "bg-success/10 text-success"
-          : "bg-emerald-100 text-emerald-600"
+        ? "bg-success/10 text-success"
+        : "bg-emerald-100 text-emerald-600"
         }`}
     >
       {occupied ? "Occupied" : "Vacant"}
