@@ -417,9 +417,9 @@ export default function UnitsPage() {
       setMeta((previous) =>
         previous
           ? {
-              ...previous,
-              total: Math.max((previous.total ?? 1) - 1, 0),
-            }
+            ...previous,
+            total: Math.max((previous.total ?? 1) - 1, 0),
+          }
           : previous,
       );
       setFlashMessage({ type: "success", text: "Unit deleted." });
@@ -559,11 +559,10 @@ export default function UnitsPage() {
       <section className="rounded-2xl border border-slate-200 bg-white/70 shadow-sm backdrop-blur">
         {flashMessage ? (
           <div
-            className={`flex items-center gap-2 px-5 py-3 text-sm ${
-              flashMessage.type === "error"
+            className={`flex items-center gap-2 px-5 py-3 text-sm ${flashMessage.type === "error"
                 ? "border-b border-red-100 bg-red-50/80 text-red-700"
                 : "border-b border-slate-100 bg-slate-50/80 text-slate-700"
-            }`}
+              }`}
           >
             {flashMessage.text}
           </div>
@@ -586,14 +585,20 @@ export default function UnitsPage() {
                   key: "unit_number",
                   label: "Unit",
                   render: (value, item) => (
-                    <div>
-                      <div className="font-semibold text-slate-900">
-                        {value ?? `Unit #${item.id}`}
-                      </div>
-                      <div className="mt-1 flex items-center gap-1 text-xs text-slate-500">
-                        <Building2 size={12} />
-                        {item.property?.name ?? "Unassigned property"}
-                      </div>
+                    <div className="font-semibold text-slate-900">
+                      {value ?? `Unit #${item.id}`}
+                    </div>
+                  ),
+                },
+                {
+                  key: "property",
+                  label: "Property",
+                  render: (_, item) => (
+                    <div className="flex items-center gap-1.5">
+                      <Building2 size={14} className="text-slate-400" />
+                      <span className="font-medium text-slate-700">
+                        {item.property?.name ?? "Unassigned"}
+                      </span>
                     </div>
                   ),
                 },
@@ -931,11 +936,10 @@ function UnitCard({ unit, onDelete, deleting }) {
 function OccupancyBadge({ occupied }) {
   return (
     <span
-      className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
-        occupied
+      className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${occupied
           ? "bg-success/10 text-success"
           : "bg-emerald-100 text-emerald-600"
-      }`}
+        }`}
     >
       {occupied ? "Occupied" : "Vacant"}
     </span>
