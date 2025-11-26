@@ -98,6 +98,19 @@ if [ -d "$APP_DIR/backups" ]; then
 fi
 cd "$APP_DIR"
 
+# Setup SSH for git operations
+log_info "🔑 Setting up Git SSH authentication..."
+if [ -f ~/.ssh/github_deploy ]; then
+    export GIT_SSH_COMMAND="ssh -i ~/.ssh/github_deploy -o StrictHostKeyChecking=no"
+    # Ensure GitHub host key is in known_hosts
+    if ! grep -q "github.com" ~/.ssh/known_hosts 2>/dev/null; then
+        ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null || true
+    fi
+    log "✅ Git SSH authentication configured"
+else
+    log_warning "SSH key not found, git operations may fail"
+fi
+
 # Pull latest code
 log_info "📥 Pulling latest code from main branch..."
 if ! git fetch --all; then
