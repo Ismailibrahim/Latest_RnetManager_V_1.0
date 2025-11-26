@@ -24,11 +24,22 @@ import {
 import DocumentsPanel from "@/components/tenant/DocumentsPanel";
 import { formatMVR } from "@/lib/currency";
 import { API_BASE_URL } from "@/utils/api-config";
+import { useAuthFetch } from "@/hooks/useAuthFetch";
+import {
+  formatDate,
+  formatDateTime,
+  formatCurrency,
+  formatIdProofType,
+  capitalize,
+} from "@/utils/formatters";
+import { getApiErrorMessage } from "@/utils/api-errors";
+import { PAGINATION } from "@/utils/constants";
 
 export default function TenantDetailsPage({ params }) {
   const routeParams = use(params);
   const tenantId = routeParams?.id;
   const router = useRouter();
+  const authFetch = useAuthFetch();
   const [tenant, setTenant] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -59,18 +70,8 @@ export default function TenantDetailsPage({ params }) {
       setError(null);
 
       try {
-        const token = localStorage.getItem("auth_token");
-
-        if (!token) {
-          throw new Error("Please log in so we can load the tenant details.");
-        }
-
-        const response = await fetch(`${API_BASE_URL}/tenants/${tenantId}`, {
+        const response = await authFetch(`${API_BASE_URL}/tenants/${tenantId}`, {
           signal: controller.signal,
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${token}`,
-          },
         });
 
         if (response.status === 404) {
@@ -79,9 +80,10 @@ export default function TenantDetailsPage({ params }) {
 
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));
-          const message =
-            payload?.message ??
-            `Unable to load tenant (HTTP ${response.status}).`;
+          const message = getApiErrorMessage(
+            payload,
+            `Unable to load tenant (HTTP ${response.status}).`
+          );
           throw new Error(message);
         }
 
@@ -114,29 +116,20 @@ export default function TenantDetailsPage({ params }) {
       setLeasesError(null);
 
       try {
-        const token = localStorage.getItem("auth_token");
-
-        if (!token) {
-          throw new Error("Please log in so we can load lease history.");
-        }
-
         const url = new URL(`${API_BASE_URL}/tenant-units`);
         url.searchParams.set("tenant_id", tenantId);
-        url.searchParams.set("per_page", "25");
+        url.searchParams.set("per_page", String(PAGINATION.LEASES_PER_PAGE));
 
-        const response = await fetch(url.toString(), {
+        const response = await authFetch(url.toString(), {
           signal: controller.signal,
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${token}`,
-          },
         });
 
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));
-          const message =
-            payload?.message ??
-            `Unable to load lease history (HTTP ${response.status}).`;
+          const message = getApiErrorMessage(
+            payload,
+            `Unable to load lease history (HTTP ${response.status}).`
+          );
           throw new Error(message);
         }
 
@@ -191,23 +184,13 @@ export default function TenantDetailsPage({ params }) {
     const controller = new AbortController();
 
     async function fetchProperties() {
-      const token = localStorage.getItem("auth_token");
-
-      if (!token) {
-        return;
-      }
-
       const results = await Promise.allSettled(
         missingIds.map(async (propertyId) => {
           try {
-            const response = await fetch(
+            const response = await authFetch(
               `${API_BASE_URL}/properties/${propertyId}`,
               {
                 signal: controller.signal,
-                headers: {
-                  Accept: "application/json",
-                  Authorization: `Bearer ${token}`,
-                },
               },
             );
 
@@ -335,26 +318,14 @@ export default function TenantDetailsPage({ params }) {
     setIsLoadingMoreLeases(true);
 
     try {
-      const token = localStorage.getItem("auth_token");
-
-      if (!token) {
-        throw new Error(
-          "Please log in so we can load additional lease history records.",
-        );
-      }
-
-      const response = await fetch(leasesPagination.nextUrl, {
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await authFetch(leasesPagination.nextUrl);
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        const message =
-          payload?.message ??
-          `Unable to load more leases (HTTP ${response.status}).`;
+        const message = getApiErrorMessage(
+          payload,
+          `Unable to load more leases (HTTP ${response.status}).`
+        );
         throw new Error(message);
       }
 
@@ -390,25 +361,16 @@ export default function TenantDetailsPage({ params }) {
     setDeleteError(null);
 
     try {
-      const token = localStorage.getItem("auth_token");
-
-      if (!token) {
-        throw new Error("Please log in before deleting a tenant.");
-      }
-
-      const response = await fetch(`${API_BASE_URL}/tenants/${tenantId}`, {
+      const response = await authFetch(`${API_BASE_URL}/tenants/${tenantId}`, {
         method: "DELETE",
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${token}`,
-        },
       });
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        const message =
-          payload?.message ??
-          `Unable to delete tenant (HTTP ${response.status}).`;
+        const message = getApiErrorMessage(
+          payload,
+          `Unable to delete tenant (HTTP ${response.status}).`
+        );
         throw new Error(message);
       }
 
@@ -608,9 +570,8 @@ export default function TenantDetailsPage({ params }) {
                       </h2>
                       <p className="text-xs text-slate-500">
                         {activeLeases.length > 0
-                          ? `Managing ${activeLeases.length} active ${
-                              activeLeases.length === 1 ? "lease" : "leases"
-                            }.`
+                          ? `Managing ${activeLeases.length} active ${activeLeases.length === 1 ? "lease" : "leases"
+                          }.`
                           : "No active leases for this tenant."}
                       </p>
                     </div>
@@ -632,7 +593,7 @@ export default function TenantDetailsPage({ params }) {
                         const propertyId = lease?.unit?.property_id;
                         const propertyLabel = propertyId
                           ? propertyNames[propertyId] ??
-                            `Property #${propertyId}`
+                          `Property #${propertyId}`
                           : "Unassigned property";
 
                         return (
@@ -766,7 +727,7 @@ export default function TenantDetailsPage({ params }) {
                           const propertyId = lease?.unit?.property_id;
                           const propertyLabel = propertyId
                             ? propertyNames[propertyId] ??
-                              `Property #${propertyId}`
+                            `Property #${propertyId}`
                             : "Unassigned property";
 
                           return (
@@ -919,15 +880,14 @@ function LeaseStatusBadge({ status }) {
     normalized === "unknown"
       ? "Unknown"
       : normalized
-          .split(/[_-]/)
-          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-          .join(" ");
+        .split(/[_-]/)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-        styles[normalized] ?? styles.unknown
-      }`}
+      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${styles[normalized] ?? styles.unknown
+        }`}
     >
       {label}
     </span>
@@ -973,75 +933,4 @@ function ErrorState({ message, onRetry }) {
     </div>
   );
 }
-
-function formatDate(value) {
-  if (!value) {
-    return "N/A";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.valueOf())) {
-    return "N/A";
-  }
-
-  return date.toLocaleDateString();
-}
-
-function formatDateTime(value) {
-  if (!value) {
-    return "N/A";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.valueOf())) {
-    return "N/A";
-  }
-
-  return date.toLocaleString();
-}
-
-function formatCurrency(value) {
-  const amount = Number(value);
-
-  if (value === null || value === undefined || Number.isNaN(amount)) {
-    return "—";
-  }
-
-  return formatMVR(amount);
-}
-
-function formatIdProofType(value) {
-  if (!value) {
-    return "Not set";
-  }
-
-  const normalized = value.toString().toLowerCase();
-  const labels = {
-    aadhaar: "National ID",
-    national_id: "National ID",
-    passport: "Passport",
-    other: "Other",
-  };
-
-  if (labels[normalized]) {
-    return labels[normalized];
-  }
-
-  return value
-    .toString()
-    .split(/[_-]/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function capitalize(value) {
-  if (!value) {
-    return "";
-  }
-
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
 

@@ -11,36 +11,13 @@ import {
   UploadCloud,
 } from "lucide-react";
 import { API_BASE_URL } from "@/utils/api-config";
-
-function formatBytes(bytes) {
-  const size = Number(bytes);
-
-  if (!Number.isFinite(size) || size <= 0) {
-    return "—";
-  }
-
-  const units = ["B", "KB", "MB", "GB"];
-  const index = Math.min(Math.floor(Math.log(size) / Math.log(1024)), units.length - 1);
-  const value = size / 1024 ** index;
-
-  return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
-}
-
-function formatDateTime(value) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.valueOf())) {
-    return "";
-  }
-
-  return date.toLocaleString();
-}
+import { useAuthFetch } from "@/hooks/useAuthFetch";
+import { formatBytes, formatDateTime } from "@/utils/formatters";
+import { getApiErrorMessage } from "@/utils/api-errors";
+import { FILE_UPLOAD } from "@/utils/constants";
 
 export default function DocumentsPanel({ tenantId, onChanged }) {
+  const authFetch = useAuthFetch();
   const fileInputRef = useRef(null);
   const [documents, setDocuments] = useState([]);
   const [documentsLoading, setDocumentsLoading] = useState(true);
@@ -64,28 +41,19 @@ export default function DocumentsPanel({ tenantId, onChanged }) {
       setDocumentsError(null);
 
       try {
-        const token = localStorage.getItem("auth_token");
-
-        if (!token) {
-          throw new Error("Please log in so we can load tenant documents.");
-        }
-
-        const response = await fetch(
+        const response = await authFetch(
           `${API_BASE_URL}/tenants/${tenantId}/documents?paginate=false`,
           {
             signal: controller.signal,
-            headers: {
-              Accept: "application/json",
-              Authorization: `Bearer ${token}`,
-            },
           },
         );
 
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));
-          const message =
-            payload?.message ??
-            `Unable to load documents (HTTP ${response.status}).`;
+          const message = getApiErrorMessage(
+            payload,
+            `Unable to load documents (HTTP ${response.status}).`
+          );
           throw new Error(message);
         }
 
@@ -135,27 +103,16 @@ export default function DocumentsPanel({ tenantId, onChanged }) {
     setDocumentsError(null);
 
     try {
-      const token = localStorage.getItem("auth_token");
-
-      if (!token) {
-        throw new Error("Please log in so we can load tenant documents.");
-      }
-
-      const response = await fetch(
-        `${API_BASE_URL}/tenants/${tenantId}/documents?paginate=false`,
-        {
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        },
+      const response = await authFetch(
+        `${API_BASE_URL}/tenants/${tenantId}/documents?paginate=false`
       );
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        const message =
-          payload?.message ??
-          `Unable to refresh documents (HTTP ${response.status}).`;
+        const message = getApiErrorMessage(
+          payload,
+          `Unable to refresh documents (HTTP ${response.status}).`
+        );
         throw new Error(message);
       }
 
@@ -186,35 +143,46 @@ export default function DocumentsPanel({ tenantId, onChanged }) {
       return;
     }
 
+    // Validate file size
+    if (file.size > FILE_UPLOAD.MAX_SIZE_BYTES) {
+      const maxSizeMB = FILE_UPLOAD.MAX_SIZE_BYTES / (1024 * 1024);
+      setUploadError(
+        `File size exceeds ${maxSizeMB}MB limit. Please choose a smaller file.`
+      );
+      return;
+    }
+
+    // Validate file type
+    if (!FILE_UPLOAD.ALLOWED_MIME_TYPES.includes(file.type)) {
+      setUploadError(
+        `Invalid file type. Please upload ${FILE_UPLOAD.ALLOWED_TYPES_LABEL} files only.`
+      );
+      return;
+    }
+
     setUploading(true);
 
     try {
-      const token = localStorage.getItem("auth_token");
-
-      if (!token) {
-        throw new Error("Please log in before uploading a document.");
-      }
-
       const formData = new FormData();
       formData.append("file", file);
       if (markAsIdProof) {
         formData.append("is_id_proof", "true");
       }
 
-      const response = await fetch(`${API_BASE_URL}/tenants/${tenantId}/documents`, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
+      const response = await authFetch(
+        `${API_BASE_URL}/tenants/${tenantId}/documents`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        const message =
-          payload?.message ??
-          `Unable to upload document (HTTP ${response.status}).`;
+        const message = getApiErrorMessage(
+          payload,
+          `Unable to upload document (HTTP ${response.status}).`
+        );
         throw new Error(message);
       }
 
@@ -238,27 +206,20 @@ export default function DocumentsPanel({ tenantId, onChanged }) {
     setUpdatingDocumentId(documentId);
 
     try {
-      const token = localStorage.getItem("auth_token");
-
-      if (!token) {
-        throw new Error("Please log in before updating a document.");
-      }
-
-      const response = await fetch(`${API_BASE_URL}/documents/${documentId}`, {
+      const response = await authFetch(`${API_BASE_URL}/documents/${documentId}`, {
         method: "PATCH",
         headers: {
-          Accept: "application/json",
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ is_id_proof: true }),
       });
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        const message =
-          payload?.message ??
-          `Unable to update document (HTTP ${response.status}).`;
+        const message = getApiErrorMessage(
+          payload,
+          `Unable to update document (HTTP ${response.status}).`
+        );
         throw new Error(message);
       }
 
@@ -286,25 +247,16 @@ export default function DocumentsPanel({ tenantId, onChanged }) {
     setDeletingDocumentId(documentId);
 
     try {
-      const token = localStorage.getItem("auth_token");
-
-      if (!token) {
-        throw new Error("Please log in before deleting a document.");
-      }
-
-      const response = await fetch(`${API_BASE_URL}/documents/${documentId}`, {
+      const response = await authFetch(`${API_BASE_URL}/documents/${documentId}`, {
         method: "DELETE",
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${token}`,
-        },
       });
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        const message =
-          payload?.message ??
-          `Unable to delete document (HTTP ${response.status}).`;
+        const message = getApiErrorMessage(
+          payload,
+          `Unable to delete document (HTTP ${response.status}).`
+        );
         throw new Error(message);
       }
 
@@ -318,24 +270,14 @@ export default function DocumentsPanel({ tenantId, onChanged }) {
 
   const handleDownloadDocument = async (documentId) => {
     try {
-      const token = localStorage.getItem("auth_token");
-
-      if (!token) {
-        throw new Error("Please log in before downloading a document.");
-      }
-
-      const response = await fetch(`${API_BASE_URL}/documents/${documentId}`, {
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await authFetch(`${API_BASE_URL}/documents/${documentId}`);
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        const message =
-          payload?.message ??
-          `Unable to download document (HTTP ${response.status}).`;
+        const message = getApiErrorMessage(
+          payload,
+          `Unable to download document (HTTP ${response.status}).`
+        );
         throw new Error(message);
       }
 
@@ -400,7 +342,9 @@ export default function DocumentsPanel({ tenantId, onChanged }) {
         ref={fileInputRef}
         type="file"
         className="hidden"
+        accept={FILE_UPLOAD.ALLOWED_EXTENSIONS}
         onChange={handleFileInputChange}
+        aria-label="Upload tenant document"
       />
 
       {uploadError ? (
