@@ -208,72 +208,67 @@ else
     export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no"
 fi
 
-# Pull latest code
-log_info "📥 Pulling latest code from main branch..."
-
-# Check current git status
-log_info "Checking git status..."
-git status --short || true
-
-# Stash any local changes (but keep untracked files)
-log_info "Stashing local changes if any..."
-git stash push -m "Deployment stash $(date +%Y%m%d_%H%M%S)" --include-untracked 2>/dev/null || {
-    log_info "No changes to stash or stash failed (continuing anyway)"
-}
-
-# Ensure we're on the correct branch
-CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
-log_info "Current branch: $CURRENT_BRANCH"
-
-if [ "$CURRENT_BRANCH" != "main" ]; then
-    log_info "Switching to main branch..."
-    git checkout main 2>/dev/null || git checkout -b main origin/main 2>/dev/null || true
-fi
-
-# Try to fetch with SSH first
-log_info "Fetching from remote..."
-# Ensure GIT_SSH_COMMAND is exported
-export GIT_SSH_COMMAND
-log_info "Using GIT_SSH_COMMAND: $GIT_SSH_COMMAND"
-
-# Try fetch - GIT_SSH_COMMAND will be used automatically by git
-if git fetch --all 2>&1; then
-    log "✅ Git fetch successful"
+# Pull latest code (skip if code was already synced via rsync)
+if [ "$SKIP_GIT_PULL" = "true" ]; then
+    log_info "📥 Skipping git pull (code already synced from GitHub Actions)"
+    log "✅ Code is up to date (synced via rsync)"
 else
-    FETCH_ERROR=$?
-    log_warning "Git fetch failed (exit code: $FETCH_ERROR), trying alternative methods..."
-    
-    # Try pull instead of fetch
-    log_info "Trying: git pull origin main..."
-    if git pull origin main 2>&1; then
-        log "✅ Git pull successful"
-    else
-        PULL_ERROR=$?
-        log_error "Git pull also failed (exit code: $PULL_ERROR)"
-        log_info "Checking git remote configuration..."
-        git remote -v
-        log_info "Checking current branch and status..."
-        git status
-        log_info "Testing SSH connection..."
-        if [ -n "$SSH_KEY" ]; then
-            ssh -T -i "$SSH_KEY" git@github.com 2>&1 || true
-        fi
-        log_error "All git fetch/pull attempts failed"
-        log_info "GIT_SSH_COMMAND was: $GIT_SSH_COMMAND"
-        exit 1
+    log_info "📥 Pulling latest code from main branch..."
+
+    # Check current git status
+    log_info "Checking git status..."
+    git status --short || true
+
+    # Stash any local changes (but keep untracked files)
+    log_info "Stashing local changes if any..."
+    git stash push -m "Deployment stash $(date +%Y%m%d_%H%M%S)" --include-untracked 2>/dev/null || {
+        log_info "No changes to stash or stash failed (continuing anyway)"
+    }
+
+    # Ensure we're on the correct branch
+    CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
+    log_info "Current branch: $CURRENT_BRANCH"
+
+    if [ "$CURRENT_BRANCH" != "main" ]; then
+        log_info "Switching to main branch..."
+        git checkout main 2>/dev/null || git checkout -b main origin/main 2>/dev/null || true
     fi
-fi
 
-# Reset to match remote (discard any local changes)
-log_info "Resetting to origin/main..."
-if ! git reset --hard origin/main 2>&1; then
-    log_error "Failed to reset to origin/main"
-    exit 1
-fi
+    # Try to fetch with SSH first
+    log_info "Fetching from remote..."
+    # Ensure GIT_SSH_COMMAND is exported
+    export GIT_SSH_COMMAND
+    log_info "Using GIT_SSH_COMMAND: $GIT_SSH_COMMAND"
 
-# Clean untracked files and directories (optional, but helps keep repo clean)
-log_info "Cleaning untracked files..."
-git clean -fd 2>/dev/null || true
+    # Try fetch - GIT_SSH_COMMAND will be used automatically by git
+    if git fetch --all 2>&1; then
+        log "✅ Git fetch successful"
+    else
+        FETCH_ERROR=$?
+        log_warning "Git fetch failed (exit code: $FETCH_ERROR), trying alternative methods..."
+        
+        # Try pull instead of fetch
+        log_info "Trying: git pull origin main..."
+        if git pull origin main 2>&1; then
+            log "✅ Git pull successful"
+        else
+            PULL_ERROR=$?
+            log_warning "Git pull also failed (exit code: $PULL_ERROR)"
+            log_info "This is not critical if code was already synced via rsync"
+            log_info "Continuing with deployment..."
+        fi
+    fi
+
+    # Reset to match remote (discard any local changes)
+    log_info "Resetting to origin/main..."
+    if ! git reset --hard origin/main 2>&1; then
+        log_warning "Failed to reset to origin/main (continuing anyway)"
+    fi
+
+    # Clean untracked files and directories (optional, but helps keep repo clean)
+    log_info "Cleaning untracked files..."
+    git clean -fd 2>/dev/null || true
+fi
 
 COMMIT_HASH=$(git rev-parse --short HEAD)
 log "✅ Code updated to commit: $COMMIT_HASH"

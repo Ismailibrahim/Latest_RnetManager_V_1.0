@@ -59,10 +59,22 @@ jobs:
           echo "✅ Basic pre-deployment checks completed"
           EOF
 
+      - name: 📦 Copy code to server
+        run: |
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='.next' \
+            --exclude='backend/vendor' \
+            --exclude='backend/storage/logs' \
+            --exclude='backups' \
+            -e "ssh -o StrictHostKeyChecking=no" \
+            ./ "${{ env.SSH_USER }}@${{ env.SSH_HOST }}:/var/www/webapp/"
+
       - name: 🚀 Deploy to VPS
         timeout-minutes: 30
         run: |
-          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=15 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes -o BatchMode=yes "${{ env.SSH_USER }}@${{ env.SSH_HOST }}" <<'EOF'
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=15 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes "${{ env.SSH_USER }}@${{ env.SSH_HOST }}" <<'EOF'
           set -e
           APP_DIR="/var/www/webapp"
 
@@ -80,9 +92,10 @@ jobs:
           fi
 
           echo "🚀 Running deployment script..."
-          echo "ℹ️  Note: Backup runs in background to avoid SSH timeout"
+          echo "ℹ️  Note: Code already synced from GitHub Actions, skipping git pull"
           export APP_DIRECTORY="$APP_DIR"
           export DEPLOY_ENV="production"
+          export SKIP_GIT_PULL="true"
           
           # Run deploy script with output buffering disabled for real-time logs
           bash "$APP_DIR/deploy.sh" || {
