@@ -85,8 +85,34 @@ cd "$APP_DIR" || {
     exit 1
 }
 
+# Clean up disk space before creating directories
+log_info "🧹 Cleaning up disk space..."
+# Remove old backups (keep only 3 most recent)
+if [ -d "$APP_DIR/backups" ]; then
+    cd "$APP_DIR/backups"
+    ls -t *.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm -f
+    log "✅ Cleaned old backups"
+fi
+cd "$APP_DIR"
+
+# Remove old log files
+find "$APP_DIR/backend/storage/logs" -name "*.log" -type f -mtime +7 -delete 2>/dev/null || true
+find "$APP_DIR" -name "*.tmp" -type f -mtime +1 -delete 2>/dev/null || true
+
+# Check disk space again
+AVAILABLE_KB=$(df "$APP_DIR" | tail -1 | awk '{print $4}')
+if [ "$AVAILABLE_KB" -lt 51200 ]; then
+    log_warning "Very low disk space: $(($AVAILABLE_KB / 1024))MB free"
+    log_info "Attempting additional cleanup..."
+    # Remove node_modules if they exist (will be reinstalled)
+    [ -d "$APP_DIR/frontend/node_modules" ] && rm -rf "$APP_DIR/frontend/node_modules" && log "✅ Removed frontend node_modules"
+    [ -d "$APP_DIR/backend/vendor" ] && rm -rf "$APP_DIR/backend/vendor" && log "✅ Removed backend vendor (will reinstall)"
+fi
+
 # Create logs directory if it doesn't exist
-mkdir -p "$APP_DIR/logs"
+mkdir -p "$APP_DIR/logs" 2>/dev/null || {
+    log_warning "Could not create logs directory, continuing anyway..."
+}
 
 # Create backup before deployment (runs in background to avoid SSH timeout)
 BACKUP_DIR="$APP_DIR/backups"
