@@ -135,7 +135,27 @@ fi
 # Pull latest code
 log_info "📥 Pulling latest code from main branch..."
 
+# Check current git status
+log_info "Checking git status..."
+git status --short || true
+
+# Stash any local changes (but keep untracked files)
+log_info "Stashing local changes if any..."
+git stash push -m "Deployment stash $(date +%Y%m%d_%H%M%S)" --include-untracked 2>/dev/null || {
+    log_info "No changes to stash or stash failed (continuing anyway)"
+}
+
+# Ensure we're on the correct branch
+CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
+log_info "Current branch: $CURRENT_BRANCH"
+
+if [ "$CURRENT_BRANCH" != "main" ]; then
+    log_info "Switching to main branch..."
+    git checkout main 2>/dev/null || git checkout -b main origin/main 2>/dev/null || true
+fi
+
 # Try to fetch with SSH first
+log_info "Fetching from remote..."
 if git fetch --all 2>&1; then
     log "✅ Git fetch successful"
 else
@@ -157,10 +177,16 @@ else
     fi
 fi
 
-if ! git reset --hard origin/main; then
+# Reset to match remote (discard any local changes)
+log_info "Resetting to origin/main..."
+if ! git reset --hard origin/main 2>&1; then
     log_error "Failed to reset to origin/main"
     exit 1
 fi
+
+# Clean untracked files and directories (optional, but helps keep repo clean)
+log_info "Cleaning untracked files..."
+git clean -fd 2>/dev/null || true
 
 COMMIT_HASH=$(git rev-parse --short HEAD)
 log "✅ Code updated to commit: $COMMIT_HASH"
