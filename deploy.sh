@@ -156,41 +156,34 @@ fi
 
 # Try to fetch with SSH first
 log_info "Fetching from remote..."
-# Ensure GIT_SSH_COMMAND is still set and export it
-if [ -n "$GIT_SSH_COMMAND" ]; then
-    export GIT_SSH_COMMAND
-    log_info "Using GIT_SSH_COMMAND: $GIT_SSH_COMMAND"
-fi
+# Ensure GIT_SSH_COMMAND is exported
+export GIT_SSH_COMMAND
+log_info "Using GIT_SSH_COMMAND: $GIT_SSH_COMMAND"
 
-# Try fetch with explicit SSH command
-FETCH_OUTPUT=$(eval "$GIT_SSH_COMMAND git fetch --all 2>&1" 2>&1)
-FETCH_EXIT=$?
-
-if [ $FETCH_EXIT -eq 0 ]; then
+# Try fetch - GIT_SSH_COMMAND will be used automatically by git
+if git fetch --all 2>&1; then
     log "✅ Git fetch successful"
-    echo "$FETCH_OUTPUT"
 else
-    log_warning "Git fetch failed (exit code: $FETCH_EXIT)"
-    echo "$FETCH_OUTPUT"
-    log_warning "Trying alternative: git pull origin main..."
+    FETCH_ERROR=$?
+    log_warning "Git fetch failed (exit code: $FETCH_ERROR), trying alternative methods..."
     
     # Try pull instead of fetch
-    PULL_OUTPUT=$(eval "$GIT_SSH_COMMAND git pull origin main 2>&1" 2>&1)
-    PULL_EXIT=$?
-    
-    if [ $PULL_EXIT -eq 0 ]; then
+    log_info "Trying: git pull origin main..."
+    if git pull origin main 2>&1; then
         log "✅ Git pull successful"
-        echo "$PULL_OUTPUT"
     else
-        log_error "Git pull also failed (exit code: $PULL_EXIT)"
-        echo "$PULL_OUTPUT"
+        PULL_ERROR=$?
+        log_error "Git pull also failed (exit code: $PULL_ERROR)"
         log_info "Checking git remote configuration..."
         git remote -v
         log_info "Checking current branch and status..."
         git status
         log_info "Testing SSH connection..."
-        eval "$GIT_SSH_COMMAND ssh -T git@github.com 2>&1" || true
+        if [ -n "$SSH_KEY" ]; then
+            ssh -T -i "$SSH_KEY" git@github.com 2>&1 || true
+        fi
         log_error "All git fetch/pull attempts failed"
+        log_info "GIT_SSH_COMMAND was: $GIT_SSH_COMMAND"
         exit 1
     fi
 fi
