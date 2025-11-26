@@ -60,8 +60,9 @@ jobs:
           EOF
 
       - name: 🚀 Deploy to VPS
+        timeout-minutes: 15
         run: |
-          ssh -o StrictHostKeyChecking=no "${{ env.SSH_USER }}@${{ env.SSH_HOST }}" <<'EOF'
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=3 "${{ env.SSH_USER }}@${{ env.SSH_HOST }}" <<'EOF'
           set -e
           APP_DIR="/var/www/webapp"
           BACKUP_DIR="$APP_DIR/backups"
@@ -72,17 +73,23 @@ jobs:
 
           mkdir -p "$BACKUP_DIR"
 
-          echo "💾 Creating backup..."
+          echo "💾 Creating backup (this may take a few minutes)..."
           if [ -d "$APP_DIR/backend" ] && [ -d "$APP_DIR/frontend" ]; then
-            tar -czf "$BACKUP_DIR/backup_$TIMESTAMP.tar.gz" \
+            # Create backup with timeout and progress indication
+            if timeout 300 tar -czf "$BACKUP_DIR/backup_$TIMESTAMP.tar.gz" \
               --exclude="$APP_DIR/backups" \
               --exclude="$APP_DIR/node_modules" \
               --exclude="$APP_DIR/backend/vendor" \
               --exclude="$APP_DIR/backend/storage/logs/*" \
               --exclude="$APP_DIR/frontend/.next" \
               --exclude="$APP_DIR/frontend/node_modules" \
-              . 2>/dev/null || true
-            echo "✅ Backup created: backup_$TIMESTAMP.tar.gz"
+              . 2>/dev/null; then
+              echo "✅ Backup created: backup_$TIMESTAMP.tar.gz"
+            else
+              echo "⚠️  Backup creation had issues, but continuing with deployment..."
+            fi
+          else
+            echo "⚠️  Backend or frontend directory not found, skipping backup"
           fi
 
           if [ ! -f "$APP_DIR/deploy.sh" ]; then
