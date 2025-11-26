@@ -42,7 +42,10 @@ jobs:
           fi
 
           if [ -f "$APP_DIR/scripts/pre-deployment-checks.sh" ]; then
-            chmod +x "$APP_DIR/scripts/pre-deployment-checks.sh" 2>/dev/null || true
+            # Try to make executable, but don't fail if permission denied
+            chmod +x "$APP_DIR/scripts/pre-deployment-checks.sh" 2>/dev/null || {
+              echo "⚠️  Note: Could not change permissions (using bash directly)"
+            }
             bash "$APP_DIR/scripts/pre-deployment-checks.sh" || echo "⚠️  Pre-deployment checks had warnings, continuing..."
           else
             AVAILABLE=$(df "$APP_DIR" | tail -1 | awk '{print $4}')
