@@ -144,22 +144,47 @@ log_info "🔑 Setting up Git SSH authentication..."
 
 # Try multiple possible SSH key locations
 SSH_KEY=""
-for key_path in ~/.ssh/github_deploy /root/.ssh/github_deploy "$HOME/.ssh/github_deploy"; do
-    if [ -f "$key_path" ]; then
-        SSH_KEY="$key_path"
+SSH_DIR=""
+
+# Expand ~ to actual home directory
+if [ -n "$HOME" ]; then
+    USER_HOME="$HOME"
+elif [ -n "$USER" ]; then
+    USER_HOME=$(eval echo ~$USER)
+else
+    USER_HOME="/root"
+fi
+
+# Try different possible locations
+for key_path in "$USER_HOME/.ssh/github_deploy" "/root/.ssh/github_deploy" "$HOME/.ssh/github_deploy" "~/.ssh/github_deploy"; do
+    # Expand ~ if present
+    expanded_path=$(eval echo "$key_path" 2>/dev/null || echo "$key_path")
+    if [ -f "$expanded_path" ]; then
+        SSH_KEY="$expanded_path"
+        SSH_DIR=$(dirname "$SSH_KEY")
         break
     fi
 done
 
-if [ -n "$SSH_KEY" ]; then
+# If still not found, try to find it
+if [ -z "$SSH_KEY" ]; then
+    # Try find command as last resort
+    FOUND_KEY=$(find /root /home -name "github_deploy" -type f 2>/dev/null | head -1)
+    if [ -n "$FOUND_KEY" ]; then
+        SSH_KEY="$FOUND_KEY"
+        SSH_DIR=$(dirname "$SSH_KEY")
+    fi
+fi
+
+if [ -n "$SSH_KEY" ] && [ -f "$SSH_KEY" ]; then
     # Set permissions on SSH key
     chmod 600 "$SSH_KEY" 2>/dev/null || true
-    chmod 644 "${SSH_KEY}.pub" 2>/dev/null || true
+    [ -f "${SSH_KEY}.pub" ] && chmod 644 "${SSH_KEY}.pub" 2>/dev/null || true
     
     # Ensure GitHub host key is in known_hosts
-    KNOWN_HOSTS="${SSH_KEY%/*}/known_hosts"
+    KNOWN_HOSTS="${SSH_DIR}/known_hosts"
     if [ ! -f "$KNOWN_HOSTS" ] || ! grep -q "github.com" "$KNOWN_HOSTS" 2>/dev/null; then
-        mkdir -p "${SSH_KEY%/*}"
+        mkdir -p "$SSH_DIR"
         ssh-keyscan github.com >> "$KNOWN_HOSTS" 2>/dev/null || true
         chmod 600 "$KNOWN_HOSTS" 2>/dev/null || true
     fi
@@ -167,8 +192,18 @@ if [ -n "$SSH_KEY" ]; then
     # Configure Git to use SSH key
     export GIT_SSH_COMMAND="ssh -i $SSH_KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=$KNOWN_HOSTS"
     log "✅ Git SSH authentication configured using: $SSH_KEY"
+    
+    # Test the connection
+    log_info "Testing SSH connection..."
+    if ssh -T -i "$SSH_KEY" git@github.com 2>&1 | grep -q "successfully authenticated"; then
+        log "✅ SSH connection test successful"
+    else
+        log_warning "SSH connection test had issues, but continuing..."
+    fi
 else
-    log_warning "SSH key not found, trying without explicit key..."
+    log_warning "SSH key not found in any standard location"
+    log_info "Searched in: $USER_HOME/.ssh, /root/.ssh, $HOME/.ssh"
+    log_warning "Trying without explicit key (may fail if repo requires authentication)..."
     # Try to use default SSH key
     export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no"
 fi
