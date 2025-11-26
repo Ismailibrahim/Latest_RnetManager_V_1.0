@@ -60,16 +60,14 @@ jobs:
           EOF
 
       - name: 🚀 Deploy to VPS
-        timeout-minutes: 20
+        timeout-minutes: 30
         run: |
-          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes "${{ env.SSH_USER }}@${{ env.SSH_HOST }}" <<'EOF'
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=15 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes -o BatchMode=yes "${{ env.SSH_USER }}@${{ env.SSH_HOST }}" <<'EOF'
           set -e
           APP_DIR="/var/www/webapp"
 
           echo "📂 Navigating to $APP_DIR"
           cd "$APP_DIR" || exit 1
-
-          echo "ℹ️  Note: Backup will be created by deploy.sh script (runs on server, no SSH issues)"
 
           if [ ! -f "$APP_DIR/deploy.sh" ]; then
             if [ -f "$APP_DIR/config/deploy/deploy.sh" ]; then
@@ -82,9 +80,15 @@ jobs:
           fi
 
           echo "🚀 Running deployment script..."
+          echo "ℹ️  Note: Backup runs in background to avoid SSH timeout"
           export APP_DIRECTORY="$APP_DIR"
           export DEPLOY_ENV="production"
-          bash "$APP_DIR/deploy.sh"
+          
+          # Run deploy script with output buffering disabled for real-time logs
+          bash "$APP_DIR/deploy.sh" || {
+            echo "❌ Deployment script failed"
+            exit 1
+          }
 
           echo "✅ Deployment script completed"
           EOF
