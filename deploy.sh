@@ -88,11 +88,41 @@ cd "$APP_DIR" || {
 # Create logs directory if it doesn't exist
 mkdir -p "$APP_DIR/logs"
 
+# Create backup before deployment (runs on server, no SSH connection issues)
+BACKUP_DIR="$APP_DIR/backups"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+mkdir -p "$BACKUP_DIR"
+
+log_info "💾 Creating backup before deployment..."
+if [ -d "$APP_DIR/backend" ] && [ -d "$APP_DIR/frontend" ]; then
+    # Create backup with exclusions to make it faster
+    if timeout 300 tar -czf "$BACKUP_DIR/backup_$TIMESTAMP.tar.gz" \
+      --exclude="$APP_DIR/backups" \
+      --exclude="$APP_DIR/node_modules" \
+      --exclude="$APP_DIR/backend/vendor" \
+      --exclude="$APP_DIR/backend/storage/logs/*" \
+      --exclude="$APP_DIR/backend/storage/framework/cache/*" \
+      --exclude="$APP_DIR/backend/storage/framework/sessions/*" \
+      --exclude="$APP_DIR/backend/storage/framework/views/*" \
+      --exclude="$APP_DIR/frontend/.next" \
+      --exclude="$APP_DIR/frontend/node_modules" \
+      --exclude="$APP_DIR/frontend/.cache" \
+      --exclude="*.log" \
+      --exclude="*.tmp" \
+      . 2>/dev/null; then
+        log "✅ Backup created: backup_$TIMESTAMP.tar.gz"
+    else
+        log_warning "Backup creation had issues, but continuing with deployment..."
+    fi
+else
+    log_warning "Backend or frontend directory not found, skipping backup"
+fi
+
 # Clean up old backups to prevent disk space issues
 log_info "Cleaning up old backups..."
-if [ -d "$APP_DIR/backups" ]; then
+if [ -d "$BACKUP_DIR" ]; then
     # Keep only the 5 most recent backups
-    cd "$APP_DIR/backups"
+    cd "$BACKUP_DIR"
     ls -t *.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm -f
     log "✅ Backup cleanup complete"
 fi
