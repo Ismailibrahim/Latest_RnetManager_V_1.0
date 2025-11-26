@@ -134,10 +134,24 @@ fi
 
 # Pull latest code
 log_info "📥 Pulling latest code from main branch..."
-if ! git fetch --all; then
-    log_error "Failed to fetch from git"
-    log_info "Trying alternative: git pull origin main"
-    if ! git pull origin main; then
+
+# Try to fetch with SSH first
+if git fetch --all 2>&1; then
+    log "✅ Git fetch successful"
+else
+    FETCH_ERROR=$?
+    log_warning "Git fetch failed (exit code: $FETCH_ERROR), trying alternative methods..."
+    
+    # Try pull instead of fetch
+    if git pull origin main 2>&1; then
+        log "✅ Git pull successful"
+    else
+        PULL_ERROR=$?
+        log_error "Git pull also failed (exit code: $PULL_ERROR)"
+        log_info "Checking git remote configuration..."
+        git remote -v
+        log_info "Checking current branch and status..."
+        git status
         log_error "All git fetch/pull attempts failed"
         exit 1
     fi
