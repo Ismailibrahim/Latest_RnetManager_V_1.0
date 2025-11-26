@@ -100,22 +100,47 @@ cd "$APP_DIR"
 
 # Setup SSH for git operations
 log_info "🔑 Setting up Git SSH authentication..."
-if [ -f ~/.ssh/github_deploy ]; then
-    export GIT_SSH_COMMAND="ssh -i ~/.ssh/github_deploy -o StrictHostKeyChecking=no"
-    # Ensure GitHub host key is in known_hosts
-    if ! grep -q "github.com" ~/.ssh/known_hosts 2>/dev/null; then
-        ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null || true
+
+# Try multiple possible SSH key locations
+SSH_KEY=""
+for key_path in ~/.ssh/github_deploy /root/.ssh/github_deploy "$HOME/.ssh/github_deploy"; do
+    if [ -f "$key_path" ]; then
+        SSH_KEY="$key_path"
+        break
     fi
-    log "✅ Git SSH authentication configured"
+done
+
+if [ -n "$SSH_KEY" ]; then
+    # Set permissions on SSH key
+    chmod 600 "$SSH_KEY" 2>/dev/null || true
+    chmod 644 "${SSH_KEY}.pub" 2>/dev/null || true
+    
+    # Ensure GitHub host key is in known_hosts
+    KNOWN_HOSTS="${SSH_KEY%/*}/known_hosts"
+    if [ ! -f "$KNOWN_HOSTS" ] || ! grep -q "github.com" "$KNOWN_HOSTS" 2>/dev/null; then
+        mkdir -p "${SSH_KEY%/*}"
+        ssh-keyscan github.com >> "$KNOWN_HOSTS" 2>/dev/null || true
+        chmod 600 "$KNOWN_HOSTS" 2>/dev/null || true
+    fi
+    
+    # Configure Git to use SSH key
+    export GIT_SSH_COMMAND="ssh -i $SSH_KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=$KNOWN_HOSTS"
+    log "✅ Git SSH authentication configured using: $SSH_KEY"
 else
-    log_warning "SSH key not found, git operations may fail"
+    log_warning "SSH key not found, trying without explicit key..."
+    # Try to use default SSH key
+    export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no"
 fi
 
 # Pull latest code
 log_info "📥 Pulling latest code from main branch..."
 if ! git fetch --all; then
     log_error "Failed to fetch from git"
-    exit 1
+    log_info "Trying alternative: git pull origin main"
+    if ! git pull origin main; then
+        log_error "All git fetch/pull attempts failed"
+        exit 1
+    fi
 fi
 
 if ! git reset --hard origin/main; then
