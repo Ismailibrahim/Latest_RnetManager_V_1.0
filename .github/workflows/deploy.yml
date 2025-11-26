@@ -35,6 +35,7 @@ jobs:
           APP_DIR="/var/www/webapp"
 
           echo "🔍 Running pre-deployment checks..."
+          # Note: Script is run with bash directly, no chmod needed
 
           if [ ! -d "$APP_DIR" ]; then
             echo "❌ Error: App directory not found: $APP_DIR"
