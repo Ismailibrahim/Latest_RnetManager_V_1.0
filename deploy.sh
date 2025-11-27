@@ -192,47 +192,49 @@ if [ "$DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT" = "true" ] || [ "$SKIP_BACKUP" =
     # EXIT THIS SECTION IMMEDIATELY - DO NOT RUN ANY BACKUP CODE BELOW
     # All backup code below this point is SKIPPED for automated deployments
 elif [ "${ENABLE_BACKUP:-}" = "true" ]; then
-    # Only reach here for manual deployments with ENABLE_BACKUP="true"
     # Manual deployment with backup enabled
     log_info "💾 Creating backup (manual deployment with ENABLE_BACKUP=true)..."
-        BACKUP_DIR="$APP_DIR/backups"
-        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-        mkdir -p "$BACKUP_DIR"
-        
-        if [ -d "$APP_DIR/backend" ] && [ -d "$APP_DIR/frontend" ]; then
-            # Run backup in background with nohup to completely detach from SSH session
-            nohup bash -c "
-                timeout 300 tar -czf '$BACKUP_DIR/backup_$TIMESTAMP.tar.gz' \
-                  --exclude='$APP_DIR/backups' \
-                  --exclude='$APP_DIR/node_modules' \
-                  --exclude='$APP_DIR/backend/vendor' \
-                  --exclude='$APP_DIR/backend/storage/logs/*' \
-                  --exclude='$APP_DIR/backend/storage/framework/cache/*' \
-                  --exclude='$APP_DIR/backend/storage/framework/sessions/*' \
-                  --exclude='$APP_DIR/backend/storage/framework/views/*' \
-                  --exclude='$APP_DIR/frontend/.next' \
-                  --exclude='$APP_DIR/frontend/node_modules' \
-                  --exclude='$APP_DIR/frontend/.cache' \
-                  --exclude='*.log' \
-                  --exclude='*.tmp' \
-                  -C '$APP_DIR' . > '$BACKUP_DIR/backup_${TIMESTAMP}.log' 2>&1
-                
-                if [ \$? -eq 0 ]; then
-                    echo \"[$(date +'%Y-%m-%d %H:%M:%S')] ✅ Backup created: backup_$TIMESTAMP.tar.gz\" >> '$BACKUP_DIR/backup_${TIMESTAMP}.log'
-                else
-                    echo \"[$(date +'%Y-%m-%d %H:%M:%S')] ⚠️  Backup creation had issues\" >> '$BACKUP_DIR/backup_${TIMESTAMP}.log'
-                fi
-            " > /dev/null 2>&1 &
+    BACKUP_DIR="$APP_DIR/backups"
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    mkdir -p "$BACKUP_DIR"
+    
+    if [ -d "$APP_DIR/backend" ] && [ -d "$APP_DIR/frontend" ]; then
+        # Run backup in background with nohup to completely detach from SSH session
+        nohup bash -c "
+            timeout 300 tar -czf '$BACKUP_DIR/backup_$TIMESTAMP.tar.gz' \
+              --exclude='$APP_DIR/backups' \
+              --exclude='$APP_DIR/node_modules' \
+              --exclude='$APP_DIR/backend/vendor' \
+              --exclude='$APP_DIR/backend/storage/logs/*' \
+              --exclude='$APP_DIR/backend/storage/framework/cache/*' \
+              --exclude='$APP_DIR/backend/storage/framework/sessions/*' \
+              --exclude='$APP_DIR/backend/storage/framework/views/*' \
+              --exclude='$APP_DIR/frontend/.next' \
+              --exclude='$APP_DIR/frontend/node_modules' \
+              --exclude='$APP_DIR/frontend/.cache' \
+              --exclude='*.log' \
+              --exclude='*.tmp' \
+              -C '$APP_DIR' . > '$BACKUP_DIR/backup_${TIMESTAMP}.log' 2>&1
             
-            log_info "Backup process started in background (completely detached)"
-            log_info "Deployment will continue immediately"
-        else
-            log_warning "Backend or frontend directory not found, skipping backup"
-        fi
+            if [ \$? -eq 0 ]; then
+                echo \"[$(date +'%Y-%m-%d %H:%M:%S')] ✅ Backup created: backup_$TIMESTAMP.tar.gz\" >> '$BACKUP_DIR/backup_${TIMESTAMP}.log'
+            else
+                echo \"[$(date +'%Y-%m-%d %H:%M:%S')] ⚠️  Backup creation had issues\" >> '$BACKUP_DIR/backup_${TIMESTAMP}.log'
+            fi
+        " > /dev/null 2>&1 &
+        
+        log_info "Backup process started in background (completely detached)"
+        log_info "Deployment will continue immediately"
     else
-        log_info "✅ Backup SKIPPED (ENABLE_BACKUP not set to 'true')"
+        log_warning "Backend or frontend directory not found, skipping backup"
     fi
+else
+    # Neither automated deployment flag nor ENABLE_BACKUP is set
+    log_info "✅ Backup SKIPPED (ENABLE_BACKUP not set to 'true' and not automated deployment)"
 fi
+# ============================================================================
+# END OF BACKUP SECTION
+# ============================================================================
 
 # Clean up old backups to prevent disk space issues
 log_info "Cleaning up old backups..."
