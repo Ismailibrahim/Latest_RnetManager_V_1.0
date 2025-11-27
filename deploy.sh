@@ -341,8 +341,21 @@ if [ -d "$BACKEND_DIR" ]; then
     
     # Run migrations
     log_info "Running database migrations..."
-    if ! php artisan migrate --force; then
+    log_info "Testing database connection..."
+    if php artisan db:show >/dev/null 2>&1; then
+        log "✅ Database connection successful"
+    else
+        log_warning "Database connection test failed"
+        log_warning "This might be a MySQL authentication issue (auth_socket vs password)"
+        log_warning "If using MySQL root with auth_socket, create a dedicated database user:"
+        log_warning "  CREATE USER 'app_user'@'localhost' IDENTIFIED BY 'password';"
+        log_warning "  GRANT ALL PRIVILEGES ON database_name.* TO 'app_user'@'localhost';"
+    fi
+    
+    if ! php artisan migrate --force 2>&1; then
         log_error "Database migrations failed"
+        log_info "Checking database configuration..."
+        php artisan db:show 2>&1 || true
         php artisan up || true
         exit 1
     fi
