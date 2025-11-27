@@ -72,6 +72,45 @@ log_info() {
     echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')] INFO:${NC} $1"
 }
 
+# Temporary swap handling (helps prevent Next.js build OOM kills)
+TEMP_SWAP_FILE="/tmp/rentapp_deploy.swap"
+TEMP_SWAP_CREATED=false
+TEMP_SWAP_SIZE_MB=2048
+
+cleanup_temp_swap() {
+    if [ "$TEMP_SWAP_CREATED" = "true" ] && [ -f "$TEMP_SWAP_FILE" ]; then
+        log_info "Removing temporary swap file..."
+        swapoff "$TEMP_SWAP_FILE" 2>/dev/null || true
+        rm -f "$TEMP_SWAP_FILE" 2>/dev/null || true
+        TEMP_SWAP_CREATED=false
+    fi
+}
+
+ensure_temp_swap() {
+    # Only create swap if it doesn't exist yet
+    if [ "$TEMP_SWAP_CREATED" = "true" ]; then
+        return
+    fi
+
+    log_warning "Creating temporary ${TEMP_SWAP_SIZE_MB}MB swap file to support build..."
+    if command -v fallocate >/dev/null 2>&1; then
+        fallocate -l "${TEMP_SWAP_SIZE_MB}M" "$TEMP_SWAP_FILE" 2>/dev/null || true
+    fi
+    if [ ! -f "$TEMP_SWAP_FILE" ] || [ ! -s "$TEMP_SWAP_FILE" ]; then
+        dd if=/dev/zero of="$TEMP_SWAP_FILE" bs=1M count="$TEMP_SWAP_SIZE_MB" status=none
+    fi
+
+    chmod 600 "$TEMP_SWAP_FILE"
+    mkswap "$TEMP_SWAP_FILE" >/dev/null 2>&1
+    if swapon "$TEMP_SWAP_FILE" >/dev/null 2>&1; then
+        TEMP_SWAP_CREATED=true
+        log_info "Temporary swap enabled at $TEMP_SWAP_FILE"
+    else
+        log_warning "Failed to enable temporary swap"
+        rm -f "$TEMP_SWAP_FILE" 2>/dev/null || true
+    fi
+}
+
 # Error handler
 error_handler() {
     log_error "Deployment failed at line $1"
@@ -80,6 +119,7 @@ error_handler() {
 }
 
 trap 'error_handler $LINENO' ERR
+trap cleanup_temp_swap EXIT
 
 log "🚀 Starting deployment (Environment: $ENVIRONMENT)..."
 
@@ -718,6 +758,12 @@ if [ -d "$FRONTEND_DIR" ]; then
         # Check memory again after cleanup
         AVAILABLE_MEM_AFTER=$(free -m | grep Mem | awk '{print $7}')
         log_info "Memory after cleanup: ${AVAILABLE_MEM_AFTER}MB free"
+        AVAILABLE_MEM="$AVAILABLE_MEM_AFTER"
+    fi
+
+    # If memory still low, attach temporary swap
+    if [ "$AVAILABLE_MEM" -lt 900 ]; then
+        ensure_temp_swap
     fi
     
     log_info "Running npm run build..."
