@@ -142,9 +142,21 @@ mkdir -p "$APP_DIR/logs" 2>/dev/null || {
 # Debug: Show environment variables
 log_info "DEBUG: SKIP_BACKUP='${SKIP_BACKUP}', SKIP_GIT_PULL='${SKIP_GIT_PULL}'"
 
-if [ "$SKIP_BACKUP" = "true" ] || [ -n "$SKIP_GIT_PULL" ]; then
+# Check if we should skip backup (during automated deployments)
+SHOULD_SKIP_BACKUP=false
+if [ "$SKIP_BACKUP" = "true" ]; then
+    SHOULD_SKIP_BACKUP=true
+    log_info "SKIP_BACKUP is set to 'true'"
+fi
+if [ -n "$SKIP_GIT_PULL" ]; then
+    SHOULD_SKIP_BACKUP=true
+    log_info "SKIP_GIT_PULL is set (non-empty)"
+fi
+
+if [ "$SHOULD_SKIP_BACKUP" = "true" ]; then
     log_info "💾 Skipping backup (automated deployment via GitHub Actions)"
 else
+    log_info "💾 Backup will be created (manual deployment)"
     BACKUP_DIR="$APP_DIR/backups"
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     mkdir -p "$BACKUP_DIR"
