@@ -177,21 +177,24 @@ mkdir -p "$APP_DIR/logs" 2>/dev/null || {
 # CRITICAL: Check environment variables IMMEDIATELY and skip ALL backup code
 # ============================================================================
 
-log_info "🔍 Checking if backup should run..."
+# ============================================================================
+# IMMEDIATE BACKUP CHECK - EXIT EARLY IF AUTOMATED DEPLOYMENT
+# ============================================================================
+# This check happens BEFORE any backup code runs
+# If any of these conditions are true, skip ALL backup code immediately
 
-# IMMEDIATE CHECK: If this is an automated deployment, skip ALL backup code
 if [ "$DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT" = "true" ] || [ "$SKIP_BACKUP" = "true" ] || [ -n "$SKIP_GIT_PULL" ]; then
     log_info "✅ Backup SKIPPED (automated deployment detected)"
     log_info "   - DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT: $DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT"
     log_info "   - SKIP_BACKUP: $SKIP_BACKUP"
     log_info "   - SKIP_GIT_PULL: $SKIP_GIT_PULL"
     log_info "   Reason: Code is in Git, backup not needed for automated deployments"
-    # EXIT THIS SECTION IMMEDIATELY - DO NOT RUN ANY BACKUP CODE
-    # (The rest of the backup code below is unreachable for automated deployments)
-else
+    # EXIT THIS SECTION IMMEDIATELY - DO NOT RUN ANY BACKUP CODE BELOW
+    # All backup code below this point is SKIPPED for automated deployments
+elif [ "${ENABLE_BACKUP:-}" = "true" ]; then
     # Only reach here for manual deployments with ENABLE_BACKUP="true"
-    if [ "${ENABLE_BACKUP:-}" = "true" ]; then
-        log_info "💾 Creating backup (manual deployment with ENABLE_BACKUP=true)..."
+    # Manual deployment with backup enabled
+    log_info "💾 Creating backup (manual deployment with ENABLE_BACKUP=true)..."
         BACKUP_DIR="$APP_DIR/backups"
         TIMESTAMP=$(date +%Y%m%d_%H%M%S)
         mkdir -p "$BACKUP_DIR"
