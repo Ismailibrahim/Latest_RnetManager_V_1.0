@@ -81,11 +81,11 @@ jobs:
           echo "📂 Navigating to $APP_DIR"
           cd "$APP_DIR" || exit 1
 
-          # CRITICAL: Force update deploy.sh from rsync'd code
-          # rsync should have updated it, but verify and force update if needed
-          echo "🔍 Verifying deploy.sh is up to date..."
+          # CRITICAL: Verify deploy.sh has the latest backup-disable logic
+          # This MUST be present or backup will run and cause SSH timeout
+          echo "🔍 Verifying deploy.sh has latest backup-disable logic..."
           
-          # Check if script has the latest backup-disable logic
+          # Check for the critical backup disable flag
           if ! grep -q "DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT" "$APP_DIR/deploy.sh" 2>/dev/null; then
             echo "⚠️  WARNING: deploy.sh missing latest backup-disable logic"
             echo "This means rsync didn't update it or script is outdated"

@@ -25,12 +25,18 @@ echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG: SKIP_GIT_PULL='$SKIP_GIT_PULL'"
 echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG: APP_DIRECTORY='$APP_DIRECTORY'"
 echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG: APP_DIR='$APP_DIR'"
 
-# CRITICAL: If this is an automated deployment, backup is ALWAYS disabled
-# Set a flag immediately to prevent any backup code from running
+# ============================================================================
+# CRITICAL: BACKUP DISABLE FLAG - SET IMMEDIATELY FOR AUTOMATED DEPLOYMENTS
+# ============================================================================
+# If this is an automated deployment (from GitHub Actions), backup is ALWAYS disabled
+# This flag is checked at the backup section to completely skip all backup code
 DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT=false
 if [ "$SKIP_BACKUP" = "true" ] || [ -n "$SKIP_GIT_PULL" ]; then
     DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT=true
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG: Backup DISABLED for automated deployment"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] ✅ BACKUP DISABLED - Automated deployment detected"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')]    SKIP_BACKUP='$SKIP_BACKUP'"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')]    SKIP_GIT_PULL='$SKIP_GIT_PULL'"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')]    DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT='$DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT'"
 fi
 
 # Colors for output
