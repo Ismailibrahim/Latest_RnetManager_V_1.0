@@ -682,25 +682,33 @@ if [ -d "$FRONTEND_DIR" ]; then
     fi
     
     # Set Node options and build
-    # Server has ~1.9GB RAM, so we can't use 2GB - reduce to 1.5GB to leave room for system
-    export NODE_OPTIONS="--max-old-space-size=1536"
+    # Server has ~1.9GB RAM with ~456MB free, so we need to be conservative
+    # Use 1.2GB for Node.js to leave room for system processes
+    export NODE_OPTIONS="--max-old-space-size=1228"
     # Disable telemetry to save memory
     export NEXT_TELEMETRY_DISABLED=1
     
     # Check available memory before build
     AVAILABLE_MEM=$(free -m | grep Mem | awk '{print $7}')
-    log_info "Available memory before build: ${AVAILABLE_MEM}MB"
-    log_info "Node.js memory limit: 1536MB"
+    TOTAL_MEM=$(free -m | grep Mem | awk '{print $2}')
+    log_info "Memory status: ${AVAILABLE_MEM}MB free / ${TOTAL_MEM}MB total"
+    log_info "Node.js memory limit: 1228MB (conservative for low-memory server)"
     
     # If memory is very low, try to free some up
-    if [ "$AVAILABLE_MEM" -lt 500 ]; then
-        log_warning "Very low memory detected (${AVAILABLE_MEM}MB), attempting cleanup..."
+    if [ "$AVAILABLE_MEM" -lt 600 ]; then
+        log_warning "Low memory detected (${AVAILABLE_MEM}MB), performing aggressive cleanup..."
         # Clear npm cache
         npm cache clean --force 2>/dev/null || true
         # Clear Next.js cache
         rm -rf .next/cache 2>/dev/null || true
         rm -rf node_modules/.cache 2>/dev/null || true
+        # Clear any temporary build files
+        rm -rf .next/trace 2>/dev/null || true
         log_info "Cache cleanup complete"
+        
+        # Check memory again after cleanup
+        AVAILABLE_MEM_AFTER=$(free -m | grep Mem | awk '{print $7}')
+        log_info "Memory after cleanup: ${AVAILABLE_MEM_AFTER}MB free"
     fi
     
     log_info "Running npm run build..."
