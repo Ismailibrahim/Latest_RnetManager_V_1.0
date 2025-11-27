@@ -61,6 +61,7 @@ jobs:
 
       - name: 📦 Copy code to server
         run: |
+          echo "📤 Syncing code to server (this will update deploy.sh)..."
           rsync -avz --delete \
             --exclude='.git' \
             --exclude='node_modules' \
@@ -70,6 +71,11 @@ jobs:
             --exclude='backups' \
             -e "ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=15 -o ServerAliveCountMax=20" \
             ./ "${{ env.SSH_USER }}@${{ env.SSH_HOST }}:/var/www/webapp/"
+          echo "✅ Code sync complete"
+          
+          # Verify deploy.sh was updated
+          echo "🔍 Verifying deploy.sh was updated..."
+          ssh -o StrictHostKeyChecking=no "${{ env.SSH_USER }}@${{ env.SSH_HOST }}" "grep -q 'DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT' /var/www/webapp/deploy.sh && echo '✅ deploy.sh has latest backup-disable logic' || echo '❌ ERROR: deploy.sh missing backup-disable logic'"
 
       - name: 🚀 Deploy to VPS
         timeout-minutes: 30

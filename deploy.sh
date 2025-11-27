@@ -180,9 +180,11 @@ mkdir -p "$APP_DIR/logs" 2>/dev/null || {
 # ============================================================================
 # IMMEDIATE BACKUP CHECK - EXIT EARLY IF AUTOMATED DEPLOYMENT
 # ============================================================================
-# This check happens BEFORE any backup code runs
+# CRITICAL: This check happens BEFORE any backup code runs
 # If any of these conditions are true, skip ALL backup code immediately
+# DO NOT MODIFY THIS LOGIC - It prevents SSH timeouts during automated deployments
 
+# Check if this is an automated deployment (from GitHub Actions)
 if [ "$DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT" = "true" ] || [ "$SKIP_BACKUP" = "true" ] || [ -n "$SKIP_GIT_PULL" ]; then
     log_info "✅ Backup SKIPPED (automated deployment detected)"
     log_info "   - DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT: $DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT"
@@ -191,6 +193,7 @@ if [ "$DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT" = "true" ] || [ "$SKIP_BACKUP" =
     log_info "   Reason: Code is in Git, backup not needed for automated deployments"
     # EXIT THIS SECTION IMMEDIATELY - DO NOT RUN ANY BACKUP CODE BELOW
     # All backup code below this point is SKIPPED for automated deployments
+    # Jump to end of backup section
 elif [ "${ENABLE_BACKUP:-}" = "true" ]; then
     # Manual deployment with backup enabled
     log_info "💾 Creating backup (manual deployment with ENABLE_BACKUP=true)..."
