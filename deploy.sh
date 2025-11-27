@@ -6,10 +6,24 @@
 
 set -e  # Exit on any error
 
+# IMPORTANT: Read environment variables immediately to ensure they're available
+# These are set by GitHub Actions workflow to skip backup during automated deployments
+SKIP_BACKUP="${SKIP_BACKUP:-}"
+SKIP_GIT_PULL="${SKIP_GIT_PULL:-}"
+APP_DIRECTORY="${APP_DIRECTORY:-}"
+DEPLOY_ENV="${DEPLOY_ENV:-}"
+
 APP_DIR="${APP_DIRECTORY:-/var/www/webapp}"
 BACKEND_DIR="$APP_DIR/backend"
 FRONTEND_DIR="$APP_DIR/frontend"
 ENVIRONMENT="${DEPLOY_ENV:-production}"
+
+# Debug: Log environment variables at the very start
+echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG: Script started"
+echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG: SKIP_BACKUP='$SKIP_BACKUP'"
+echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG: SKIP_GIT_PULL='$SKIP_GIT_PULL'"
+echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG: APP_DIRECTORY='$APP_DIRECTORY'"
+echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG: APP_DIR='$APP_DIR'"
 
 # Colors for output
 RED='\033[0;31m'
@@ -155,8 +169,10 @@ fi
 
 if [ "$SHOULD_SKIP_BACKUP" = "true" ]; then
     log_info "💾 Skipping backup (automated deployment via GitHub Actions)"
+    log_info "DEBUG: Backup skip confirmed - SKIP_BACKUP='$SKIP_BACKUP', SKIP_GIT_PULL='$SKIP_GIT_PULL'"
 else
     log_info "💾 Backup will be created (manual deployment)"
+    log_info "DEBUG: Backup will run - SKIP_BACKUP='$SKIP_BACKUP', SKIP_GIT_PULL='$SKIP_GIT_PULL'"
     BACKUP_DIR="$APP_DIR/backups"
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     mkdir -p "$BACKUP_DIR"

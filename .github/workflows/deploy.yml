@@ -111,8 +111,8 @@ jobs:
           echo "DEBUG: Script location: $APP_DIR/deploy.sh"
           
           # Run deploy script with environment variables explicitly passed
-          # Use bash -x for debugging if needed, but for now just run normally
-          env SKIP_BACKUP="true" SKIP_GIT_PULL="true" APP_DIRECTORY="$APP_DIR" DEPLOY_ENV="production" bash "$APP_DIR/deploy.sh" || {
+          # CRITICAL: Pass variables both via export AND env command to ensure they're available
+          SKIP_BACKUP="true" SKIP_GIT_PULL="true" APP_DIRECTORY="$APP_DIR" DEPLOY_ENV="production" bash "$APP_DIR/deploy.sh" || {
             echo "❌ Deployment script failed"
             exit 1
           }
