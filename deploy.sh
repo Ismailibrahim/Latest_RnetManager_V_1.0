@@ -25,6 +25,14 @@ echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG: SKIP_GIT_PULL='$SKIP_GIT_PULL'"
 echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG: APP_DIRECTORY='$APP_DIRECTORY'"
 echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG: APP_DIR='$APP_DIR'"
 
+# CRITICAL: If this is an automated deployment, backup is ALWAYS disabled
+# Set a flag immediately to prevent any backup code from running
+DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT=false
+if [ "$SKIP_BACKUP" = "true" ] || [ -n "$SKIP_GIT_PULL" ]; then
+    DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT=true
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG: Backup DISABLED for automated deployment"
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -165,18 +173,25 @@ mkdir -p "$APP_DIR/logs" 2>/dev/null || {
 log_info "DEBUG: SKIP_BACKUP='${SKIP_BACKUP}', SKIP_GIT_PULL='${SKIP_GIT_PULL}', ENABLE_BACKUP='${ENABLE_BACKUP:-}'"
 
 # Determine if backup should run
+# CRITICAL: Check the flag set at the start of the script
 SHOULD_RUN_BACKUP=false
 
 # Only run backup if:
-# 1. ENABLE_BACKUP is explicitly set to "true" AND
-# 2. SKIP_BACKUP is NOT set to "true" AND
-# 3. SKIP_GIT_PULL is NOT set (meaning it's a manual deployment)
-if [ "${ENABLE_BACKUP:-}" = "true" ] && [ "$SKIP_BACKUP" != "true" ] && [ -z "$SKIP_GIT_PULL" ]; then
+# 1. Backup is NOT disabled for automated deployment AND
+# 2. ENABLE_BACKUP is explicitly set to "true" AND
+# 3. SKIP_BACKUP is NOT set to "true" AND
+# 4. SKIP_GIT_PULL is NOT set (meaning it's a manual deployment)
+if [ "$DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT" = "true" ]; then
+    log_info "💾 Backup DISABLED (automated deployment - code is in Git, no backup needed)"
+    log_info "DEBUG: DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT='$DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT'"
+    SHOULD_RUN_BACKUP=false
+elif [ "${ENABLE_BACKUP:-}" = "true" ] && [ "$SKIP_BACKUP" != "true" ] && [ -z "$SKIP_GIT_PULL" ]; then
     SHOULD_RUN_BACKUP=true
     log_info "Backup enabled via ENABLE_BACKUP='true'"
 else
     log_info "💾 Skipping backup (automated deployment - not needed, code is in Git)"
     log_info "DEBUG: ENABLE_BACKUP='${ENABLE_BACKUP:-}' (not set), SKIP_BACKUP='$SKIP_BACKUP', SKIP_GIT_PULL='$SKIP_GIT_PULL'"
+    SHOULD_RUN_BACKUP=false
 fi
 
 if [ "$SHOULD_RUN_BACKUP" = "true" ]; then
