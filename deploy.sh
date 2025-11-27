@@ -682,9 +682,26 @@ if [ -d "$FRONTEND_DIR" ]; then
     fi
     
     # Set Node options and build
-    export NODE_OPTIONS="--max-old-space-size=2048"
-    # Clear any environment variables that might have old paths
-    unset NEXT_TELEMETRY_DISABLED 2>/dev/null || true
+    # Server has ~1.9GB RAM, so we can't use 2GB - reduce to 1.5GB to leave room for system
+    export NODE_OPTIONS="--max-old-space-size=1536"
+    # Disable telemetry to save memory
+    export NEXT_TELEMETRY_DISABLED=1
+    
+    # Check available memory before build
+    AVAILABLE_MEM=$(free -m | grep Mem | awk '{print $7}')
+    log_info "Available memory before build: ${AVAILABLE_MEM}MB"
+    log_info "Node.js memory limit: 1536MB"
+    
+    # If memory is very low, try to free some up
+    if [ "$AVAILABLE_MEM" -lt 500 ]; then
+        log_warning "Very low memory detected (${AVAILABLE_MEM}MB), attempting cleanup..."
+        # Clear npm cache
+        npm cache clean --force 2>/dev/null || true
+        # Clear Next.js cache
+        rm -rf .next/cache 2>/dev/null || true
+        rm -rf node_modules/.cache 2>/dev/null || true
+        log_info "Cache cleanup complete"
+    fi
     
     log_info "Running npm run build..."
     if ! npm run build; then
