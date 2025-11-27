@@ -81,6 +81,7 @@ jobs:
           echo "📂 Navigating to $APP_DIR"
           cd "$APP_DIR" || exit 1
 
+          # Ensure deploy.sh exists and is the latest version (rsync should have updated it)
           if [ ! -f "$APP_DIR/deploy.sh" ]; then
             if [ -f "$APP_DIR/config/deploy/deploy.sh" ]; then
               cp "$APP_DIR/config/deploy/deploy.sh" "$APP_DIR/deploy.sh"
@@ -89,6 +90,12 @@ jobs:
               echo "❌ Error: deploy.sh not found"
               exit 1
             fi
+          fi
+
+          # Verify the script has the SKIP_BACKUP logic (check for the debug line)
+          if ! grep -q "DEBUG: SKIP_BACKUP" "$APP_DIR/deploy.sh"; then
+            echo "⚠️  Warning: deploy.sh may be outdated (missing SKIP_BACKUP logic)"
+            echo "This might cause backup to run during automated deployments"
           fi
 
           echo "🚀 Running deployment script..."
@@ -101,8 +108,10 @@ jobs:
           export SKIP_BACKUP="true"
           
           echo "DEBUG: Before script - SKIP_BACKUP=$SKIP_BACKUP, SKIP_GIT_PULL=$SKIP_GIT_PULL"
+          echo "DEBUG: Script location: $APP_DIR/deploy.sh"
           
           # Run deploy script with environment variables explicitly passed
+          # Use bash -x for debugging if needed, but for now just run normally
           env SKIP_BACKUP="true" SKIP_GIT_PULL="true" APP_DIRECTORY="$APP_DIR" DEPLOY_ENV="production" bash "$APP_DIR/deploy.sh" || {
             echo "❌ Deployment script failed"
             exit 1
