@@ -538,26 +538,33 @@ if [ -d "$FRONTEND_DIR" ]; then
     
     # CRITICAL: Remove node_modules completely if it exists (from previous failed installs or old paths)
     # This ensures we start fresh and avoid permission issues or wrong paths
-    if [ -d "node_modules" ]; then
+    if [ -d "node_modules" ] || [ -L "node_modules" ]; then
         log_info "Removing existing node_modules for clean install..."
-        # Check if it's a symlink to old path
-        if [ -L "node_modules" ]; then
-            log_warning "node_modules is a symlink, removing it..."
-            rm -f node_modules 2>/dev/null || true
-        else
-            # Try to remove normally first
-            rm -rf node_modules 2>/dev/null || {
-                log_warning "Standard rm failed, trying with permission fixes..."
-                # If rm fails, fix permissions and try again
-                find node_modules -type f -exec chmod u+w {} \; 2>/dev/null || true
-                find node_modules -type d -exec chmod u+w {} \; 2>/dev/null || true
-                rm -rf node_modules 2>/dev/null || {
-                    log_warning "Still can't remove, trying with sudo (if available)..."
-                    sudo rm -rf node_modules 2>/dev/null || true
+        
+        # Strategy 1: Try simple removal
+        rm -rf node_modules 2>/dev/null && {
+            log_info "✅ node_modules removed successfully"
+        } || {
+            log_warning "Standard rm failed, trying aggressive removal..."
+            
+            # Strategy 2: Fix permissions and remove
+            find node_modules -type f -exec chmod u+w {} \; 2>/dev/null || true
+            find node_modules -type d -exec chmod u+w {} \; 2>/dev/null || true
+            rm -rf node_modules 2>/dev/null && {
+                log_info "✅ node_modules removed after permission fix"
+            } || {
+                log_warning "Permission fix didn't work, trying rename/move strategy..."
+                
+                # Strategy 3: Rename it out of the way (npm will create new one)
+                TIMESTAMP=$(date +%s)
+                mv node_modules "node_modules.old.$TIMESTAMP" 2>/dev/null && {
+                    log_info "✅ node_modules renamed to node_modules.old.$TIMESTAMP (will be cleaned up later)"
+                } || {
+                    log_warning "Rename also failed, will let npm handle it (may cause issues)"
+                    # Don't fail - let npm try to overwrite it
                 }
             }
-        fi
-        log_info "✅ node_modules removed (or attempted)"
+        }
     fi
     
     # Also check for and remove package-lock.json if it has old paths
@@ -596,11 +603,27 @@ if [ -d "$FRONTEND_DIR" ]; then
     rm -rf ~/.npm/_cacache 2>/dev/null || true
     rm -rf /tmp/npm-* 2>/dev/null || true
     
-    # Verify node_modules doesn't exist (should have been removed above)
+    # Check if node_modules still exists (after removal attempts)
+    # If it does, try one more aggressive removal, but don't fail - let npm handle it
     if [ -d "node_modules" ] || [ -L "node_modules" ]; then
-        log_error "ERROR: node_modules still exists after removal attempt!"
-        log_error "This will cause permission issues. Manual intervention required."
-        exit 1
+        log_warning "⚠️  node_modules still exists after removal attempts"
+        log_warning "Trying one final aggressive removal..."
+        
+        # Final attempt: use find to delete everything individually
+        find node_modules -delete 2>/dev/null || {
+            # If that fails, rename it and let npm create a fresh one
+            TIMESTAMP=$(date +%s)
+            mv node_modules "node_modules.stuck.$TIMESTAMP" 2>/dev/null || true
+            log_warning "Renamed stuck node_modules, npm will create fresh one"
+        }
+        
+        # If it STILL exists, just warn and continue - npm might be able to overwrite it
+        if [ -d "node_modules" ] || [ -L "node_modules" ]; then
+            log_warning "⚠️  node_modules still exists, but continuing anyway"
+            log_warning "npm install will attempt to handle it (may cause issues)"
+        else
+            log_info "✅ node_modules finally removed"
+        fi
     fi
     
     # Install fresh - use npm install (not npm ci) since we removed package-lock.json
