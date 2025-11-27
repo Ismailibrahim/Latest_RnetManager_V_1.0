@@ -104,9 +104,32 @@ AVAILABLE_KB=$(df "$APP_DIR" | tail -1 | awk '{print $4}')
 if [ "$AVAILABLE_KB" -lt 51200 ]; then
     log_warning "Very low disk space: $(($AVAILABLE_KB / 1024))MB free"
     log_info "Attempting additional cleanup..."
+    
     # Remove node_modules if they exist (will be reinstalled)
-    [ -d "$APP_DIR/frontend/node_modules" ] && rm -rf "$APP_DIR/frontend/node_modules" && log "✅ Removed frontend node_modules"
-    [ -d "$APP_DIR/backend/vendor" ] && rm -rf "$APP_DIR/backend/vendor" && log "✅ Removed backend vendor (will reinstall)"
+    # Fix permissions first, then remove (suppress errors for stubborn files)
+    if [ -d "$APP_DIR/frontend/node_modules" ]; then
+        log_info "Removing frontend node_modules..."
+        chmod -R u+w "$APP_DIR/frontend/node_modules" 2>/dev/null || true
+        rm -rf "$APP_DIR/frontend/node_modules" 2>/dev/null || {
+            # If rm fails, try find -delete which handles permissions better
+            find "$APP_DIR/frontend/node_modules" -type f -exec chmod u+w {} \; 2>/dev/null || true
+            find "$APP_DIR/frontend/node_modules" -type d -exec chmod u+w {} \; 2>/dev/null || true
+            rm -rf "$APP_DIR/frontend/node_modules" 2>/dev/null || true
+        }
+        log "✅ Removed frontend node_modules (or attempted)"
+    fi
+    
+    # Remove vendor if it exists
+    if [ -d "$APP_DIR/backend/vendor" ]; then
+        log_info "Removing backend vendor..."
+        chmod -R u+w "$APP_DIR/backend/vendor" 2>/dev/null || true
+        rm -rf "$APP_DIR/backend/vendor" 2>/dev/null || {
+            find "$APP_DIR/backend/vendor" -type f -exec chmod u+w {} \; 2>/dev/null || true
+            find "$APP_DIR/backend/vendor" -type d -exec chmod u+w {} \; 2>/dev/null || true
+            rm -rf "$APP_DIR/backend/vendor" 2>/dev/null || true
+        }
+        log "✅ Removed backend vendor (or attempted)"
+    fi
 fi
 
 # Create logs directory if it doesn't exist
