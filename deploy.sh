@@ -114,45 +114,45 @@ mkdir -p "$APP_DIR/logs" 2>/dev/null || {
     log_warning "Could not create logs directory, continuing anyway..."
 }
 
-# Create backup before deployment (runs in background to avoid SSH timeout)
-BACKUP_DIR="$APP_DIR/backups"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-mkdir -p "$BACKUP_DIR"
+# Create backup before deployment (skip if SKIP_BACKUP is set or if automated deployment)
+if [ "$SKIP_BACKUP" != "true" ] && [ -z "$SKIP_GIT_PULL" ]; then
+    BACKUP_DIR="$APP_DIR/backups"
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    mkdir -p "$BACKUP_DIR"
 
-log_info "💾 Creating backup before deployment (running in background)..."
-if [ -d "$APP_DIR/backend" ] && [ -d "$APP_DIR/frontend" ]; then
-    # Run backup in background to avoid SSH connection timeout
-    (
-        timeout 300 tar -czf "$BACKUP_DIR/backup_$TIMESTAMP.tar.gz" \
-          --exclude="$APP_DIR/backups" \
-          --exclude="$APP_DIR/node_modules" \
-          --exclude="$APP_DIR/backend/vendor" \
-          --exclude="$APP_DIR/backend/storage/logs/*" \
-          --exclude="$APP_DIR/backend/storage/framework/cache/*" \
-          --exclude="$APP_DIR/backend/storage/framework/sessions/*" \
-          --exclude="$APP_DIR/backend/storage/framework/views/*" \
-          --exclude="$APP_DIR/frontend/.next" \
-          --exclude="$APP_DIR/frontend/node_modules" \
-          --exclude="$APP_DIR/frontend/.cache" \
-          --exclude="*.log" \
-          --exclude="*.tmp" \
-          . > "$BACKUP_DIR/backup_${TIMESTAMP}.log" 2>&1
+    log_info "💾 Creating backup before deployment (running in background)..."
+    if [ -d "$APP_DIR/backend" ] && [ -d "$APP_DIR/frontend" ]; then
+        # Run backup in background with nohup to completely detach from SSH session
+        nohup bash -c "
+            timeout 300 tar -czf '$BACKUP_DIR/backup_$TIMESTAMP.tar.gz' \
+              --exclude='$APP_DIR/backups' \
+              --exclude='$APP_DIR/node_modules' \
+              --exclude='$APP_DIR/backend/vendor' \
+              --exclude='$APP_DIR/backend/storage/logs/*' \
+              --exclude='$APP_DIR/backend/storage/framework/cache/*' \
+              --exclude='$APP_DIR/backend/storage/framework/sessions/*' \
+              --exclude='$APP_DIR/backend/storage/framework/views/*' \
+              --exclude='$APP_DIR/frontend/.next' \
+              --exclude='$APP_DIR/frontend/node_modules' \
+              --exclude='$APP_DIR/frontend/.cache' \
+              --exclude='*.log' \
+              --exclude='*.tmp' \
+              -C '$APP_DIR' . > '$BACKUP_DIR/backup_${TIMESTAMP}.log' 2>&1
+            
+            if [ \$? -eq 0 ]; then
+                echo \"[$(date +'%Y-%m-%d %H:%M:%S')] ✅ Backup created: backup_$TIMESTAMP.tar.gz\" >> '$BACKUP_DIR/backup_${TIMESTAMP}.log'
+            else
+                echo \"[$(date +'%Y-%m-%d %H:%M:%S')] ⚠️  Backup creation had issues\" >> '$BACKUP_DIR/backup_${TIMESTAMP}.log'
+            fi
+        " > /dev/null 2>&1 &
         
-        if [ $? -eq 0 ]; then
-            echo "[$(date +'%Y-%m-%d %H:%M:%S')] ✅ Backup created: backup_$TIMESTAMP.tar.gz" >> "$BACKUP_DIR/backup_${TIMESTAMP}.log"
-        else
-            echo "[$(date +'%Y-%m-%d %H:%M:%S')] ⚠️  Backup creation had issues" >> "$BACKUP_DIR/backup_${TIMESTAMP}.log"
-        fi
-    ) &
-    
-    BACKUP_PID=$!
-    log_info "Backup process started in background (PID: $BACKUP_PID)"
-    log_info "Deployment will continue while backup runs in background"
-    
-    # Give backup a few seconds to start, then continue
-    sleep 2
+        log_info "Backup process started in background (completely detached)"
+        log_info "Deployment will continue immediately"
+    else
+        log_warning "Backend or frontend directory not found, skipping backup"
+    fi
 else
-    log_warning "Backend or frontend directory not found, skipping backup"
+    log_info "💾 Skipping backup (automated deployment or SKIP_BACKUP set)"
 fi
 
 # Clean up old backups to prevent disk space issues

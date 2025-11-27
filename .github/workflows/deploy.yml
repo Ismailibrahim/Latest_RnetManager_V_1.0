@@ -92,10 +92,11 @@ jobs:
           fi
 
           echo "🚀 Running deployment script..."
-          echo "ℹ️  Note: Code already synced from GitHub Actions, skipping git pull"
+          echo "ℹ️  Note: Code already synced from GitHub Actions, skipping git pull and backup"
           export APP_DIRECTORY="$APP_DIR"
           export DEPLOY_ENV="production"
           export SKIP_GIT_PULL="true"
+          export SKIP_BACKUP="true"
           
           # Run deploy script with output buffering disabled for real-time logs
           bash "$APP_DIR/deploy.sh" || {
