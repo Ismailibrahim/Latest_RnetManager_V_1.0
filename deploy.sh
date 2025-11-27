@@ -521,19 +521,35 @@ if [ -d "$FRONTEND_DIR" ]; then
         exit 1
     }
     
-    # Fix permissions on node_modules if it exists (from previous failed installs)
+    # CRITICAL: Remove node_modules completely if it exists (from previous failed installs or old paths)
+    # This ensures we start fresh and avoid permission issues or wrong paths
     if [ -d "node_modules" ]; then
-        log_info "Fixing permissions on existing node_modules..."
-        chmod -R u+w node_modules 2>/dev/null || true
-        # Remove node_modules if permissions can't be fixed (will reinstall)
-        if [ $? -ne 0 ]; then
-            log_warning "Cannot fix node_modules permissions, removing for clean install..."
+        log_info "Removing existing node_modules for clean install..."
+        # Check if it's a symlink to old path
+        if [ -L "node_modules" ]; then
+            log_warning "node_modules is a symlink, removing it..."
+            rm -f node_modules 2>/dev/null || true
+        else
+            # Try to remove normally first
             rm -rf node_modules 2>/dev/null || {
-                # If rm fails, try with find
+                log_warning "Standard rm failed, trying with permission fixes..."
+                # If rm fails, fix permissions and try again
                 find node_modules -type f -exec chmod u+w {} \; 2>/dev/null || true
                 find node_modules -type d -exec chmod u+w {} \; 2>/dev/null || true
-                rm -rf node_modules 2>/dev/null || true
+                rm -rf node_modules 2>/dev/null || {
+                    log_warning "Still can't remove, trying with sudo (if available)..."
+                    sudo rm -rf node_modules 2>/dev/null || true
+                }
             }
+        fi
+        log_info "✅ node_modules removed (or attempted)"
+    fi
+    
+    # Also check for and remove package-lock.json if it has old paths
+    if [ -f "package-lock.json" ]; then
+        if grep -q "Rent_V2" package-lock.json 2>/dev/null; then
+            log_warning "package-lock.json contains old path (Rent_V2), removing..."
+            rm -f package-lock.json
         fi
     fi
     
@@ -545,26 +561,38 @@ if [ -d "$FRONTEND_DIR" ]; then
     
     # Install dependencies
     log_info "Installing Node dependencies..."
+    
+    # Verify we're in the correct directory (not a symlink to old path)
+    CURRENT_DIR=$(pwd)
+    log_info "DEBUG: Current directory: $CURRENT_DIR"
+    if echo "$CURRENT_DIR" | grep -q "Rent_V2"; then
+        log_error "ERROR: Script is in wrong directory: $CURRENT_DIR"
+        log_error "Expected: $FRONTEND_DIR"
+        exit 1
+    fi
+    
     # Ensure we have write permissions in the frontend directory
     chmod -R u+w . 2>/dev/null || true
     
-    # Clear npm cache if it has wrong paths
-    log_info "Clearing npm cache to avoid path conflicts..."
+    # Clear npm cache completely to avoid any path conflicts
+    log_info "Clearing npm cache completely..."
     npm cache clean --force 2>/dev/null || true
+    # Also clear npm's internal cache directories
+    rm -rf ~/.npm/_cacache 2>/dev/null || true
+    rm -rf /tmp/npm-* 2>/dev/null || true
     
-    # Remove package-lock.json if it has wrong paths (will be regenerated)
-    if [ -f "package-lock.json" ] && grep -q "Rent_V2" package-lock.json 2>/dev/null; then
-        log_warning "package-lock.json contains old path (Rent_V2), removing for clean install..."
-        rm -f package-lock.json
+    # Verify node_modules doesn't exist (should have been removed above)
+    if [ -d "node_modules" ] || [ -L "node_modules" ]; then
+        log_error "ERROR: node_modules still exists after removal attempt!"
+        log_error "This will cause permission issues. Manual intervention required."
+        exit 1
     fi
     
-    if ! npm ci --unsafe-perm; then
-        log_error "npm ci failed, trying with npm install..."
-        # Fallback to npm install if npm ci fails
-        if ! npm install --unsafe-perm; then
-            log_error "npm install also failed"
-            exit 1
-        fi
+    # Install fresh - use npm install (not npm ci) since we removed package-lock.json
+    log_info "Running fresh npm install..."
+    if ! npm install --unsafe-perm --no-audit --no-fund; then
+        log_error "npm install failed"
+        exit 1
     fi
     
     # Build for production
