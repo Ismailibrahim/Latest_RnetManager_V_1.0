@@ -761,10 +761,9 @@ if [ -d "$FRONTEND_DIR" ]; then
         AVAILABLE_MEM="$AVAILABLE_MEM_AFTER"
     fi
 
-    # If memory still low, attach temporary swap
-    if [ "$AVAILABLE_MEM" -lt 900 ]; then
-        ensure_temp_swap
-    fi
+    # Always ensure temporary swap is available before heavy TypeScript stage.
+    # The swap is cleaned up automatically on EXIT.
+    ensure_temp_swap
     
     log_info "Running npm run build..."
     if ! npm run build; then
