@@ -115,7 +115,10 @@ mkdir -p "$APP_DIR/logs" 2>/dev/null || {
 }
 
 # Create backup before deployment (skip if SKIP_BACKUP is set or if automated deployment)
-if [ "$SKIP_BACKUP" != "true" ] && [ -z "$SKIP_GIT_PULL" ]; then
+# Skip backup during automated deployments to avoid SSH timeout issues
+if [ "$SKIP_BACKUP" = "true" ] || [ -n "$SKIP_GIT_PULL" ]; then
+    log_info "💾 Skipping backup (automated deployment via GitHub Actions)"
+else
     BACKUP_DIR="$APP_DIR/backups"
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     mkdir -p "$BACKUP_DIR"
@@ -151,8 +154,6 @@ if [ "$SKIP_BACKUP" != "true" ] && [ -z "$SKIP_GIT_PULL" ]; then
     else
         log_warning "Backend or frontend directory not found, skipping backup"
     fi
-else
-    log_info "💾 Skipping backup (automated deployment or SKIP_BACKUP set)"
 fi
 
 # Clean up old backups to prevent disk space issues

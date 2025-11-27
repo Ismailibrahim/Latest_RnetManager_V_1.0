@@ -68,7 +68,7 @@ jobs:
             --exclude='backend/vendor' \
             --exclude='backend/storage/logs' \
             --exclude='backups' \
-            -e "ssh -o StrictHostKeyChecking=no" \
+            -e "ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=15 -o ServerAliveCountMax=20" \
             ./ "${{ env.SSH_USER }}@${{ env.SSH_HOST }}:/var/www/webapp/"
 
       - name: 🚀 Deploy to VPS
