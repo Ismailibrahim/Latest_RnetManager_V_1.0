@@ -92,11 +92,21 @@ jobs:
             fi
           fi
 
-          # Verify the script has the SKIP_BACKUP logic (check for the debug line)
-          if ! grep -q "DEBUG: SKIP_BACKUP" "$APP_DIR/deploy.sh"; then
-            echo "⚠️  Warning: deploy.sh may be outdated (missing SKIP_BACKUP logic)"
-            echo "This might cause backup to run during automated deployments"
+          # CRITICAL: Verify the script has the latest SKIP_BACKUP logic
+          if ! grep -q "DEBUG: Script started" "$APP_DIR/deploy.sh"; then
+            echo "❌ ERROR: deploy.sh is outdated (missing latest SKIP_BACKUP logic)"
+            echo "The script will create a backup which will cause SSH timeout!"
+            echo "Please ensure rsync updated the script correctly."
+            exit 1
           fi
+          
+          # Double-check: Verify SKIP_BACKUP variable handling exists
+          if ! grep -q "SKIP_BACKUP=" "$APP_DIR/deploy.sh" | head -1; then
+            echo "❌ ERROR: deploy.sh missing SKIP_BACKUP variable handling"
+            exit 1
+          fi
+          
+          echo "✅ Verified deploy.sh has latest SKIP_BACKUP logic"
 
           echo "🚀 Running deployment script..."
           echo "ℹ️  Note: Code already synced from GitHub Actions, skipping git pull and backup"
