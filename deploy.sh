@@ -636,11 +636,45 @@ if [ -d "$FRONTEND_DIR" ]; then
     
     # Build for production
     log_info "Building frontend for production..."
+    
+    # CRITICAL: Remove .next directory to avoid permission issues and old paths
+    if [ -d ".next" ]; then
+        log_info "Removing existing .next directory for clean build..."
+        rm -rf .next 2>/dev/null || {
+            log_warning "Standard rm failed, trying with permission fixes..."
+            find .next -type f -exec chmod u+w {} \; 2>/dev/null || true
+            find .next -type d -exec chmod u+w {} \; 2>/dev/null || true
+            rm -rf .next 2>/dev/null || {
+                log_warning "Still can't remove, trying rename..."
+                TIMESTAMP=$(date +%s)
+                mv .next ".next.old.$TIMESTAMP" 2>/dev/null || true
+            }
+        }
+        log_info "✅ .next directory removed (or renamed)"
+    fi
+    
+    # Ensure we have write permissions in the frontend directory
+    log_info "Fixing permissions on frontend directory..."
+    chmod -R u+w . 2>/dev/null || true
+    
+    # Verify we're in the correct directory (not old path)
+    CURRENT_DIR=$(pwd)
+    log_info "DEBUG: Building in directory: $CURRENT_DIR"
+    if echo "$CURRENT_DIR" | grep -q "Rent_V2"; then
+        log_error "ERROR: Building in wrong directory: $CURRENT_DIR"
+        log_error "Expected: $FRONTEND_DIR"
+        exit 1
+    fi
+    
+    # Set Node options and build
     export NODE_OPTIONS="--max-old-space-size=2048"
+    log_info "Running npm run build..."
     if ! npm run build; then
         log_error "Frontend build failed"
         exit 1
     fi
+    
+    log_info "✅ Frontend build completed successfully"
     
     # Restart PM2 process if PM2 is available and ecosystem.config.js exists
     if command -v pm2 &> /dev/null && [ -f "$APP_DIR/ecosystem.config.js" ]; then
