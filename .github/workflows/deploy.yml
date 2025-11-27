@@ -97,6 +97,7 @@ jobs:
           export DEPLOY_ENV="production"
           export SKIP_GIT_PULL="true"
           export SKIP_BACKUP="true"
+          echo "DEBUG: SKIP_BACKUP=$SKIP_BACKUP, SKIP_GIT_PULL=$SKIP_GIT_PULL"
           
           # Run deploy script with output buffering disabled for real-time logs
           bash "$APP_DIR/deploy.sh" || {
