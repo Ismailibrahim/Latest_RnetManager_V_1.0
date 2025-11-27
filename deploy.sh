@@ -215,6 +215,9 @@ if [ "$SHOULD_RUN_BACKUP" = "true" ]; then
     else
         log_warning "Backend or frontend directory not found, skipping backup"
     fi
+else
+    # Backup is skipped - this is normal for automated deployments
+    log_info "✅ Backup skipped (automated deployment - code is in Git, no backup needed)"
 fi
 
 # Clean up old backups to prevent disk space issues
