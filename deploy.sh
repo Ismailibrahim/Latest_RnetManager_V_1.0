@@ -159,80 +159,70 @@ mkdir -p "$APP_DIR/logs" 2>/dev/null || {
     log_warning "Could not create logs directory, continuing anyway..."
 }
 
-# Create backup before deployment
-# NOTE: Backups are DISABLED by default for automated deployments because:
+# ============================================================================
+# BACKUP SECTION - COMPLETELY DISABLED FOR AUTOMATED DEPLOYMENTS
+# ============================================================================
+# NOTE: Backups are DISABLED for automated deployments because:
 # 1. Code is already in Git (can rollback via Git)
 # 2. Backups cause SSH timeouts during automated deployments
 # 3. They consume disk space unnecessarily
 # 4. Automated deployments should be fast and reliable
 #
-# Backup is ONLY enabled if explicitly requested via ENABLE_BACKUP="true"
-# and SKIP_BACKUP is NOT set to "true"
+# CRITICAL: Check environment variables IMMEDIATELY and skip ALL backup code
+# ============================================================================
 
-# Debug: Show environment variables
-log_info "DEBUG: SKIP_BACKUP='${SKIP_BACKUP}', SKIP_GIT_PULL='${SKIP_GIT_PULL}', ENABLE_BACKUP='${ENABLE_BACKUP:-}'"
+log_info "🔍 Checking if backup should run..."
 
-# Determine if backup should run
-# CRITICAL: Check the flag set at the start of the script
-SHOULD_RUN_BACKUP=false
-
-# Only run backup if:
-# 1. Backup is NOT disabled for automated deployment AND
-# 2. ENABLE_BACKUP is explicitly set to "true" AND
-# 3. SKIP_BACKUP is NOT set to "true" AND
-# 4. SKIP_GIT_PULL is NOT set (meaning it's a manual deployment)
-if [ "$DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT" = "true" ]; then
-    log_info "💾 Backup DISABLED (automated deployment - code is in Git, no backup needed)"
-    log_info "DEBUG: DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT='$DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT'"
-    SHOULD_RUN_BACKUP=false
-elif [ "${ENABLE_BACKUP:-}" = "true" ] && [ "$SKIP_BACKUP" != "true" ] && [ -z "$SKIP_GIT_PULL" ]; then
-    SHOULD_RUN_BACKUP=true
-    log_info "Backup enabled via ENABLE_BACKUP='true'"
+# IMMEDIATE CHECK: If this is an automated deployment, skip ALL backup code
+if [ "$DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT" = "true" ] || [ "$SKIP_BACKUP" = "true" ] || [ -n "$SKIP_GIT_PULL" ]; then
+    log_info "✅ Backup SKIPPED (automated deployment detected)"
+    log_info "   - DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT: $DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT"
+    log_info "   - SKIP_BACKUP: $SKIP_BACKUP"
+    log_info "   - SKIP_GIT_PULL: $SKIP_GIT_PULL"
+    log_info "   Reason: Code is in Git, backup not needed for automated deployments"
+    # EXIT THIS SECTION IMMEDIATELY - DO NOT RUN ANY BACKUP CODE
+    # (The rest of the backup code below is unreachable for automated deployments)
 else
-    log_info "💾 Skipping backup (automated deployment - not needed, code is in Git)"
-    log_info "DEBUG: ENABLE_BACKUP='${ENABLE_BACKUP:-}' (not set), SKIP_BACKUP='$SKIP_BACKUP', SKIP_GIT_PULL='$SKIP_GIT_PULL'"
-    SHOULD_RUN_BACKUP=false
-fi
-
-if [ "$SHOULD_RUN_BACKUP" = "true" ]; then
-    log_info "💾 Creating backup before deployment (manual deployment requested)..."
-    BACKUP_DIR="$APP_DIR/backups"
-    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-    mkdir -p "$BACKUP_DIR"
-    
-    if [ -d "$APP_DIR/backend" ] && [ -d "$APP_DIR/frontend" ]; then
-        # Run backup in background with nohup to completely detach from SSH session
-        nohup bash -c "
-            timeout 300 tar -czf '$BACKUP_DIR/backup_$TIMESTAMP.tar.gz' \
-              --exclude='$APP_DIR/backups' \
-              --exclude='$APP_DIR/node_modules' \
-              --exclude='$APP_DIR/backend/vendor' \
-              --exclude='$APP_DIR/backend/storage/logs/*' \
-              --exclude='$APP_DIR/backend/storage/framework/cache/*' \
-              --exclude='$APP_DIR/backend/storage/framework/sessions/*' \
-              --exclude='$APP_DIR/backend/storage/framework/views/*' \
-              --exclude='$APP_DIR/frontend/.next' \
-              --exclude='$APP_DIR/frontend/node_modules' \
-              --exclude='$APP_DIR/frontend/.cache' \
-              --exclude='*.log' \
-              --exclude='*.tmp' \
-              -C '$APP_DIR' . > '$BACKUP_DIR/backup_${TIMESTAMP}.log' 2>&1
-            
-            if [ \$? -eq 0 ]; then
-                echo \"[$(date +'%Y-%m-%d %H:%M:%S')] ✅ Backup created: backup_$TIMESTAMP.tar.gz\" >> '$BACKUP_DIR/backup_${TIMESTAMP}.log'
-            else
-                echo \"[$(date +'%Y-%m-%d %H:%M:%S')] ⚠️  Backup creation had issues\" >> '$BACKUP_DIR/backup_${TIMESTAMP}.log'
-            fi
-        " > /dev/null 2>&1 &
+    # Only reach here for manual deployments with ENABLE_BACKUP="true"
+    if [ "${ENABLE_BACKUP:-}" = "true" ]; then
+        log_info "💾 Creating backup (manual deployment with ENABLE_BACKUP=true)..."
+        BACKUP_DIR="$APP_DIR/backups"
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        mkdir -p "$BACKUP_DIR"
         
-        log_info "Backup process started in background (completely detached)"
-        log_info "Deployment will continue immediately"
+        if [ -d "$APP_DIR/backend" ] && [ -d "$APP_DIR/frontend" ]; then
+            # Run backup in background with nohup to completely detach from SSH session
+            nohup bash -c "
+                timeout 300 tar -czf '$BACKUP_DIR/backup_$TIMESTAMP.tar.gz' \
+                  --exclude='$APP_DIR/backups' \
+                  --exclude='$APP_DIR/node_modules' \
+                  --exclude='$APP_DIR/backend/vendor' \
+                  --exclude='$APP_DIR/backend/storage/logs/*' \
+                  --exclude='$APP_DIR/backend/storage/framework/cache/*' \
+                  --exclude='$APP_DIR/backend/storage/framework/sessions/*' \
+                  --exclude='$APP_DIR/backend/storage/framework/views/*' \
+                  --exclude='$APP_DIR/frontend/.next' \
+                  --exclude='$APP_DIR/frontend/node_modules' \
+                  --exclude='$APP_DIR/frontend/.cache' \
+                  --exclude='*.log' \
+                  --exclude='*.tmp' \
+                  -C '$APP_DIR' . > '$BACKUP_DIR/backup_${TIMESTAMP}.log' 2>&1
+                
+                if [ \$? -eq 0 ]; then
+                    echo \"[$(date +'%Y-%m-%d %H:%M:%S')] ✅ Backup created: backup_$TIMESTAMP.tar.gz\" >> '$BACKUP_DIR/backup_${TIMESTAMP}.log'
+                else
+                    echo \"[$(date +'%Y-%m-%d %H:%M:%S')] ⚠️  Backup creation had issues\" >> '$BACKUP_DIR/backup_${TIMESTAMP}.log'
+                fi
+            " > /dev/null 2>&1 &
+            
+            log_info "Backup process started in background (completely detached)"
+            log_info "Deployment will continue immediately"
+        else
+            log_warning "Backend or frontend directory not found, skipping backup"
+        fi
     else
-        log_warning "Backend or frontend directory not found, skipping backup"
+        log_info "✅ Backup SKIPPED (ENABLE_BACKUP not set to 'true')"
     fi
-else
-    # Backup is skipped - this is normal for automated deployments
-    log_info "✅ Backup skipped (automated deployment - code is in Git, no backup needed)"
 fi
 
 # Clean up old backups to prevent disk space issues
