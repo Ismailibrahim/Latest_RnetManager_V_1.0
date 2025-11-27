@@ -139,6 +139,9 @@ mkdir -p "$APP_DIR/logs" 2>/dev/null || {
 
 # Create backup before deployment (skip if SKIP_BACKUP is set or if automated deployment)
 # Skip backup during automated deployments to avoid SSH timeout issues
+# Debug: Show environment variables
+log_info "DEBUG: SKIP_BACKUP='${SKIP_BACKUP}', SKIP_GIT_PULL='${SKIP_GIT_PULL}'"
+
 if [ "$SKIP_BACKUP" = "true" ] || [ -n "$SKIP_GIT_PULL" ]; then
     log_info "💾 Skipping backup (automated deployment via GitHub Actions)"
 else

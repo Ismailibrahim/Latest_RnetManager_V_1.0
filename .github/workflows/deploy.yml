@@ -93,14 +93,17 @@ jobs:
 
           echo "🚀 Running deployment script..."
           echo "ℹ️  Note: Code already synced from GitHub Actions, skipping git pull and backup"
+          
+          # Export environment variables and ensure they're available to the script
           export APP_DIRECTORY="$APP_DIR"
           export DEPLOY_ENV="production"
           export SKIP_GIT_PULL="true"
           export SKIP_BACKUP="true"
-          echo "DEBUG: SKIP_BACKUP=$SKIP_BACKUP, SKIP_GIT_PULL=$SKIP_GIT_PULL"
           
-          # Run deploy script with output buffering disabled for real-time logs
-          bash "$APP_DIR/deploy.sh" || {
+          echo "DEBUG: Before script - SKIP_BACKUP=$SKIP_BACKUP, SKIP_GIT_PULL=$SKIP_GIT_PULL"
+          
+          # Run deploy script with environment variables explicitly passed
+          env SKIP_BACKUP="true" SKIP_GIT_PULL="true" APP_DIRECTORY="$APP_DIR" DEPLOY_ENV="production" bash "$APP_DIR/deploy.sh" || {
             echo "❌ Deployment script failed"
             exit 1
           }
