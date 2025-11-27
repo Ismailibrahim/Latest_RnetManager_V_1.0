@@ -482,7 +482,34 @@ fi
 # Frontend setup
 if [ -d "$FRONTEND_DIR" ]; then
     log_info "🎨 Setting up frontend..."
-    cd "$FRONTEND_DIR"
+    
+    # Verify FRONTEND_DIR is correct
+    log_info "DEBUG: FRONTEND_DIR=$FRONTEND_DIR, APP_DIR=$APP_DIR"
+    if [ ! -d "$FRONTEND_DIR" ]; then
+        log_error "Frontend directory not found: $FRONTEND_DIR"
+        exit 1
+    fi
+    
+    cd "$FRONTEND_DIR" || {
+        log_error "Cannot access frontend directory: $FRONTEND_DIR"
+        exit 1
+    }
+    
+    # Fix permissions on node_modules if it exists (from previous failed installs)
+    if [ -d "node_modules" ]; then
+        log_info "Fixing permissions on existing node_modules..."
+        chmod -R u+w node_modules 2>/dev/null || true
+        # Remove node_modules if permissions can't be fixed (will reinstall)
+        if [ $? -ne 0 ]; then
+            log_warning "Cannot fix node_modules permissions, removing for clean install..."
+            rm -rf node_modules 2>/dev/null || {
+                # If rm fails, try with find
+                find node_modules -type f -exec chmod u+w {} \; 2>/dev/null || true
+                find node_modules -type d -exec chmod u+w {} \; 2>/dev/null || true
+                rm -rf node_modules 2>/dev/null || true
+            }
+        fi
+    fi
     
     # Check if .env.local exists
     if [ ! -f ".env.local" ] && [ -f ".env.example" ]; then
@@ -492,9 +519,16 @@ if [ -d "$FRONTEND_DIR" ]; then
     
     # Install dependencies
     log_info "Installing Node dependencies..."
-    if ! npm ci; then
-        log_error "npm ci failed"
-        exit 1
+    # Ensure we have write permissions in the frontend directory
+    chmod -R u+w . 2>/dev/null || true
+    
+    if ! npm ci --unsafe-perm; then
+        log_error "npm ci failed, trying with npm install..."
+        # Fallback to npm install if npm ci fails
+        if ! npm install --unsafe-perm; then
+            log_error "npm install also failed"
+            exit 1
+        fi
     fi
     
     # Build for production
