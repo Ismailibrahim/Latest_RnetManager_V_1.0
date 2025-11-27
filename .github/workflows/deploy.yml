@@ -91,33 +91,38 @@ jobs:
           # This MUST be present or backup will run and cause SSH timeout
           echo "🔍 Verifying deploy.sh has latest backup-disable logic..."
           
+          # Wait a moment for rsync to complete (if it's still running)
+          sleep 1
+          
           # Check for the critical backup disable flag
           if ! grep -q "DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT" "$APP_DIR/deploy.sh" 2>/dev/null; then
-            echo "⚠️  WARNING: deploy.sh missing latest backup-disable logic"
-            echo "This means rsync didn't update it or script is outdated"
-            echo "Checking if script exists in expected location..."
-            
-            # Try to find the script
-            if [ -f "$APP_DIR/deploy.sh" ]; then
-              echo "Script exists but is outdated. This will cause backup to run!"
-              echo "Attempting to wait for rsync to complete..."
-              sleep 2
-              # Check again
-              if ! grep -q "DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT" "$APP_DIR/deploy.sh" 2>/dev/null; then
-                echo "❌ ERROR: deploy.sh is still outdated after wait"
-                echo "The script will create a backup which will cause SSH timeout!"
-                echo "File: $APP_DIR/deploy.sh"
-                echo "First few lines:"
-                head -30 "$APP_DIR/deploy.sh" || true
-                exit 1
-              fi
-            else
-              echo "❌ ERROR: deploy.sh not found at $APP_DIR/deploy.sh"
-              exit 1
-            fi
+            echo "❌ CRITICAL ERROR: deploy.sh is outdated (missing DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT)"
+            echo "This means rsync didn't update it properly!"
+            echo "The script will create a backup which will cause SSH timeout!"
+            echo ""
+            echo "File location: $APP_DIR/deploy.sh"
+            echo "File exists: $([ -f "$APP_DIR/deploy.sh" ] && echo 'YES' || echo 'NO')"
+            echo "File size: $(stat -c%s "$APP_DIR/deploy.sh" 2>/dev/null || echo 'unknown') bytes"
+            echo ""
+            echo "First 50 lines of deploy.sh:"
+            head -50 "$APP_DIR/deploy.sh" || true
+            echo ""
+            echo "Searching for backup-related code:"
+            grep -n "Creating backup\|💾 Creating\|backup.*tar" "$APP_DIR/deploy.sh" | head -5 || true
+            echo ""
+            echo "❌ DEPLOYMENT ABORTED - Script is outdated and will cause backup to run!"
+            exit 1
           fi
           
-          echo "✅ Verified deploy.sh has latest backup-disable logic (DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT)"
+          # Also verify it has the skip logic
+          if ! grep -q "Backup SKIPPED" "$APP_DIR/deploy.sh" 2>/dev/null; then
+            echo "❌ CRITICAL ERROR: deploy.sh missing backup skip logic"
+            exit 1
+          fi
+          
+          echo "✅ Verified deploy.sh has latest backup-disable logic"
+          echo "   - Has DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT flag"
+          echo "   - Has backup skip logic"
 
           echo "🚀 Running deployment script..."
           echo "ℹ️  Note: Code already synced from GitHub Actions, skipping git pull and backup"
