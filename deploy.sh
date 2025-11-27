@@ -522,6 +522,16 @@ if [ -d "$FRONTEND_DIR" ]; then
     # Ensure we have write permissions in the frontend directory
     chmod -R u+w . 2>/dev/null || true
     
+    # Clear npm cache if it has wrong paths
+    log_info "Clearing npm cache to avoid path conflicts..."
+    npm cache clean --force 2>/dev/null || true
+    
+    # Remove package-lock.json if it has wrong paths (will be regenerated)
+    if [ -f "package-lock.json" ] && grep -q "Rent_V2" package-lock.json 2>/dev/null; then
+        log_warning "package-lock.json contains old path (Rent_V2), removing for clean install..."
+        rm -f package-lock.json
+    fi
+    
     if ! npm ci --unsafe-perm; then
         log_error "npm ci failed, trying with npm install..."
         # Fallback to npm install if npm ci fails
