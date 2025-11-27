@@ -151,33 +151,40 @@ mkdir -p "$APP_DIR/logs" 2>/dev/null || {
     log_warning "Could not create logs directory, continuing anyway..."
 }
 
-# Create backup before deployment (skip if SKIP_BACKUP is set or if automated deployment)
-# Skip backup during automated deployments to avoid SSH timeout issues
+# Create backup before deployment
+# NOTE: Backups are DISABLED by default for automated deployments because:
+# 1. Code is already in Git (can rollback via Git)
+# 2. Backups cause SSH timeouts during automated deployments
+# 3. They consume disk space unnecessarily
+# 4. Automated deployments should be fast and reliable
+#
+# Backup is ONLY enabled if explicitly requested via ENABLE_BACKUP="true"
+# and SKIP_BACKUP is NOT set to "true"
+
 # Debug: Show environment variables
-log_info "DEBUG: SKIP_BACKUP='${SKIP_BACKUP}', SKIP_GIT_PULL='${SKIP_GIT_PULL}'"
+log_info "DEBUG: SKIP_BACKUP='${SKIP_BACKUP}', SKIP_GIT_PULL='${SKIP_GIT_PULL}', ENABLE_BACKUP='${ENABLE_BACKUP:-}'"
 
-# Check if we should skip backup (during automated deployments)
-SHOULD_SKIP_BACKUP=false
-if [ "$SKIP_BACKUP" = "true" ]; then
-    SHOULD_SKIP_BACKUP=true
-    log_info "SKIP_BACKUP is set to 'true'"
-fi
-if [ -n "$SKIP_GIT_PULL" ]; then
-    SHOULD_SKIP_BACKUP=true
-    log_info "SKIP_GIT_PULL is set (non-empty)"
-fi
+# Determine if backup should run
+SHOULD_RUN_BACKUP=false
 
-if [ "$SHOULD_SKIP_BACKUP" = "true" ]; then
-    log_info "💾 Skipping backup (automated deployment via GitHub Actions)"
-    log_info "DEBUG: Backup skip confirmed - SKIP_BACKUP='$SKIP_BACKUP', SKIP_GIT_PULL='$SKIP_GIT_PULL'"
+# Only run backup if:
+# 1. ENABLE_BACKUP is explicitly set to "true" AND
+# 2. SKIP_BACKUP is NOT set to "true" AND
+# 3. SKIP_GIT_PULL is NOT set (meaning it's a manual deployment)
+if [ "${ENABLE_BACKUP:-}" = "true" ] && [ "$SKIP_BACKUP" != "true" ] && [ -z "$SKIP_GIT_PULL" ]; then
+    SHOULD_RUN_BACKUP=true
+    log_info "Backup enabled via ENABLE_BACKUP='true'"
 else
-    log_info "💾 Backup will be created (manual deployment)"
-    log_info "DEBUG: Backup will run - SKIP_BACKUP='$SKIP_BACKUP', SKIP_GIT_PULL='$SKIP_GIT_PULL'"
+    log_info "💾 Skipping backup (automated deployment - not needed, code is in Git)"
+    log_info "DEBUG: ENABLE_BACKUP='${ENABLE_BACKUP:-}' (not set), SKIP_BACKUP='$SKIP_BACKUP', SKIP_GIT_PULL='$SKIP_GIT_PULL'"
+fi
+
+if [ "$SHOULD_RUN_BACKUP" = "true" ]; then
+    log_info "💾 Creating backup before deployment (manual deployment requested)..."
     BACKUP_DIR="$APP_DIR/backups"
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     mkdir -p "$BACKUP_DIR"
-
-    log_info "💾 Creating backup before deployment (running in background)..."
+    
     if [ -d "$APP_DIR/backend" ] && [ -d "$APP_DIR/frontend" ]; then
         # Run backup in background with nohup to completely detach from SSH session
         nohup bash -c "
