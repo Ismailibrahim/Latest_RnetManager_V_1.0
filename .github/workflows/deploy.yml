@@ -132,13 +132,15 @@ jobs:
           export DEPLOY_ENV="production"
           export SKIP_GIT_PULL="true"
           export SKIP_BACKUP="true"
+          export DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT="true"
+          export ENABLE_BACKUP="false"
           
           echo "DEBUG: Before script - SKIP_BACKUP=$SKIP_BACKUP, SKIP_GIT_PULL=$SKIP_GIT_PULL"
           echo "DEBUG: Script location: $APP_DIR/deploy.sh"
           
           # Run deploy script with environment variables explicitly passed
           # CRITICAL: Pass variables both via export AND env command to ensure they're available
-          SKIP_BACKUP="true" SKIP_GIT_PULL="true" APP_DIRECTORY="$APP_DIR" DEPLOY_ENV="production" bash "$APP_DIR/deploy.sh" || {
+          DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT="true" ENABLE_BACKUP="false" SKIP_BACKUP="true" SKIP_GIT_PULL="true" APP_DIRECTORY="$APP_DIR" DEPLOY_ENV="production" bash "$APP_DIR/deploy.sh" || {
             echo "❌ Deployment script failed"
             exit 1
           }

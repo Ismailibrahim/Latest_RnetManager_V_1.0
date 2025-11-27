@@ -26,11 +26,20 @@ echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG: APP_DIRECTORY='$APP_DIRECTORY'"
 echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG: APP_DIR='$APP_DIR'"
 
 # ============================================================================
-# CRITICAL: BACKUP DISABLE FLAG - SET IMMEDIATELY FOR AUTOMATED DEPLOYMENTS
+# CRITICAL: BACKUP DISABLE FLAG - DEFAULTS TO TRUE FOR SAFETY
 # ============================================================================
-# If this is an automated deployment (from GitHub Actions), backup is ALWAYS disabled
-# This flag is checked at the backup section to completely skip all backup code
-DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT=false
+# By default we NEVER run backups automatically. You must explicitly export:
+#   ENABLE_BACKUP=true DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT=false
+# before running this script manually if you want a backup.
+DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT="${DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT:-true}"
+
+# Manual override: allow backups only when explicitly requested
+if [ "${ENABLE_BACKUP:-}" = "true" ]; then
+    DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT=false
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] ⚠️  Manual override detected: backups ENABLED"
+fi
+
+# Automated deployment detection (GitHub Actions sets SKIP_* flags)
 if [ "$SKIP_BACKUP" = "true" ] || [ -n "$SKIP_GIT_PULL" ]; then
     DISABLE_BACKUP_FOR_AUTOMATED_DEPLOYMENT=true
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] ✅ BACKUP DISABLED - Automated deployment detected"
