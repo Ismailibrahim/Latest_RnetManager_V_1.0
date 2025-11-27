@@ -638,7 +638,7 @@ if [ -d "$FRONTEND_DIR" ]; then
     log_info "Building frontend for production..."
     
     # CRITICAL: Remove .next directory to avoid permission issues and old paths
-    if [ -d ".next" ]; then
+    if [ -d ".next" ] || [ -L ".next" ]; then
         log_info "Removing existing .next directory for clean build..."
         rm -rf .next 2>/dev/null || {
             log_warning "Standard rm failed, trying with permission fixes..."
@@ -653,6 +653,10 @@ if [ -d "$FRONTEND_DIR" ]; then
         log_info "✅ .next directory removed (or renamed)"
     fi
     
+    # Also remove Next.js cache directories
+    rm -rf .cache 2>/dev/null || true
+    rm -rf node_modules/.cache 2>/dev/null || true
+    
     # Ensure we have write permissions in the frontend directory
     log_info "Fixing permissions on frontend directory..."
     chmod -R u+w . 2>/dev/null || true
@@ -666,11 +670,23 @@ if [ -d "$FRONTEND_DIR" ]; then
         exit 1
     fi
     
+    # Verify FRONTEND_DIR matches current directory
+    if [ "$CURRENT_DIR" != "$FRONTEND_DIR" ]; then
+        log_warning "WARNING: Current directory ($CURRENT_DIR) doesn't match FRONTEND_DIR ($FRONTEND_DIR)"
+        log_warning "This might cause path issues. Continuing anyway..."
+    fi
+    
     # Set Node options and build
     export NODE_OPTIONS="--max-old-space-size=2048"
+    # Clear any environment variables that might have old paths
+    unset NEXT_TELEMETRY_DISABLED 2>/dev/null || true
+    
     log_info "Running npm run build..."
     if ! npm run build; then
         log_error "Frontend build failed"
+        # Show current directory and permissions for debugging
+        log_error "DEBUG: Current directory: $(pwd)"
+        log_error "DEBUG: Directory permissions: $(ls -ld .)"
         exit 1
     fi
     
