@@ -306,14 +306,37 @@ if [ -d "$BACKEND_DIR" ]; then
     
     # Check if .env exists
     if [ ! -f ".env" ]; then
-        log_warning ".env file not found, creating from .env.example if available"
-        if [ -f ".env.example" ]; then
-            cp .env.example .env
-            log_warning "Please update .env with your production settings!"
-        else
-            log_error ".env file not found and no .env.example available"
-            exit 1
-        fi
+        log_warning ".env file not found, creating default .env file"
+        # Create a basic .env file with database credentials
+        cat > .env <<'ENVEOF'
+APP_NAME="Rent Application"
+APP_ENV=production
+APP_KEY=
+APP_DEBUG=false
+APP_URL=https://rent.issey.dev
+
+LOG_CHANNEL=stack
+LOG_LEVEL=debug
+
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=rentapp
+DB_USERNAME=rentapp_user
+DB_PASSWORD=RentApp2024!Secure
+
+BROADCAST_DRIVER=log
+CACHE_DRIVER=file
+FILESYSTEM_DISK=local
+QUEUE_CONNECTION=sync
+SESSION_DRIVER=file
+SESSION_LIFETIME=120
+ENVEOF
+        log "✅ Created default .env file"
+        log_warning "⚠️  Please verify database credentials in .env file"
+        
+        # Generate APP_KEY
+        php artisan key:generate --force >/dev/null 2>&1 || true
     fi
     
     # Install dependencies
