@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Account\ResetDelegatePasswordRequest;
 use App\Http\Requests\Account\StoreDelegateRequest;
 use App\Http\Requests\Account\UpdateDelegateRequest;
 use App\Http\Resources\DelegateResource;
@@ -10,6 +11,8 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class AccountDelegateController extends Controller
@@ -91,6 +94,73 @@ class AccountDelegateController extends Controller
         return response()->json([
             'message' => 'Delegate removed successfully.',
         ]);
+    }
+
+    public function resetPassword(ResetDelegatePasswordRequest $request, $delegateId): JsonResponse
+    {
+        try {
+            /** @var \App\Models\User $user */
+            $user = $request->user();
+
+            // Get delegate directly to avoid route model binding issues
+            $delegate = User::withoutGlobalScopes()->findOrFail($delegateId);
+
+            $this->ensureUserCanManageDelegates($user);
+            $this->ensureDelegateBelongsToTenant($user, $delegate);
+
+            $validated = $request->validated();
+
+            if (!isset($validated['password']) || empty($validated['password'])) {
+                return response()->json([
+                    'message' => 'Password is required.',
+                    'errors' => [
+                        'password' => ['Password is required.'],
+                    ],
+                ], 422);
+            }
+
+            // Hash the password
+            $hashedPassword = Hash::make($validated['password']);
+
+            // Update directly using DB to bypass mutators
+            $updated = DB::table('users')
+                ->where('id', $delegate->id)
+                ->update([
+                    'password_hash' => $hashedPassword,
+                    'updated_at' => now(),
+                ]);
+
+            if (!$updated) {
+                throw new \Exception('Failed to update password in database.');
+            }
+
+            // Revoke all existing tokens for security (force re-login)
+            $delegate->tokens()->delete();
+
+            return response()->json([
+                'message' => 'Password reset successfully. The delegate will need to log in again.',
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'message' => 'Delegate not found.',
+            ], 404);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 403);
+        } catch (\Exception $e) {
+            Log::error('Password reset failed', [
+                'delegate_id' => $delegateId ?? null,
+                'user_id' => $request->user()?->id ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'message' => 'An error occurred while resetting the password. Please try again.',
+                'error' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
     }
 
     /**

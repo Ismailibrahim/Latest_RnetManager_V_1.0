@@ -13,6 +13,7 @@ import {
   Building2,
   Calendar,
   Shield,
+  Edit,
 } from "lucide-react";
 import { DataDisplay } from "@/components/DataDisplay";
 import { API_BASE_URL } from "@/utils/api-config";
@@ -449,6 +450,20 @@ export default function OwnersPage() {
                 </div>
               ),
             },
+            {
+              key: "actions",
+              label: "Actions",
+              render: (value, item) => (
+                <Link
+                  href={`/owners/${item.id}/edit`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/10"
+                >
+                  <Edit size={14} />
+                  Edit
+                </Link>
+              ),
+            },
           ]}
           renderCard={(owner) => {
             const fullName =
@@ -509,6 +524,15 @@ export default function OwnersPage() {
                     </div>
                   )}
                 </dl>
+                <div className="mt-4 flex items-center justify-end">
+                  <Link
+                    href={`/owners/${owner.id}/edit`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/10"
+                  >
+                    <Edit size={14} />
+                    Edit
+                  </Link>
+                </div>
               </article>
             );
           }}

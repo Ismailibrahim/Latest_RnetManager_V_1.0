@@ -5,14 +5,19 @@ namespace App\Http\Controllers\Api\V1\Admin;
 use App\Constants\ApiConstants;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ExtendSubscriptionRequest;
+use App\Http\Requests\Admin\ResetOwnerPasswordRequest;
 use App\Http\Requests\Admin\UpdateLandlordSubscriptionRequest;
+use App\Http\Requests\Admin\UpdateOwnerRequest;
 use App\Http\Resources\Admin\LandlordResource;
+use App\Http\Resources\DelegateResource;
 use App\Models\Landlord;
 use App\Models\User;
 use App\Services\SubscriptionExpiryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 
 class AdminLandlordController extends Controller
 {
@@ -308,6 +313,123 @@ class AdminLandlordController extends Controller
                 'next' => $owners->nextPageUrl(),
             ],
         ]);
+    }
+
+    /**
+     * Update an owner (user) by ID.
+     * Super admins can update any owner from any company.
+     *
+     * @param UpdateOwnerRequest $request
+     * @param User $owner
+     * @return JsonResponse
+     */
+    public function updateOwner(UpdateOwnerRequest $request, User $owner): JsonResponse
+    {
+        $owner->fill($request->validated());
+        $owner->save();
+
+        return response()->json([
+            'message' => 'Owner updated successfully.',
+            'owner' => new DelegateResource($owner->fresh('landlord')),
+        ]);
+    }
+
+    /**
+     * Reset password for an owner (user) by ID.
+     * Super admins can reset passwords for any owner from any company.
+     *
+     * @param ResetOwnerPasswordRequest $request
+     * @param User $owner
+     * @return JsonResponse
+     */
+    public function resetOwnerPassword(ResetOwnerPasswordRequest $request, $ownerId): JsonResponse
+    {
+        try {
+            Log::info('Password reset request received', [
+                'owner_id' => $ownerId,
+                'user_id' => $request->user()?->id,
+                'is_super_admin' => $request->user()?->isSuperAdmin() ?? false,
+            ]);
+
+            // Validate request data first
+            $validated = $request->validated();
+            
+            Log::info('Request validated', ['has_password' => isset($validated['password'])]);
+
+            if (!isset($validated['password']) || empty($validated['password'])) {
+                return response()->json([
+                    'message' => 'Password is required.',
+                    'errors' => [
+                        'password' => ['Password is required.'],
+                    ],
+                ], 422);
+            }
+
+            // Get owner directly to avoid route model binding issues
+            $owner = User::withoutGlobalScopes()->findOrFail($ownerId);
+            
+            Log::info('Owner found', ['owner_id' => $owner->id]);
+
+            // Hash the password
+            $hashedPassword = Hash::make($validated['password']);
+
+            // Update directly using DB to bypass mutators
+            $updated = DB::table('users')
+                ->where('id', $owner->id)
+                ->update([
+                    'password_hash' => $hashedPassword,
+                    'updated_at' => now(),
+                ]);
+
+            Log::info('Password update result', ['updated' => $updated]);
+
+            if (!$updated) {
+                throw new \Exception('Failed to update password in database.');
+            }
+
+            // Revoke all existing tokens for security (force re-login)
+            $owner->tokens()->delete();
+
+            Log::info('Password reset successful', ['owner_id' => $owner->id]);
+
+            return response()->json([
+                'message' => 'Password reset successfully. The owner will need to log in again.',
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::error('Validation failed', [
+                'errors' => $e->errors(),
+            ]);
+            return response()->json([
+                'message' => 'Validation failed.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            Log::error('Owner not found', ['owner_id' => $ownerId]);
+            return response()->json([
+                'message' => 'Owner not found.',
+            ], 404);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            Log::error('Authorization failed', [
+                'message' => $e->getMessage(),
+            ]);
+            return response()->json([
+                'message' => 'You do not have permission to reset this password.',
+            ], 403);
+        } catch (\Exception $e) {
+            Log::error('Password reset failed', [
+                'owner_id' => $ownerId ?? null,
+                'user_id' => $request->user()?->id ?? null,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'message' => 'An error occurred while resetting the password. Please try again.',
+                'error' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
     }
 }
 

@@ -512,6 +512,9 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/', [AccountDelegateController::class, 'index'])->name('api.v1.account.delegates.index');
             Route::post('/', [AccountDelegateController::class, 'store'])->name('api.v1.account.delegates.store');
             Route::patch('{delegate}', [AccountDelegateController::class, 'update'])->name('api.v1.account.delegates.update');
+            Route::patch('{delegateId}/password', [AccountDelegateController::class, 'resetPassword'])
+                ->middleware('throttle:5,1') // 5 attempts per minute for password resets
+                ->name('api.v1.account.delegates.reset-password');
             Route::delete('{delegate}', [AccountDelegateController::class, 'destroy'])->name('api.v1.account.delegates.destroy');
         });
 
@@ -635,16 +638,23 @@ Route::prefix('v1')->group(function (): void {
 
         // Admin routes - only accessible to super_admin users
         // Must be authenticated first, then controller middleware checks for super_admin
-        // Add rate limiting to prevent abuse of sensitive admin endpoints
-        Route::middleware(['auth:sanctum', 'throttle:60,1'])->prefix('admin')->group(function (): void {
+        // Rate limiting applied individually to prevent abuse while allowing password resets
+        Route::middleware(['auth:sanctum'])->prefix('admin')->group(function (): void {
             Route::get('landlords', [AdminLandlordController::class, 'index'])
                 ->middleware('throttle:120,1') // Higher limit for listing
                 ->name('api.v1.admin.landlords.index');
             Route::get('landlords/{landlord}', [AdminLandlordController::class, 'show'])
+                ->middleware('throttle:60,1')
                 ->name('api.v1.admin.landlords.show');
             Route::get('owners', [AdminLandlordController::class, 'owners'])
                 ->middleware('throttle:120,1') // Higher limit for listing
                 ->name('api.v1.admin.owners.index');
+            Route::patch('owners/{owner}', [AdminLandlordController::class, 'updateOwner'])
+                ->middleware('throttle:30,1') // Lower limit for modifications
+                ->name('api.v1.admin.owners.update');
+            Route::patch('owners/{ownerId}/password', [AdminLandlordController::class, 'resetOwnerPassword'])
+                // No throttle for super admins - they need to reset passwords frequently
+                ->name('api.v1.admin.owners.reset-password');
             Route::patch('landlords/{landlord}/subscription', [AdminLandlordController::class, 'updateSubscription'])
                 ->middleware('throttle:30,1') // Lower limit for modifications
                 ->name('api.v1.admin.landlords.subscription.update');
