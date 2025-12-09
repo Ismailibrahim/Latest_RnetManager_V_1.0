@@ -1,7 +1,6 @@
-# 🚀 Comprehensive Deployment Guide - Rent V2
+# 🚀 Comprehensive Deployment Guide - RentApplicaiton
 
-**Complete, step-by-step guide for deploying Rent V2 application to production**
-
+**Complete, step-by-step guide for deploying RentApplicaiton to production**
 ---
 
 ## 📋 Table of Contents
@@ -46,11 +45,8 @@ Before starting, ensure you have:
 - **Git:** Latest version
 
 ---
-
 ## Quick Start
-
 **For experienced users who want to get started quickly:**
-
 ```bash
 # 1. Connect to server
 ssh root@YOUR_SERVER_IP
@@ -62,9 +58,9 @@ chmod +x server-setup.sh
 sudo ./server-setup.sh
 
 # 3. Clone repository
-sudo mkdir -p /var/www/webapp
-sudo chown -R $USER:$USER /var/www/webapp
-cd /var/www/webapp
+sudo mkdir -p /var/www/rentapplicaiton
+sudo chown -R $USER:$USER /var/www/rentapplicaiton
+cd /var/www/rentapplicaiton
 git clone https://github.com/YOUR_USERNAME/RentApplicaiton.git .
 
 # 4. Run deployment script
@@ -241,22 +237,22 @@ Follow the prompts:
 
 ```bash
 # Create directory
-sudo mkdir -p /var/www/webapp
+sudo mkdir -p /var/www/rentapplicaiton
 
 # Set ownership
-sudo chown -R $USER:$USER /var/www/webapp
+sudo chown -R $USER:$USER /var/www/rentapplicaiton
 
 # Set permissions
-sudo chmod -R 755 /var/www/webapp
+sudo chmod -R 755 /var/www/rentapplicaiton
 
 # Navigate to directory
-cd /var/www/webapp
+cd /var/www/rentapplicaiton
 ```
 
 ### Step 5: Clone Repository
 
 ```bash
-cd /var/www/webapp
+cd /var/www/rentapplicaiton
 
 # Clone your repository
 git clone https://github.com/YOUR_USERNAME/RentApplicaiton.git .
@@ -270,7 +266,7 @@ git clone https://github.com/YOUR_USERNAME/RentApplicaiton.git .
 ### Step 6: Configure Backend
 
 ```bash
-cd /var/www/webapp/backend
+cd /var/www/rentapplicaiton/backend
 
 # Copy environment file
 cp .env.example .env
@@ -353,7 +349,7 @@ php artisan storage:link
 ### Step 7: Configure Frontend
 
 ```bash
-cd /var/www/webapp/frontend
+cd /var/www/rentapplicaiton/frontend
 
 # Copy environment file
 cp .env.example .env.local
@@ -430,7 +426,7 @@ EXIT;
 ### Step 9: Run Database Migrations
 
 ```bash
-cd /var/www/webapp/backend
+cd /var/www/rentapplicaiton/backend
 
 # Run migrations
 php artisan migrate --force
@@ -453,7 +449,7 @@ php artisan migrate:status
 **Create Nginx configuration file:**
 
 ```bash
-sudo nano /etc/nginx/sites-available/rentapp
+sudo nano /etc/nginx/sites-available/rentapplicaiton
 ```
 
 **Paste this configuration:**
@@ -508,7 +504,7 @@ server {
 
     # Serve Laravel storage files
     location /storage {
-        alias /var/www/webapp/backend/storage/app/public;
+        alias /var/www/rentapplicaiton/backend/storage/app/public;
         expires 30d;
         add_header Cache-Control "public, immutable";
         access_log off;
@@ -534,7 +530,7 @@ server {
 
     # Serve Next.js static files directly
     location /_next/static {
-        alias /var/www/webapp/frontend/.next/static;
+        alias /var/www/rentapplicaiton/frontend/.next/static;
         expires 365d;
         add_header Cache-Control "public, immutable";
         access_log off;
@@ -566,7 +562,7 @@ server {
 **Enable the site:**
 ```bash
 # Create symbolic link
-sudo ln -s /etc/nginx/sites-available/rentapp /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/rentapplicaiton /etc/nginx/sites-enabled/
 
 # Remove default site (optional)
 sudo rm /etc/nginx/sites-enabled/default
@@ -669,12 +665,12 @@ chmod 600 ~/.ssh/authorized_keys
 
 4. **APP_DIRECTORY** (Optional)
    - Name: `APP_DIRECTORY`
-   - Value: `/var/www/webapp`
+   - Value: `/var/www/rentapplicaiton`
 
 #### 11.4 Make Deployment Script Executable
 
 ```bash
-cd /var/www/webapp
+cd /var/www/rentapplicaiton
 chmod +x deploy.sh
 ```
 
@@ -710,7 +706,7 @@ sudo nano /etc/supervisor/conf.d/rentapp-queue-worker.conf
 ```ini
 [program:rentapp-queue-worker]
 process_name=%(program_name)s_%(process_num)02d
-command=php /var/www/webapp/backend/artisan queue:work --sleep=3 --tries=3 --max-time=3600
+command=php /var/www/rentapplicaiton/backend/artisan queue:work --sleep=3 --tries=3 --max-time=3600
 autostart=true
 autorestart=true
 stopasgroup=true
@@ -718,7 +714,7 @@ killasgroup=true
 user=www-data
 numprocs=2
 redirect_stderr=true
-stdout_logfile=/var/www/webapp/backend/storage/logs/queue-worker.log
+stdout_logfile=/var/www/rentapplicaiton/backend/storage/logs/queue-worker.log
 stopwaitsecs=3600
 ```
 
@@ -747,7 +743,7 @@ sudo npm install -g pm2
 **Start frontend with PM2:**
 
 ```bash
-cd /var/www/webapp
+cd /var/www/rentapplicaiton
 pm2 start ecosystem.config.js
 pm2 save
 pm2 startup
@@ -771,14 +767,14 @@ sudo crontab -e
 **Add this line:**
 
 ```
-* * * * * cd /var/www/webapp/backend && php artisan schedule:run >> /dev/null 2>&1
+* * * * * cd /var/www/rentapplicaiton/backend && php artisan schedule:run >> /dev/null 2>&1
 ```
 
 **Save and exit.**
 
 **Verify scheduled tasks:**
 ```bash
-cd /var/www/webapp/backend
+cd /var/www/rentapplicaiton/backend
 php artisan schedule:list
 ```
 
@@ -826,7 +822,7 @@ sudo certbot renew --dry-run
 ### Step 16: Optimize Laravel
 
 ```bash
-cd /var/www/webapp/backend
+cd /var/www/rentapplicaiton/backend
 
 # Cache configuration
 php artisan config:cache
@@ -887,10 +883,10 @@ pm2 status
 
 ```bash
 # Laravel logs
-tail -f /var/www/webapp/backend/storage/logs/laravel.log
+tail -f /var/www/rentapplicaiton/backend/storage/logs/laravel.log
 
 # Queue worker logs
-tail -f /var/www/webapp/backend/storage/logs/queue-worker.log
+tail -f /var/www/rentapplicaiton/backend/storage/logs/queue-worker.log
 
 # PM2 logs
 pm2 logs rentapp-frontend
@@ -906,14 +902,14 @@ sudo tail -f /var/log/nginx/access.log
 
 ```bash
 # Create backup script
-nano /var/www/webapp/scripts/backup-database.sh
+nano /var/www/rentapplicaiton/scripts/backup-database.sh
 ```
 
 **Paste:**
 
 ```bash
 #!/bin/bash
-BACKUP_DIR="/var/www/webapp/backups"
+BACKUP_DIR="/var/www/rentapplicaiton/backups"
 DATE=$(date +%Y%m%d_%H%M%S)
 mkdir -p $BACKUP_DIR
 mysqldump -u rentapp_user -p'YOUR_PASSWORD' rentapp_production > $BACKUP_DIR/backup_$DATE.sql
@@ -923,13 +919,13 @@ find $BACKUP_DIR -name "backup_*.sql" -mtime +7 -delete
 
 **Make executable:**
 ```bash
-chmod +x /var/www/webapp/scripts/backup-database.sh
+chmod +x /var/www/rentapplicaiton/scripts/backup-database.sh
 ```
 
 **Add to crontab (daily at 2 AM):**
 ```bash
 sudo crontab -e
-# Add: 0 2 * * * /var/www/webapp/scripts/backup-database.sh
+# Add: 0 2 * * * /var/www/rentapplicaiton/scripts/backup-database.sh
 ```
 
 ---
@@ -956,10 +952,10 @@ sudo tail -f /var/log/nginx/error.log
 
 **Solution:**
 ```bash
-sudo chown -R www-data:www-data /var/www/webapp/backend/storage
-sudo chown -R www-data:www-data /var/www/webapp/backend/bootstrap/cache
-sudo chmod -R 775 /var/www/webapp/backend/storage
-sudo chmod -R 775 /var/www/webapp/backend/bootstrap/cache
+sudo chown -R www-data:www-data /var/www/rentapplicaiton/backend/storage
+sudo chown -R www-data:www-data /var/www/rentapplicaiton/backend/bootstrap/cache
+sudo chmod -R 775 /var/www/rentapplicaiton/backend/storage
+sudo chmod -R 775 /var/www/rentapplicaiton/backend/bootstrap/cache
 ```
 
 #### Issue: Database connection error
@@ -970,7 +966,7 @@ sudo chmod -R 775 /var/www/webapp/backend/bootstrap/cache
 mysql -u rentapp_user -p rentapp_production
 
 # Check .env file
-cat /var/www/webapp/backend/.env | grep DB_
+cat /var/www/rentapplicaiton/backend/.env | grep DB_
 
 # Verify database exists
 mysql -u root -p -e "SHOW DATABASES;"
@@ -990,7 +986,7 @@ pm2 restart rentapp-frontend
 pm2 logs rentapp-frontend
 
 # Rebuild frontend
-cd /var/www/webapp/frontend
+cd /var/www/rentapplicaiton/frontend
 npm run build
 pm2 restart rentapp-frontend
 ```
@@ -1006,7 +1002,7 @@ sudo supervisorctl status rentapp-queue-worker:*
 sudo supervisorctl restart rentapp-queue-worker:*
 
 # Check logs
-tail -f /var/www/webapp/backend/storage/logs/queue-worker.log
+tail -f /var/www/rentapplicaiton/backend/storage/logs/queue-worker.log
 ```
 
 #### Issue: GitHub Actions deployment fails
@@ -1026,19 +1022,19 @@ tail -f /var/www/webapp/backend/storage/logs/queue-worker.log
 
 ### Important File Locations
 
-- **App directory:** `/var/www/webapp`
-- **Backend .env:** `/var/www/webapp/backend/.env`
-- **Frontend .env:** `/var/www/webapp/frontend/.env.local`
-- **Deploy script:** `/var/www/webapp/deploy.sh`
-- **Nginx config:** `/etc/nginx/sites-available/rentapp`
+- **App directory:** `/var/www/rentapplicaiton`
+- **Backend .env:** `/var/www/rentapplicaiton/backend/.env`
+- **Frontend .env:** `/var/www/rentapplicaiton/frontend/.env.local`
+- **Deploy script:** `/var/www/rentapplicaiton/deploy.sh`
+- **Nginx config:** `/etc/nginx/sites-available/rentapplicaiton`
 - **Supervisor config:** `/etc/supervisor/conf.d/rentapp-queue-worker.conf`
-- **PM2 config:** `/var/www/webapp/ecosystem.config.js`
+- **PM2 config:** `/var/www/rentapplicaiton/ecosystem.config.js`
 
 ### Common Commands
 
 ```bash
 # Navigate to app
-cd /var/www/webapp
+cd /var/www/rentapplicaiton
 
 # Manual deployment
 ./deploy.sh
@@ -1139,7 +1135,7 @@ Before considering deployment complete:
 
 7. **Keep dependencies updated:**
    ```bash
-   cd /var/www/webapp/backend
+   cd /var/www/rentapplicaiton/backend
    composer update --no-dev
    
    cd ../frontend
