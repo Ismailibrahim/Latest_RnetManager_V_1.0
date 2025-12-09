@@ -95,7 +95,7 @@ export function Sidebar({ onNavigate }) {
   const isSuperAdmin = userRole === "super_admin";
 
   return (
-    <aside className="flex min-h-screen flex-col overflow-y-auto border-r border-slate-200 bg-white px-5 py-6 text-slate-700 shadow-sm">
+    <aside className="flex min-h-screen flex-col border-r border-slate-200 bg-white px-5 py-6 text-slate-700 shadow-sm lg:overflow-y-auto">
       <div className="mb-8 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white font-semibold shadow">
           RA

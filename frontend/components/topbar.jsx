@@ -280,7 +280,7 @@ export function Topbar() {
 
       <div
         className={clsx(
-          "fixed inset-y-0 left-0 z-50 w-72 transform bg-white shadow-2xl transition-transform duration-200 lg:hidden",
+          "fixed inset-y-0 left-0 z-50 w-72 transform overflow-y-auto bg-white shadow-2xl transition-transform duration-200 lg:hidden",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
