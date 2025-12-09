@@ -11,8 +11,8 @@
  */
 
 // PM2 Ecosystem Configuration
-// This file should be placed in the root of the application directory (/var/www/webapp)
-// Run: pm2 start ecosystem.config.js (from /var/www/webapp)
+// This file should be placed in the root of the application directory (/var/www/rentapplicaiton)
+// Run: pm2 start ecosystem.config.js (from /var/www/rentapplicaiton)
 
 const path = require('path');
 

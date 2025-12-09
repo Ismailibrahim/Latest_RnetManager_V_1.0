@@ -916,7 +916,6 @@ export default function CollectPaymentPage() {
           paymentMethodsError={paymentMethodsLoadError}
           onRefreshPaymentMethods={refreshPaymentMethods}
           onPaySelected={handlePaySelectedInvoices}
-          loading={loading}
           onBack={goBack}
         />
       )}
