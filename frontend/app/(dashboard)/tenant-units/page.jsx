@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { DataDisplay } from "@/components/DataDisplay";
 import { formatMVR } from "@/lib/currency";
+import { formatCurrency as formatCurrencyUtil } from "@/lib/currency-formatter";
 
 const formatCurrency = formatMVR;
 import { EndLeaseModal } from "@/components/EndLeaseModal";
@@ -49,6 +50,9 @@ function TenantUnitsPageContent() {
   const [loadMoreError, setLoadMoreError] = useState(null);
   const [endLeaseModalOpen, setEndLeaseModalOpen] = useState(false);
   const [selectedLease, setSelectedLease] = useState(null);
+  const [availableUnitsCount, setAvailableUnitsCount] = useState(null);
+  const [totalUnitsCount, setTotalUnitsCount] = useState(null);
+  const [availableUnitsLoading, setAvailableUnitsLoading] = useState(false);
 
   useEffect(() => {
     if (!tenantId) {
@@ -99,6 +103,71 @@ function TenantUnitsPageContent() {
       controller.abort();
     };
   }, [tenantId]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+
+    async function fetchUnitsData() {
+      setAvailableUnitsLoading(true);
+      try {
+        const token = localStorage.getItem("auth_token");
+        if (!token) {
+          return;
+        }
+
+        // Fetch available units (not occupied)
+        const availableResponse = await fetch(`${API_BASE_URL}/units?per_page=1&is_occupied=false`, {
+          signal: controller.signal,
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        // Fetch total units
+        const totalResponse = await fetch(`${API_BASE_URL}/units?per_page=1`, {
+          signal: controller.signal,
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (availableResponse.ok) {
+          const availablePayload = await availableResponse.json();
+          const availableTotal = availablePayload?.meta?.total ?? (Array.isArray(availablePayload?.data) ? availablePayload.data.length : 0);
+          setAvailableUnitsCount(availableTotal);
+        }
+
+        if (totalResponse.ok) {
+          const totalPayload = await totalResponse.json();
+          const totalUnits = totalPayload?.meta?.total ?? (Array.isArray(totalPayload?.data) ? totalPayload.data.length : 0);
+          setTotalUnitsCount(totalUnits);
+        }
+      } catch (error) {
+        if (error.name === "AbortError") {
+          return;
+        }
+        // Silently fail - units count is optional
+      } finally {
+        if (isMounted) {
+          setAvailableUnitsLoading(false);
+        }
+      }
+    }
+
+    fetchUnitsData();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -207,7 +276,8 @@ function TenantUnitsPageContent() {
         total: 0,
         active: 0,
         endingSoon: 0,
-        monthlyRent: 0,
+        monthlyRentMVR: 0,
+        monthlyRentUSD: 0,
         depositHeld: 0,
       };
     }
@@ -223,10 +293,26 @@ function TenantUnitsPageContent() {
         if (lease?.status === "active") {
           accumulator.active += 1;
           
-          // Only sum monthly rent for active leases
+          // Only sum monthly rent for active leases, separated by currency
           const monthlyRent = Number(lease?.monthly_rent);
+          
+          // Use unit currency if tenant-unit currency is not set or is default MVR
+          // This handles cases where old records have MVR but unit is actually USD
+          const tenantUnitCurrency = lease?.currency;
+          const unitCurrency = lease?.unit?.currency;
+          const currency = (tenantUnitCurrency && tenantUnitCurrency.toUpperCase() !== 'MVR') 
+            ? tenantUnitCurrency.toUpperCase() 
+            : (unitCurrency ? unitCurrency.toUpperCase() : (tenantUnitCurrency ? tenantUnitCurrency.toUpperCase() : 'MVR'));
+          
           if (!Number.isNaN(monthlyRent)) {
-            accumulator.monthlyRent += monthlyRent;
+            if (currency === 'MVR') {
+              accumulator.monthlyRentMVR += monthlyRent;
+            } else if (currency === 'USD') {
+              accumulator.monthlyRentUSD += monthlyRent;
+            } else {
+              // Default to MVR for unknown currencies
+              accumulator.monthlyRentMVR += monthlyRent;
+            }
           }
           
           // Only count active leases that are ending soon
@@ -240,7 +326,21 @@ function TenantUnitsPageContent() {
 
         const deposit = Number(lease?.security_deposit_paid);
         if (!Number.isNaN(deposit)) {
-          accumulator.depositHeld += deposit;
+          // Use security_deposit_currency from API response, or fall back to unit's security_deposit_currency
+          const securityDepositCurrency = lease?.security_deposit_currency 
+            ?? lease?.unit?.security_deposit_currency
+            ?? lease?.unit?.currency
+            ?? lease?.currency
+            ?? 'MVR';
+          const currency = securityDepositCurrency.toUpperCase();
+          
+          if (currency === 'MVR') {
+            accumulator.depositHeldMVR += deposit;
+          } else if (currency === 'USD') {
+            accumulator.depositHeldUSD += deposit;
+          } else {
+            accumulator.depositHeldMVR += deposit;
+          }
         }
 
         return accumulator;
@@ -249,8 +349,10 @@ function TenantUnitsPageContent() {
         total: 0,
         active: 0,
         endingSoon: 0,
-        monthlyRent: 0,
-        depositHeld: 0,
+        monthlyRentMVR: 0,
+        monthlyRentUSD: 0,
+        depositHeldMVR: 0,
+        depositHeldUSD: 0,
       },
     );
   }, [leases]);
@@ -375,20 +477,9 @@ function TenantUnitsPageContent() {
       </header>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          title="Total assignments"
-          value={stats.total}
-          icon={<Layers size={20} />}
-        />
-        <SummaryCard
-          title="Active leases"
-          value={stats.active}
-          icon={<FileText size={20} />}
-          description={
-            stats.total > 0
-              ? `${Math.round((stats.active / Math.max(stats.total, 1)) * 100)}% active`
-              : "No leases yet"
-          }
+        <AssignmentsCard
+          total={stats.total}
+          active={stats.active}
         />
         <SummaryCard
           title="Ending soon"
@@ -396,15 +487,16 @@ function TenantUnitsPageContent() {
           icon={<CalendarRange size={20} />}
           description="Within next 30 days"
         />
-        <SummaryCard
-          title="Monthly rent (MVR)"
-          value={stats.monthlyRent > 0 ? formatCurrency(stats.monthlyRent) : "—"}
-          icon={<Wallet size={20} />}
-          description={
-            stats.depositHeld > 0
-              ? `Deposits held ${formatCurrency(stats.depositHeld)}`
-              : "No deposits recorded"
-          }
+        <MonthlyRentCard
+          monthlyRentMVR={stats.monthlyRentMVR}
+          monthlyRentUSD={stats.monthlyRentUSD}
+          depositHeldMVR={stats.depositHeldMVR}
+          depositHeldUSD={stats.depositHeldUSD}
+        />
+        <UnitsCard
+          available={availableUnitsLoading ? null : availableUnitsCount}
+          total={availableUnitsLoading ? null : totalUnitsCount}
+          loading={availableUnitsLoading}
         />
       </section>
 
@@ -507,12 +599,29 @@ function TenantUnitsPageContent() {
                 {
                   key: "monthly_rent",
                   label: "Monthly Rent",
-                  render: (value) => formatCurrency(value),
+                  render: (value, item) => {
+                    // Use unit currency if tenant-unit currency is not set or is default MVR
+                    // This handles cases where old records have MVR but unit is actually USD
+                    const tenantUnitCurrency = item?.currency;
+                    const unitCurrency = item?.unit?.currency;
+                    const currency = (tenantUnitCurrency && tenantUnitCurrency !== 'MVR') 
+                      ? tenantUnitCurrency 
+                      : (unitCurrency ?? tenantUnitCurrency ?? 'MVR');
+                    return formatCurrencyUtil(value, currency);
+                  },
                 },
                 {
                   key: "security_deposit_paid",
                   label: "Security Deposit",
-                  render: (value) => formatCurrency(value),
+                  render: (value, item) => {
+                    // Use security_deposit_currency from API response, or fall back to unit's security_deposit_currency
+                    const securityDepositCurrency = item?.security_deposit_currency 
+                      ?? item?.unit?.security_deposit_currency
+                      ?? item?.unit?.currency
+                      ?? item?.currency
+                      ?? 'MVR';
+                    return formatCurrencyUtil(value, securityDepositCurrency);
+                  },
                 },
                 {
                   key: "actions",
@@ -645,6 +754,145 @@ function SummaryCard({ title, value, icon, description }) {
   );
 }
 
+function AssignmentsCard({ total, active }) {
+  const activePercentage = total > 0 
+    ? Math.round((active / Math.max(total, 1)) * 100) 
+    : 0;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-slate-500">Assignments</p>
+        <span className="text-primary">
+          <Layers size={20} />
+        </span>
+      </div>
+      <div className="mt-3 space-y-2.5">
+        <div>
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Total</p>
+          <p className="mt-1 text-lg font-semibold text-slate-900">{total}</p>
+        </div>
+        <div className="pt-2.5 border-t border-slate-200">
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Active</p>
+          <p className="mt-1 text-lg font-semibold text-slate-900">{active}</p>
+          {total > 0 && (
+            <p className="mt-1 text-xs text-slate-500">
+              {activePercentage}% of total
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UnitsCard({ available, total, loading }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-slate-500">Units</p>
+        <span className="text-primary">
+          <Building2 size={20} />
+        </span>
+      </div>
+      <div className="mt-3 space-y-2.5">
+        <div>
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Total Units</p>
+          <p className="mt-1 text-lg font-semibold text-slate-900">
+            {loading ? "…" : (total !== null ? total : "—")}
+          </p>
+        </div>
+        <div className="pt-2.5 border-t border-slate-200">
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Available</p>
+          <p className="mt-1 text-lg font-semibold text-slate-900">
+            {loading ? "…" : (available !== null ? available : "—")}
+          </p>
+          {total !== null && available !== null && total > 0 && (
+            <p className="mt-1 text-xs text-slate-500">
+              {Math.round((available / Math.max(total, 1)) * 100)}% available
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MonthlyRentCard({ monthlyRentMVR, monthlyRentUSD, depositHeldMVR, depositHeldUSD }) {
+  const hasMVR = monthlyRentMVR > 0;
+  const hasUSD = monthlyRentUSD > 0;
+  const hasRent = hasMVR || hasUSD;
+  const hasDepositMVR = depositHeldMVR > 0;
+  const hasDepositUSD = depositHeldUSD > 0;
+  const hasDeposit = hasDepositMVR || hasDepositUSD;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-medium text-slate-500">Financial Summary</p>
+        <span className="text-primary">
+          <Wallet size={20} />
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        {/* Monthly Rent Column */}
+        <div>
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Monthly Rent</p>
+          {hasRent ? (
+            <div className="space-y-2">
+              {hasMVR && (
+                <div>
+                  <p className="text-xs text-slate-400">MVR Units</p>
+                  <p className="mt-0.5 text-base font-semibold text-slate-900">
+                    {formatCurrencyUtil(monthlyRentMVR, 'MVR')}
+                  </p>
+                </div>
+              )}
+              {hasUSD && (
+                <div className={hasMVR ? "pt-2 border-t border-slate-200" : ""}>
+                  <p className="text-xs text-slate-400">USD Units</p>
+                  <p className="mt-0.5 text-base font-semibold text-slate-900">
+                    {formatCurrencyUtil(monthlyRentUSD, 'USD')}
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-lg font-semibold text-slate-400">—</p>
+          )}
+        </div>
+        
+        {/* Security Deposit Column */}
+        <div className="border-l border-slate-200 pl-4">
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Security Deposit</p>
+          {hasDeposit ? (
+            <div className="space-y-2">
+              {hasDepositMVR && (
+                <div>
+                  <p className="text-xs text-slate-400">MVR Units</p>
+                  <p className="mt-0.5 text-base font-semibold text-slate-900">
+                    {formatCurrencyUtil(depositHeldMVR, 'MVR')}
+                  </p>
+                </div>
+              )}
+              {hasDepositUSD && (
+                <div className={hasDepositMVR ? "pt-2 border-t border-slate-200" : ""}>
+                  <p className="text-xs text-slate-400">USD Units</p>
+                  <p className="mt-0.5 text-base font-semibold text-slate-900">
+                    {formatCurrencyUtil(depositHeldUSD, 'USD')}
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-lg font-semibold text-slate-400">—</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RetroactiveApplyButton({ tenantUnitId, onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -765,23 +1013,59 @@ function LeaseCard({ lease, onEndLease }) {
           {formatDateRange(lease?.lease_start, lease?.lease_end)}
         </InfoItem>
         <InfoItem label="Monthly rent">
-          {formatCurrency(lease?.monthly_rent)}
+          {(() => {
+            const tenantUnitCurrency = lease?.currency;
+            const unitCurrency = lease?.unit?.currency;
+            const currency = (tenantUnitCurrency && tenantUnitCurrency !== 'MVR') 
+              ? tenantUnitCurrency 
+              : (unitCurrency ?? tenantUnitCurrency ?? 'MVR');
+            return formatCurrencyUtil(lease?.monthly_rent, currency);
+          })()}
         </InfoItem>
         <InfoItem label="Security deposit">
-          {formatCurrency(lease?.security_deposit_paid)}
+          {(() => {
+            // Use security_deposit_currency from API response, or fall back to unit's security_deposit_currency
+            const securityDepositCurrency = lease?.security_deposit_currency 
+              ?? lease?.unit?.security_deposit_currency
+              ?? lease?.unit?.currency
+              ?? lease?.currency
+              ?? 'MVR';
+            return formatCurrencyUtil(lease?.security_deposit_paid, securityDepositCurrency);
+          })()}
         </InfoItem>
         {lease?.advance_rent_amount > 0 ? (
           <>
             <InfoItem label="Advance rent collected">
-              {formatCurrency(lease?.advance_rent_amount)} ({lease?.advance_rent_months} month
+              {(() => {
+                const tenantUnitCurrency = lease?.currency;
+                const unitCurrency = lease?.unit?.currency;
+                const currency = (tenantUnitCurrency && tenantUnitCurrency !== 'MVR') 
+                  ? tenantUnitCurrency 
+                  : (unitCurrency ?? tenantUnitCurrency ?? 'MVR');
+                return formatCurrencyUtil(lease?.advance_rent_amount, currency);
+              })()} ({lease?.advance_rent_months} month
               {lease?.advance_rent_months !== 1 ? "s" : ""})
             </InfoItem>
             <InfoItem label="Advance rent used">
-              {formatCurrency(lease?.advance_rent_used ?? 0)}
+              {(() => {
+                const tenantUnitCurrency = lease?.currency;
+                const unitCurrency = lease?.unit?.currency;
+                const currency = (tenantUnitCurrency && tenantUnitCurrency !== 'MVR') 
+                  ? tenantUnitCurrency 
+                  : (unitCurrency ?? tenantUnitCurrency ?? 'MVR');
+                return formatCurrencyUtil(lease?.advance_rent_used ?? 0, currency);
+              })()}
             </InfoItem>
             <InfoItem label="Advance rent remaining">
               <span className={lease?.advance_rent_remaining > 0 ? "font-semibold text-emerald-600" : "text-slate-600"}>
-                {formatCurrency(lease?.advance_rent_remaining ?? 0)}
+                {(() => {
+                  const tenantUnitCurrency = lease?.currency;
+                  const unitCurrency = lease?.unit?.currency;
+                  const currency = (tenantUnitCurrency && tenantUnitCurrency !== 'MVR') 
+                    ? tenantUnitCurrency 
+                    : (unitCurrency ?? tenantUnitCurrency ?? 'MVR');
+                  return formatCurrencyUtil(lease?.advance_rent_remaining ?? 0, currency);
+                })()}
               </span>
             </InfoItem>
             {lease?.advance_rent_collected_date ? (
@@ -808,7 +1092,14 @@ function LeaseCard({ lease, onEndLease }) {
                 Covers months 1-{lease?.advance_rent_months} of lease period
               </p>
               <p className="mt-1 text-xs text-blue-700">
-                {formatCurrency(lease?.advance_rent_remaining)} available for invoices
+                {(() => {
+                  const tenantUnitCurrency = lease?.currency;
+                  const unitCurrency = lease?.unit?.currency;
+                  const currency = (tenantUnitCurrency && tenantUnitCurrency !== 'MVR') 
+                    ? tenantUnitCurrency 
+                    : (unitCurrency ?? tenantUnitCurrency ?? 'MVR');
+                  return formatCurrencyUtil(lease?.advance_rent_remaining ?? 0, currency);
+                })()} available for invoices
               </p>
               {lease?.advance_rent_used > 0 ? (
                 <div className="mt-2">

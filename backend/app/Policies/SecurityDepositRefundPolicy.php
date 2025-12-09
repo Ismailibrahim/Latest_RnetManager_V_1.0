@@ -9,7 +9,12 @@ class SecurityDepositRefundPolicy extends BaseLandlordPolicy
 {
     protected function canFinance(User $user): bool
     {
-        return $user->isOwner() || $user->isAdmin();
+        return $user->isSuperAdmin() || $user->isOwner() || $user->isAdmin();
+    }
+
+    public function viewAny(User $user): bool
+    {
+        return $user->is_active && $this->canFinance($user);
     }
 
     public function create(User $user): bool

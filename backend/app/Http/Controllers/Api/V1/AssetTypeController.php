@@ -21,10 +21,10 @@ class AssetTypeController extends Controller
 
         $perPage = $this->resolvePerPage($request, 20);
 
+        // Paginate without withQueryString to avoid potential issues
         $assetTypes = AssetType::query()
             ->orderBy('name')
-            ->paginate($perPage)
-            ->withQueryString();
+            ->paginate($perPage);
 
         return AssetTypeResource::collection($assetTypes);
     }

@@ -11,6 +11,7 @@ class StoreUnifiedPaymentEntryRequest extends FormRequest
     private const PAYMENT_TYPES = [
         'rent',
         'maintenance_expense',
+        'security_deposit',
         'security_refund',
         'fee',
         'other_income',
@@ -52,7 +53,7 @@ class StoreUnifiedPaymentEntryRequest extends FormRequest
             'payment_type' => ['required', Rule::in(self::PAYMENT_TYPES)],
             'tenant_unit_id' => ['nullable', 'integer', $tenantUnitRule],
             'amount' => ['required', 'numeric', 'min:0.01'],
-            'currency' => ['nullable', 'string', 'size:3'],
+            'currency' => ['nullable', 'string', 'size:3', Rule::in(['MVR', 'USD'])],
             'description' => ['nullable', 'string', 'max:500'],
             'due_date' => ['nullable', 'date'],
             'transaction_date' => ['nullable', 'date'],
@@ -73,6 +74,7 @@ class StoreUnifiedPaymentEntryRequest extends FormRequest
             $typesRequiringTenantUnit = [
                 'rent',
                 'maintenance_expense',
+                'security_deposit',
                 'security_refund',
                 'fee',
             ];

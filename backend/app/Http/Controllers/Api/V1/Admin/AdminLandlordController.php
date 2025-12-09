@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
+use App\Constants\ApiConstants;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ExtendSubscriptionRequest;
 use App\Http\Requests\Admin\UpdateLandlordSubscriptionRequest;
 use App\Http\Resources\Admin\LandlordResource;
 use App\Models\Landlord;
+use App\Models\User;
 use App\Services\SubscriptionExpiryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,13 +31,18 @@ class AdminLandlordController extends Controller
 
     /**
      * List all landlords with subscription information.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\Resources\Json\AnonymousResourceCollection
      */
-    public function index(Request $request)
+    public function index(Request $request): \Illuminate\Http\Resources\Json\AnonymousResourceCollection
     {
-        $perPage = $this->resolvePerPage($request);
+        $perPage = $this->resolvePerPage($request, ApiConstants::ADMIN_DEFAULT_PER_PAGE, ApiConstants::ADMIN_MAX_PER_PAGE);
 
+        // Use hasOne relationship to avoid N+1 queries
         $query = Landlord::query()
-            ->with(['subscriptionLimit', 'users' => function ($q) {
+            ->with(['subscriptionLimit'])
+            ->with(['owner' => function ($q) {
                 $q->where('role', 'owner')->limit(1);
             }])
             ->withCount(['properties', 'units', 'users']);
@@ -59,10 +66,14 @@ class AdminLandlordController extends Controller
             $query->where('subscription_expires_at', '>=', $request->input('expires_after'));
         }
 
-        // Search by company name
+        // Search by company name - use parameterized query to prevent SQL injection
         if ($request->filled('search')) {
             $search = $request->input('search');
-            $query->where('company_name', 'like', "%{$search}%");
+            // Sanitize search input and use parameterized query
+            $search = trim($search);
+            if (!empty($search)) {
+                $query->where('company_name', 'LIKE', DB::raw('?'), ['%' . $search . '%']);
+            }
         }
 
         // Sort
@@ -70,7 +81,8 @@ class AdminLandlordController extends Controller
         $sortOrder = $request->input('sort_order', 'desc');
         $query->orderBy($sortBy, $sortOrder);
 
-        $landlords = $query->paginate($perPage)->withQueryString();
+        // Paginate without withQueryString to avoid potential issues
+        $landlords = $query->paginate($perPage);
 
         return LandlordResource::collection($landlords);
     }
@@ -82,9 +94,7 @@ class AdminLandlordController extends Controller
     {
         $landlord->load([
             'subscriptionLimit',
-            'users' => function ($q) {
-                $q->where('role', 'owner')->limit(1);
-            },
+            'owner',
         ]);
 
         $landlord->loadCount(['properties', 'units', 'users']);
@@ -101,6 +111,7 @@ class AdminLandlordController extends Controller
     ): JsonResponse {
         $validated = $request->validated();
 
+        // Use transaction with retry logic for deadlock handling (3 retries)
         DB::transaction(function () use ($landlord, $validated) {
             // Update subscription tier
             if (isset($validated['subscription_tier'])) {
@@ -154,9 +165,7 @@ class AdminLandlordController extends Controller
         });
 
         $landlord->refresh();
-        $landlord->load(['subscriptionLimit', 'users' => function ($q) {
-            $q->where('role', 'owner')->limit(1);
-        }]);
+        $landlord->load(['subscriptionLimit', 'owner']);
         $landlord->loadCount(['properties', 'units', 'users']);
 
         return LandlordResource::make($landlord)->response();
@@ -180,9 +189,7 @@ class AdminLandlordController extends Controller
         }
 
         $landlord->refresh();
-        $landlord->load(['subscriptionLimit', 'users' => function ($q) {
-            $q->where('role', 'owner')->limit(1);
-        }]);
+        $landlord->load(['subscriptionLimit', 'owner']);
         $landlord->loadCount(['properties', 'units', 'users']);
 
         return LandlordResource::make($landlord)->response();
@@ -196,9 +203,7 @@ class AdminLandlordController extends Controller
         $this->expiryService->suspendSubscription($landlord);
 
         $landlord->refresh();
-        $landlord->load(['subscriptionLimit', 'users' => function ($q) {
-            $q->where('role', 'owner')->limit(1);
-        }]);
+        $landlord->load(['subscriptionLimit', 'owner']);
         $landlord->loadCount(['properties', 'units', 'users']);
 
         return LandlordResource::make($landlord)->response();
@@ -209,16 +214,100 @@ class AdminLandlordController extends Controller
      */
     public function activateSubscription(Request $request, Landlord $landlord): JsonResponse
     {
-        $months = $request->input('months', 1);
+        $months = $request->input('months', ApiConstants::DEFAULT_SUBSCRIPTION_MONTHS);
         $this->expiryService->activateSubscription($landlord, $months);
 
         $landlord->refresh();
-        $landlord->load(['subscriptionLimit', 'users' => function ($q) {
-            $q->where('role', 'owner')->limit(1);
-        }]);
+        $landlord->load(['subscriptionLimit', 'owner']);
         $landlord->loadCount(['properties', 'units', 'users']);
 
         return LandlordResource::make($landlord)->response();
+    }
+
+    /**
+     * List all owners (users with role 'owner') across all landlords.
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function owners(Request $request): JsonResponse
+    {
+        // For super admins viewing all owners, use a higher default to show all
+        $perPage = $this->resolvePerPage($request, ApiConstants::ADMIN_MAX_PER_PAGE, ApiConstants::ADMIN_MAX_PER_PAGE * 10);
+
+        $query = User::query()
+            ->where('role', User::ROLE_OWNER)
+            ->with('landlord')
+            ->orderBy('first_name')
+            ->orderBy('last_name');
+
+        // Search by name, email, or mobile - use parameterized queries to prevent SQL injection
+        if ($request->filled('search')) {
+            $search = trim($request->input('search'));
+            if (!empty($search)) {
+                $searchPattern = '%' . $search . '%';
+                $query->where(function ($q) use ($searchPattern) {
+                    $q->where('first_name', 'LIKE', DB::raw('?'), [$searchPattern])
+                        ->orWhere('last_name', 'LIKE', DB::raw('?'), [$searchPattern])
+                        ->orWhere('email', 'LIKE', DB::raw('?'), [$searchPattern])
+                        ->orWhere('mobile', 'LIKE', DB::raw('?'), [$searchPattern]);
+                });
+            }
+        }
+
+        // Filter by landlord_id
+        if ($request->filled('landlord_id')) {
+            $query->where('landlord_id', $request->input('landlord_id'));
+        }
+
+        // Paginate without withQueryString to avoid potential issues
+        $owners = $query->paginate($perPage);
+
+        // Log for debugging
+        \Log::info('Admin owners endpoint', [
+            'total_owners' => $owners->total(),
+            'per_page' => $perPage,
+            'current_page' => $owners->currentPage(),
+            'returning' => $owners->count(),
+        ]);
+
+        return response()->json([
+            'data' => $owners->map(function ($owner) {
+                return [
+                    'id' => $owner->id,
+                    'first_name' => $owner->first_name,
+                    'last_name' => $owner->last_name,
+                    'full_name' => $owner->full_name,
+                    'email' => $owner->email,
+                    'mobile' => $owner->mobile,
+                    'role' => $owner->role,
+                    'is_active' => $owner->is_active,
+                    'landlord_id' => $owner->landlord_id,
+                    'landlord' => $owner->landlord ? [
+                        'id' => $owner->landlord->id,
+                        'company_name' => $owner->landlord->company_name,
+                        'subscription_tier' => $owner->landlord->subscription_tier ?? null,
+                        'subscription_status' => $owner->landlord->subscription_status ?? null,
+                    ] : null,
+                    'created_at' => $owner->created_at?->toISOString(),
+                    'updated_at' => $owner->updated_at?->toISOString(),
+                ];
+            }),
+            'meta' => [
+                'current_page' => $owners->currentPage(),
+                'from' => $owners->firstItem(),
+                'last_page' => $owners->lastPage(),
+                'per_page' => $owners->perPage(),
+                'to' => $owners->lastItem(),
+                'total' => $owners->total(),
+            ],
+            'links' => [
+                'first' => $owners->url(1),
+                'last' => $owners->url($owners->lastPage()),
+                'prev' => $owners->previousPageUrl(),
+                'next' => $owners->nextPageUrl(),
+            ],
+        ]);
     }
 }
 

@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\ForceCors;
 use App\Http\Middleware\RequestDiagnosticsMiddleware;
+use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -32,9 +33,13 @@ return Application::configure(basePath: dirname(__DIR__))
         // Remove Laravel's HandleCors to prevent conflicts
         $middleware->remove(\Illuminate\Http\Middleware\HandleCors::class);
         
-        // Add ForceCors ONLY to API group (not global) to avoid duplication
-        // The route handler will catch OPTIONS first, middleware is backup
+        // Add ForceCors FIRST to API group - MUST be before auth middleware
+        // This ensures CORS headers are set before authentication checks
         $middleware->prependToGroup('api', ForceCors::class);
+        
+        // Add SecurityHeaders to all routes (web and API)
+        $middleware->appendToGroup('web', SecurityHeaders::class);
+        $middleware->appendToGroup('api', SecurityHeaders::class);
         
         $middleware->appendToGroup('api', RequestDiagnosticsMiddleware::class);
     })
@@ -72,18 +77,49 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
+        // Helper function to add CORS headers to any response
+        $addCorsToResponse = function ($response, $request) {
+            $origin = $request->headers->get('Origin');
+            if (!$origin) {
+                $origin = config('app.debug') ? '*' : 'http://localhost:3000';
+            }
+            
+            return $response->header('Access-Control-Allow-Origin', $origin)
+                ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
+                ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept')
+                ->header('Access-Control-Allow-Credentials', 'true')
+                ->header('Access-Control-Max-Age', '86400')
+                ->header('Vary', 'Origin');
+        };
+
         // Handle database connection errors gracefully
-        $exceptions->render(function (Throwable $e, $request) {
+        $exceptions->render(function (Throwable $e, $request) use ($addCorsToResponse) {
             // Handle route not found errors (like missing 'login' route)
             if ($e instanceof \Symfony\Component\Routing\Exception\RouteNotFoundException) {
                 \Log::warning('Route not found: ' . $e->getMessage());
                 
                 // For API requests, return JSON instead of redirecting
                 if ($request->expectsJson() || $request->is('api/*')) {
-                    return response()->json([
-                        'message' => 'Authentication required.',
-                        'error' => 'Unauthenticated'
-                    ], 401);
+                    return $addCorsToResponse(
+                        response()->json([
+                            'message' => 'Authentication required.',
+                            'error' => 'Unauthenticated'
+                        ], 401),
+                        $request
+                    );
+                }
+            }
+            
+            // Handle authentication exceptions with CORS headers
+            if ($e instanceof \Illuminate\Auth\AuthenticationException) {
+                if ($request->expectsJson() || $request->is('api/*')) {
+                    return $addCorsToResponse(
+                        response()->json([
+                            'message' => $e->getMessage() ?: 'Unauthenticated.',
+                            'error' => 'Unauthenticated'
+                        ], 401),
+                        $request
+                    );
                 }
             }
 
@@ -94,6 +130,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 // If so, let it bubble up so the controller can handle it
                 if ($request->is('api/v1/payments*')) {
                     // Let the controller handle it - don't catch it here
+                    // Return null to let Laravel handle it normally
                     return null;
                 }
                 
@@ -118,11 +155,14 @@ return Application::configure(basePath: dirname(__DIR__))
                     }
                     
                     // Always show the actual error message, not generic one
-                    return response()->json([
+                    $response = response()->json([
                         'message' => $e->getMessage(),
                         'error' => $errorDetails,
                         'debug' => config('app.debug'),
                     ], 500);
+                    
+                    // Add CORS headers to error response
+                    return $addCorsToResponse($response, $request);
                 }
             }
 
@@ -135,6 +175,25 @@ return Application::configure(basePath: dirname(__DIR__))
                 ]);
             }
 
-            return null; // Let Laravel handle other exceptions normally
+            // For API routes, always return a response with CORS headers instead of null
+            // This prevents null response errors
+            if ($request->expectsJson() || $request->is('api/*')) {
+                \Log::error('Unhandled exception in API route', [
+                    'exception' => get_class($e),
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ]);
+                
+                return $addCorsToResponse(
+                    response()->json([
+                        'message' => 'An error occurred processing your request.',
+                        'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
+                    ], 500),
+                    $request
+                );
+            }
+
+            return null; // Let Laravel handle other exceptions normally (non-API routes)
         });
     })->create();

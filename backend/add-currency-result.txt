@@ -1,0 +1,21 @@
+==========================================
+Adding Currency Columns Directly
+==========================================
+
+1. Checking tenant_units table...
+   Adding currency column...
+   ✅ Column added
+   ✅ Updated 0 records
+
+2. Checking financial_records table...
+   Adding currency column...
+   ✅ Column added
+   ✅ Updated 0 records
+
+==========================================
+Verification:
+==========================================
+tenant_units.currency: EXISTS
+financial_records.currency: EXISTS
+
+✅ SUCCESS: Both columns exist!

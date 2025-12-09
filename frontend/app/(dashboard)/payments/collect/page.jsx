@@ -20,7 +20,8 @@ import {
   formatPaymentMethodLabel,
 } from "@/hooks/usePaymentMethods";
 import { usePendingCharges } from "@/hooks/usePendingCharges";
-import { getCurrencyOptions, getDefaultCurrency } from "@/utils/currency-config";
+import { useAllPendingCharges } from "@/hooks/useAllPendingCharges";
+import { getCurrencyOptions, getDefaultCurrency, normalizeCurrency } from "@/utils/currency-config";
 import { API_BASE_URL } from "@/utils/api-config";
 import { Banknote } from "lucide-react";
 
@@ -37,6 +38,13 @@ const PAYMENT_TYPES = [
     label: "Maintenance expense",
     description: "Record outgoing payments to vendors for maintenance work.",
     flowDirection: "outgoing",
+    requiresTenantUnit: true,
+  },
+  {
+    value: "security_deposit",
+    label: "Security deposit",
+    description: "Collect security deposit payment from tenant. Updates the tenant unit's security deposit record.",
+    flowDirection: "income",
     requiresTenantUnit: true,
   },
   {
@@ -126,12 +134,22 @@ export default function CollectPaymentPage() {
   } = useTenantUnits();
 
   const [step, setStep] = useState(1);
+  const [paymentMode, setPaymentMode] = useState("single"); // 'single' or 'bulk'
   const [formData, setFormData] = useState(INITIAL_FORM);
   const [fieldErrors, setFieldErrors] = useState({});
   const [submissionError, setSubmissionError] = useState(null);
   const [results, setResults] = useState([]);
   const [batch, setBatch] = useState([]);
   const [linkedCharge, setLinkedCharge] = useState(null);
+  
+  // Bulk payment state
+  const [selectedInvoices, setSelectedInvoices] = useState(new Set());
+  const [bulkPaymentConfig, setBulkPaymentConfig] = useState({
+    payment_method: "",
+    transaction_date: new Date().toISOString().split("T")[0],
+    reference_number: "",
+    description: "",
+  });
 
   const selectedType = useMemo(
     () => PAYMENT_TYPES.find((type) => type.value === formData.payment_type),
@@ -185,7 +203,19 @@ export default function CollectPaymentPage() {
     error: pendingChargesError,
     refresh: refreshPendingCharges,
   } = usePendingCharges(formData.tenant_unit_id, {
-    enabled: step === 2 && Boolean(formData.tenant_unit_id),
+    enabled: step === 2 && Boolean(formData.tenant_unit_id) && paymentMode === "single",
+  });
+
+  // Bulk payment: fetch all pending charges from all units
+  const {
+    charges: allPendingCharges,
+    grouped: allPendingChargesGrouped,
+    groupedByUnit: allPendingChargesByUnit,
+    loading: allPendingChargesLoading,
+    error: allPendingChargesError,
+    refresh: refreshAllPendingCharges,
+  } = useAllPendingCharges(tenantUnits, {
+    enabled: paymentMode === "bulk" && step >= 2,
   });
 
   useEffect(() => {
@@ -235,15 +265,13 @@ export default function CollectPaymentPage() {
       charge: linkedCharge,
     };
     
-    // Debug: Log when pendingPayments is computed
-    if (linkedCharge) {
+    // Debug: Log when pendingPayments is computed (development only)
+    if (process.env.NODE_ENV === 'development' && linkedCharge) {
       console.log('[Payment Collection] pendingPayments computed with charge:', {
         charge_id: linkedCharge.id,
         charge_source_type: linkedCharge.source_type,
         charge_source_id: linkedCharge.source_id,
       });
-    } else {
-      console.log('[Payment Collection] pendingPayments computed WITHOUT charge');
     }
     
     return [payment];
@@ -252,6 +280,24 @@ export default function CollectPaymentPage() {
   const canAddToBatch =
     !!formData.payment_type &&
     (!requiresTenant || Boolean(formData.tenant_unit_id));
+
+  const handleSelectMode = (mode) => {
+    setPaymentMode(mode);
+    setSelectedInvoices(new Set());
+    setBulkPaymentConfig({
+      payment_method: "",
+      transaction_date: new Date().toISOString().split("T")[0],
+      reference_number: "",
+      description: "",
+    });
+    if (mode === "bulk") {
+      setStep(2); // Skip payment type selection for bulk mode
+    } else {
+      setStep(1);
+      setFormData(INITIAL_FORM);
+      setLinkedCharge(null);
+    }
+  };
 
   const handleSelectType = (value) => {
     setFormData((current) => ({
@@ -303,13 +349,14 @@ export default function CollectPaymentPage() {
       return;
     }
 
-    console.log('[Payment Collection] Charge selected:', {
-      id: charge.id,
-      source_type: charge.source_type,
-      source_id: charge.source_id,
-      suggested_payment_type: charge.suggested_payment_type,
-      full_charge: charge,
-    });
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Payment Collection] Charge selected:', {
+        id: charge.id,
+        source_type: charge.source_type,
+        source_id: charge.source_id,
+        suggested_payment_type: charge.suggested_payment_type,
+      });
+    }
     
     setLinkedCharge(charge);
 
@@ -327,14 +374,10 @@ export default function CollectPaymentPage() {
           ? String(charge.original_amount)
           : current.amount;
 
-      // Ensure currency is always MVR (never AED)
-      const chargeCurrency = charge.currency && charge.currency.toUpperCase() !== 'AED'
-        ? charge.currency
-        : getDefaultCurrency();
-      const finalCurrency = chargeCurrency ?? current.currency ?? getDefaultCurrency();
-      const safeCurrency = finalCurrency && finalCurrency.toUpperCase() !== 'AED'
-        ? finalCurrency
-        : getDefaultCurrency();
+      // Normalize currency to MVR or USD only, default to MVR
+      const chargeCurrency = normalizeCurrency(charge.currency);
+      const finalCurrency = normalizeCurrency(chargeCurrency ?? current.currency);
+      const safeCurrency = normalizeCurrency(finalCurrency);
 
       return {
         ...current,
@@ -445,32 +488,154 @@ export default function CollectPaymentPage() {
 
   const resetFlow = () => {
     setStep(1);
+    setPaymentMode("single");
     setFormData(INITIAL_FORM);
     setFieldErrors({});
     setSubmissionError(null);
     setResults([]);
     setBatch([]);
     setLinkedCharge(null);
+    setSelectedInvoices(new Set());
+    setBulkPaymentConfig({
+      payment_method: "",
+      transaction_date: new Date().toISOString().split("T")[0],
+      reference_number: "",
+      description: "",
+    });
+  };
+
+  // Bulk payment handlers
+  const handleToggleInvoice = (chargeId) => {
+    setSelectedInvoices((prev) => {
+      const next = new Set(prev);
+      if (next.has(chargeId)) {
+        next.delete(chargeId);
+      } else {
+        next.add(chargeId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllInvoices = () => {
+    setSelectedInvoices(new Set(allPendingCharges.map((c) => c.id)));
+  };
+
+  const handleDeselectAllInvoices = () => {
+    setSelectedInvoices(new Set());
+  };
+
+  const handleBulkPaymentConfigChange = (event) => {
+    const { name, value } = event.target;
+    setBulkPaymentConfig((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handlePaySelectedInvoices = async () => {
+    if (selectedInvoices.size === 0) {
+      setSubmissionError("Please select at least one invoice to pay.");
+      return;
+    }
+
+    if (!bulkPaymentConfig.payment_method) {
+      setSubmissionError("Please select a payment method.");
+      return;
+    }
+
+    if (!bulkPaymentConfig.transaction_date) {
+      setSubmissionError("Please select a transaction date.");
+      return;
+    }
+
+    const results = [];
+    const errors = [];
+
+    try {
+      for (const chargeId of selectedInvoices) {
+        const charge = allPendingCharges.find((c) => c.id === chargeId);
+        if (!charge) continue;
+
+        const amount = Number(charge.amount || charge.original_amount || 0);
+        if (amount <= 0) {
+          errors.push({
+            charge,
+            error: new Error("Invalid invoice amount"),
+          });
+          continue;
+        }
+
+        const payload = {
+          payment_type: charge.suggested_payment_type || "rent",
+          tenant_unit_id: charge.tenant_unit_id,
+          amount: amount,
+          currency: normalizeCurrency(charge.currency || getDefaultCurrency()),
+          description:
+            bulkPaymentConfig.description || charge.description || null,
+          transaction_date: bulkPaymentConfig.transaction_date,
+          status: "completed",
+          payment_method: bulkPaymentConfig.payment_method,
+          reference_number: bulkPaymentConfig.reference_number || null,
+          source_type: charge.source_type,
+          source_id: charge.source_id,
+          metadata: {
+            source_type: charge.source_type,
+            source_id: charge.source_id,
+            source_title: charge.title,
+            source_status: charge.status,
+            source_due_date: charge.due_date,
+            source_issued_date: charge.issued_date,
+            source_original_amount: charge.original_amount || charge.amount,
+          },
+        };
+
+        try {
+          const result = await createPayment(payload);
+          results.push({ response: result, charge, form: payload });
+        } catch (err) {
+          errors.push({ charge, error: err });
+        }
+      }
+
+      setResults(results);
+      setSelectedInvoices(new Set());
+      setSubmissionError(
+        errors.length > 0
+          ? `${errors.length} payment(s) failed. ${results.length} payment(s) succeeded.`
+          : null
+      );
+
+      if (results.length > 0) {
+        // Refresh charges after successful payments
+        setTimeout(() => {
+          refreshAllPendingCharges();
+        }, 1000);
+        setStep(4);
+      } else if (errors.length > 0) {
+        // Show errors if all failed
+        setSubmissionError(
+          `All payments failed. ${errors.map((e) => e.error.message).join("; ")}`
+        );
+      }
+    } catch (err) {
+      setSubmissionError(err.message || "Failed to process bulk payments.");
+    }
   };
 
   const handleSubmit = async () => {
     const queue = pendingPayments;
     
-    console.log('[Payment Collection] Submitting payments:', {
-      queue_length: queue.length,
-      queue_items: queue.map(item => ({
-        id: item.id,
-        payment_type: item.form?.payment_type,
-        has_charge: !!item.charge,
-        charge_source_type: item.charge?.source_type,
-        charge_source_id: item.charge?.source_id,
-      })),
-      linkedCharge: linkedCharge ? {
-        id: linkedCharge.id,
-        source_type: linkedCharge.source_type,
-        source_id: linkedCharge.source_id,
-      } : null,
-    });
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Payment Collection] Submitting payments:', {
+        queue_length: queue.length,
+        queue_items: queue.map(item => ({
+          id: item.id,
+          payment_type: item.form?.payment_type,
+          has_charge: !!item.charge,
+        })),
+      });
+    }
 
     if (queue.length === 0) {
       if (!validateStep(2)) {
@@ -581,23 +746,15 @@ export default function CollectPaymentPage() {
           const payload = buildPayload(item.form, charge);
           // Debug: Log payload to verify source_type and source_id are set
           if (item.charge) {
-            console.log('Payment payload with charge:', {
-              charge: item.charge,
-              charge_id: item.charge.id,
-              charge_source_type: item.charge.source_type,
-              charge_source_id: item.charge.source_id,
-              payload_source_type: payload.source_type,
-              payload_source_id: payload.source_id,
-              payload_source_id_type: typeof payload.source_id,
-              metadata: payload.metadata,
-              full_payload: payload,
-            });
-          } else {
-            console.warn('Payment payload WITHOUT charge:', {
-              payload_source_type: payload.source_type,
-              payload_source_id: payload.source_id,
-              metadata: payload.metadata,
-            });
+            if (process.env.NODE_ENV === 'development') {
+              console.log('Payment payload with charge:', {
+                charge_id: item.charge.id,
+                charge_source_type: item.charge.source_type,
+                payload_source_type: payload.source_type,
+              });
+            }
+          } else if (process.env.NODE_ENV === 'development') {
+            console.warn('Payment payload WITHOUT charge');
           }
           const response = await createPayment(payload);
           collected.push({
@@ -621,14 +778,8 @@ export default function CollectPaymentPage() {
           const isMaintenanceInvoice = item.charge?.source_type === 'maintenance_invoice' || 
                                       item.form.payment_type === 'maintenance_expense' ||
                                       item.response?.data?.source_type === 'maintenance_invoice';
-          if (isMaintenanceInvoice) {
-            console.log('[Payment Collection] Maintenance invoice payment detected:', {
-              charge_source_type: item.charge?.source_type,
-              charge_source_id: item.charge?.source_id,
-              form_payment_type: item.form.payment_type,
-              response_source_type: item.response?.data?.source_type,
-              response_source_id: item.response?.data?.source_id,
-            });
+          if (isMaintenanceInvoice && process.env.NODE_ENV === 'development') {
+            console.log('[Payment Collection] Maintenance invoice payment detected');
           }
           return isMaintenanceInvoice;
         }
@@ -637,7 +788,9 @@ export default function CollectPaymentPage() {
       if (hasMaintenanceInvoicePayment) {
         // Signal that maintenance invoice payment was created
         const timestamp = Date.now().toString();
-        console.log('[Payment Collection] Setting maintenance invoice payment flag:', timestamp);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[Payment Collection] Setting maintenance invoice payment flag:', timestamp);
+        }
         localStorage.setItem('maintenance_invoice_payment_created', timestamp);
       }
       
@@ -720,7 +873,7 @@ export default function CollectPaymentPage() {
         </Link>
       </div>
 
-      <StepIndicator currentStep={step} />
+      <StepIndicator currentStep={step} paymentMode={paymentMode} />
 
       {submissionError && (
         <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -735,14 +888,40 @@ export default function CollectPaymentPage() {
       )}
 
       {step === 1 && (
-        <TypeSelection
-          selected={formData.payment_type}
+        <ModeSelection
+          selectedMode={paymentMode}
+          onSelectMode={handleSelectMode}
+          onSelectType={handleSelectType}
+          selectedType={formData.payment_type}
           errors={fieldErrors}
-          onSelect={handleSelectType}
         />
       )}
 
-      {step === 2 && (
+      {step === 2 && paymentMode === "bulk" && (
+        <BulkPaymentView
+          charges={allPendingCharges}
+          grouped={allPendingChargesGrouped}
+          groupedByUnit={allPendingChargesByUnit}
+          loading={allPendingChargesLoading}
+          error={allPendingChargesError}
+          onRefresh={refreshAllPendingCharges}
+          selectedInvoices={selectedInvoices}
+          onToggleInvoice={handleToggleInvoice}
+          onSelectAll={handleSelectAllInvoices}
+          onDeselectAll={handleDeselectAllInvoices}
+          bulkPaymentConfig={bulkPaymentConfig}
+          onConfigChange={handleBulkPaymentConfigChange}
+          paymentMethodOptions={paymentMethodOptions}
+          paymentMethodsLoading={paymentMethodsLoading}
+          paymentMethodsError={paymentMethodsLoadError}
+          onRefreshPaymentMethods={refreshPaymentMethods}
+          onPaySelected={handlePaySelectedInvoices}
+          loading={loading}
+          onBack={goBack}
+        />
+      )}
+
+      {step === 2 && paymentMode === "single" && (
         <DetailsForm
           formData={formData}
           selectedType={selectedType}
@@ -794,8 +973,11 @@ export default function CollectPaymentPage() {
   );
 }
 
-function StepIndicator({ currentStep }) {
-  const steps = ["Choose payment type", "Enter details", "Review & confirm"];
+function StepIndicator({ currentStep, paymentMode = "single" }) {
+  const steps =
+    paymentMode === "bulk"
+      ? ["Select mode", "Select invoices & configure", "Review & confirm"]
+      : ["Choose payment type", "Enter details", "Review & confirm"];
 
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
@@ -1010,17 +1192,71 @@ function DetailsForm({
               />
             </>
           ) : (
-            <InputField
-              label="Amount"
-              name="amount"
-              type="number"
-              min="0"
-              step="0.01"
-              value={formData.amount}
-              onChange={onChange}
-              placeholder="0.00"
-              error={errors?.amount}
-            />
+            <>
+              {selectedType?.value === "security_deposit" && selectedTenantUnit && (
+                <div className="md:col-span-2 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                  <p className="text-xs font-semibold text-primary mb-2">Security Deposit Information</p>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    {selectedTenantUnit.unit?.security_deposit !== null && selectedTenantUnit.unit?.security_deposit !== undefined && (
+                      <div>
+                        <span className="text-slate-500">Expected Security Deposit:</span>
+                        <p className="font-semibold text-slate-900">
+                          {new Intl.NumberFormat(undefined, {
+                            style: "currency",
+                            currency: selectedTenantUnit.unit?.security_deposit_currency || selectedTenantUnit.security_deposit_currency || formData.currency || getDefaultCurrency(),
+                          }).format(Number(selectedTenantUnit.unit.security_deposit || 0))}
+                        </p>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-slate-500">Already Paid:</span>
+                      <p className={`font-semibold ${Number(selectedTenantUnit.security_deposit_paid || 0) > 0 ? "text-amber-600" : "text-slate-900"}`}>
+                        {new Intl.NumberFormat(undefined, {
+                          style: "currency",
+                          currency: selectedTenantUnit.security_deposit_currency || selectedTenantUnit.unit?.security_deposit_currency || formData.currency || getDefaultCurrency(),
+                        }).format(Number(selectedTenantUnit.security_deposit_paid || 0))}
+                      </p>
+                    </div>
+                    {selectedTenantUnit.unit?.security_deposit !== null && 
+                     selectedTenantUnit.unit?.security_deposit !== undefined && 
+                     Number(selectedTenantUnit.unit.security_deposit) > Number(selectedTenantUnit.security_deposit_paid || 0) && (
+                      <div className="md:col-span-2">
+                        <span className="text-slate-500">Remaining:</span>
+                        <p className="font-semibold text-emerald-600">
+                          {new Intl.NumberFormat(undefined, {
+                            style: "currency",
+                            currency: selectedTenantUnit.unit?.security_deposit_currency || selectedTenantUnit.security_deposit_currency || formData.currency || getDefaultCurrency(),
+                          }).format(
+                            Number(selectedTenantUnit.unit.security_deposit) - Number(selectedTenantUnit.security_deposit_paid || 0)
+                          )}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              <InputField
+                label="Amount"
+                name="amount"
+                type="number"
+                min="0"
+                step="0.01"
+                value={formData.amount}
+                onChange={onChange}
+                placeholder="0.00"
+                error={errors?.amount}
+                helper={
+                  selectedType?.value === "security_deposit" && 
+                  selectedTenantUnit?.unit?.security_deposit !== null && 
+                  selectedTenantUnit?.unit?.security_deposit !== undefined
+                    ? `Expected: ${new Intl.NumberFormat(undefined, {
+                        style: "currency",
+                        currency: selectedTenantUnit.unit?.security_deposit_currency || selectedTenantUnit.security_deposit_currency || formData.currency || getDefaultCurrency(),
+                      }).format(Number(selectedTenantUnit.unit.security_deposit))}`
+                    : undefined
+                }
+              />
+            </>
           )}
 
           {selectedType?.value !== "advance_rent" && (
@@ -1085,7 +1321,7 @@ function DetailsForm({
             }
           />
 
-          {selectedType?.value !== "advance_rent" && selectedType?.value !== "security_refund" && (
+          {selectedType?.value !== "advance_rent" && selectedType?.value !== "security_deposit" && selectedType?.value !== "security_refund" && (
             <InputField
               label="Due date"
               name="due_date"
@@ -1148,11 +1384,8 @@ function ReviewStep({
     }
     return acc + (Number(item.form.amount ?? 0) || 0);
   }, 0);
-  // Ensure currency is always MVR (never AED)
-  const rawCurrency = payments[0]?.form?.currency ?? getDefaultCurrency();
-  const currency = rawCurrency && rawCurrency.toUpperCase() !== 'AED' 
-    ? rawCurrency 
-    : getDefaultCurrency();
+  // Normalize currency to MVR or USD only, default to MVR
+  const currency = normalizeCurrency(payments[0]?.form?.currency);
 
   return (
     <div className="space-y-6">
@@ -1172,10 +1405,8 @@ function ReviewStep({
               (type) => type.value === item.form.payment_type
             );
             const isAdvanceRent = item.form.payment_type === "advance_rent";
-            // Ensure currency is always MVR (never AED)
-            const itemCurrency = item.form.currency && item.form.currency.toUpperCase() !== 'AED'
-              ? item.form.currency
-              : getDefaultCurrency();
+            // Normalize currency to MVR or USD only, default to MVR
+            const itemCurrency = normalizeCurrency(item.form.currency);
             const amountLabel = isAdvanceRent
               ? formatAmount(
                   Number(item.form.advance_rent_amount ?? 0),
@@ -1199,10 +1430,8 @@ function ReviewStep({
               linkedCharge &&
               linkedCharge.supports_partial &&
               Number(item.form.amount ?? 0) + 0.009 < chargeOriginalAmount;
-            // Ensure linked charge currency is also MVR (never AED)
-            const linkedCurrency = linkedCharge?.currency && linkedCharge.currency.toUpperCase() !== 'AED'
-              ? linkedCharge.currency
-              : itemCurrency;
+            // Normalize linked charge currency to MVR or USD only, default to MVR
+            const linkedCurrency = normalizeCurrency(linkedCharge?.currency) || itemCurrency;
             const originalAmountLabel =
               linkedCharge && chargeOriginalAmount
                 ? formatAmount(
@@ -1374,10 +1603,8 @@ function SuccessStep({
             (type) => type.value === item.form.payment_type
           );
           const isAdvanceRent = item.form.payment_type === "advance_rent";
-          // Ensure currency is always MVR (never AED)
-          const itemCurrency = item.form.currency && item.form.currency.toUpperCase() !== 'AED'
-            ? item.form.currency
-            : getDefaultCurrency();
+          // Normalize currency to MVR or USD only, default to MVR
+          const itemCurrency = normalizeCurrency(item.form.currency);
           const amountLabel = formatAmount(
             Number(item.form.amount ?? 0),
             itemCurrency
@@ -1415,7 +1642,9 @@ function SuccessStep({
               <p className="text-xs text-emerald-600">
                 {amountLabel} •{" "}
                 {item.summary ??
-                  (item.form.tenant_unit_id
+                  (item.charge?.tenant_unit
+                    ? `${item.charge.tenant_unit.tenant?.full_name ?? "Unknown"} • Unit ${item.charge.tenant_unit.unit?.unit_number ?? "—"} @ ${item.charge.tenant_unit.unit?.property?.name ?? "—"}`
+                    : item.form.tenant_unit_id
                     ? `Tenant unit #${item.form.tenant_unit_id}`
                     : "No tenant")}
                 {isAdvanceRent && item.form.advance_rent_months && (
@@ -1665,13 +1894,8 @@ function buildPayload(form, charge) {
     }
   }
 
-  // Ensure currency is always MVR (never AED) and is a valid 3-character string
-  let currency = form.currency || getDefaultCurrency();
-  if (currency && currency.toUpperCase() === 'AED') {
-    currency = getDefaultCurrency();
-  }
-  // Ensure it's exactly 3 characters (uppercase)
-  currency = currency ? String(currency).toUpperCase().substring(0, 3) : getDefaultCurrency();
+  // Normalize currency to MVR or USD only, default to MVR
+  const currency = normalizeCurrency(form.currency);
 
   const payload = {
     payment_type: form.payment_type,
@@ -1688,8 +1912,8 @@ function buildPayload(form, charge) {
     metadata,
   };
 
-  // Only include due_date for payment types that need it (exclude advance_rent and security_refund)
-  if (form.payment_type !== 'advance_rent' && form.payment_type !== 'security_refund' && form.due_date) {
+  // Only include due_date for payment types that need it (exclude advance_rent, security_deposit, and security_refund)
+  if (form.payment_type !== 'advance_rent' && form.payment_type !== 'security_deposit' && form.payment_type !== 'security_refund' && form.due_date) {
     payload.due_date = form.due_date;
   }
 
@@ -1804,10 +2028,8 @@ function PendingChargesPanel({
               <div className="space-y-2">
                 {items.map((charge) => {
                   const isSelected = selectedCharge?.id === charge.id;
-                  // Ensure currency is always MVR (never AED)
-                  const currency = charge.currency && charge.currency.toUpperCase() !== 'AED' 
-                    ? charge.currency 
-                    : getDefaultCurrency();
+                  // Normalize currency to MVR or USD only, default to MVR
+                  const currency = normalizeCurrency(charge.currency);
                   const amountLabel = formatAmount(
                     Number(charge.amount ?? charge.original_amount ?? 0),
                     currency
@@ -2011,6 +2233,420 @@ function ReviewItem({ label, value, capitalize = false }) {
       >
         {value || "—"}
       </dd>
+    </div>
+  );
+}
+
+function ModeSelection({ selectedMode, onSelectMode, onSelectType, selectedType, errors }) {
+  return (
+    <div className="space-y-6">
+      <div className="space-y-4">
+        <p className="text-sm font-semibold text-slate-900">Select Payment Mode</p>
+        <p className="text-sm text-slate-600">
+          Choose how you want to collect payments. You can pay invoices from a single tenant unit or bulk pay invoices from all units.
+        </p>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => onSelectMode("single")}
+            className={`flex flex-col rounded-2xl border p-6 text-left transition ${
+              selectedMode === "single"
+                ? "border-primary bg-primary/5 shadow-sm"
+                : "border-slate-200 hover:border-primary/60 bg-white"
+            }`}
+          >
+            <p className="text-base font-semibold text-slate-900">
+              Single Unit Payment
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              Select a tenant unit and pay invoices one at a time. Supports partial payments and all payment types.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onSelectMode("bulk")}
+            className={`flex flex-col rounded-2xl border p-6 text-left transition ${
+              selectedMode === "bulk"
+                ? "border-primary bg-primary/5 shadow-sm"
+                : "border-slate-200 hover:border-primary/60 bg-white"
+            }`}
+          >
+            <p className="text-base font-semibold text-slate-900">
+              Bulk Payment (All Units)
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              View and pay multiple invoices from all tenant units at once. Each invoice creates a separate transaction.
+            </p>
+          </button>
+        </div>
+      </div>
+
+      {selectedMode === "single" && (
+        <div className="space-y-4">
+          <p className="text-sm font-semibold text-slate-900">Select Payment Type</p>
+          <p className="text-sm text-slate-600">
+            Pick the type of payment you want to process. We'll tailor the rest of
+            the form based on this choice.
+          </p>
+
+          {errors?.payment_type && (
+            <p className="text-sm text-rose-600">{errors.payment_type}</p>
+          )}
+
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {PAYMENT_TYPES.map((type) => {
+              const isSelected = selectedType === type.value;
+
+              return (
+                <button
+                  key={type.value}
+                  type="button"
+                  onClick={() => onSelectType(type.value)}
+                  className={`flex h-full flex-col rounded-2xl border p-4 text-left transition bg-white ${
+                    isSelected
+                      ? "border-primary shadow-sm"
+                      : "border-slate-200 hover:border-primary/60"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-slate-900">
+                      {type.label}
+                    </p>
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                      {type.flowDirection === "income" ? "Incoming" : "Outgoing"}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-600">{type.description}</p>
+                  <span className="mt-4 text-xs font-medium text-slate-400">
+                    {type.requiresTenantUnit
+                      ? "Requires tenant & unit details"
+                      : "Standalone payment"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BulkPaymentView({
+  charges,
+  grouped,
+  groupedByUnit,
+  loading: chargesLoading,
+  error: chargesError,
+  onRefresh,
+  selectedInvoices,
+  onToggleInvoice,
+  onSelectAll,
+  onDeselectAll,
+  bulkPaymentConfig,
+  onConfigChange,
+  paymentMethodOptions,
+  paymentMethodsLoading,
+  paymentMethodsError,
+  onRefreshPaymentMethods,
+  onPaySelected,
+  loading: paymentLoading,
+  onBack,
+}) {
+  const selectedCount = selectedInvoices.size;
+  const selectedCharges = charges.filter((c) => selectedInvoices.has(c.id));
+  
+  const totalAmount = selectedCharges.reduce((sum, charge) => {
+    return sum + Number(charge.amount || charge.original_amount || 0);
+  }, 0);
+
+  const currencyGroups = useMemo(() => {
+    const groups = new Map();
+    selectedCharges.forEach((charge) => {
+      const currency = normalizeCurrency(charge.currency || getDefaultCurrency());
+      if (!groups.has(currency)) {
+        groups.set(currency, []);
+      }
+      groups.get(currency).push(charge);
+    });
+    return groups;
+  }, [selectedCharges]);
+
+  const sections = [
+    { key: "rent_invoice", label: "Rent invoices" },
+    { key: "maintenance_invoice", label: "Maintenance invoices" },
+    { key: "financial_record", label: "Financial records" },
+  ];
+
+  const getItemsForKey = (key) => {
+    if (grouped?.get instanceof Function) {
+      return grouped.get(key) ?? [];
+    }
+    return Array.isArray(charges)
+      ? charges.filter((item) => item.source_type === key)
+      : [];
+  };
+
+  const buildTenantUnitLabel = (charge) => {
+    const tenantName = charge.tenant_unit?.tenant?.full_name ?? "Unknown tenant";
+    const unitNumber = charge.tenant_unit?.unit?.unit_number ?? "—";
+    const propertyName = charge.tenant_unit?.unit?.property?.name ?? "—";
+    return `${tenantName} • Unit ${unitNumber} @ ${propertyName}`;
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-2xl border border-slate-200 bg-white/80 p-6 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900">
+          Bulk Payment - All Units
+        </h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Select multiple invoices from all tenant units to pay at once. Each invoice will create a separate payment transaction.
+        </p>
+
+        {chargesError && (
+          <div className="mt-4 flex items-center justify-between gap-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={14} />
+              <span>{chargesError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="inline-flex items-center gap-1 rounded-lg border border-amber-200 px-2 py-1 font-semibold text-amber-700 transition hover:border-amber-300 hover:text-amber-900"
+            >
+              <RefreshCcw size={14} />
+              Retry
+            </button>
+          </div>
+        )}
+
+        {chargesLoading && (
+          <div className="mt-4 flex items-center justify-center py-8">
+            <Loader2 size={24} className="animate-spin text-primary" />
+            <span className="ml-3 text-sm text-slate-600">Loading invoices from all units...</span>
+          </div>
+        )}
+
+        {!chargesLoading && !chargesError && charges.length === 0 && (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
+            <p className="text-sm text-slate-600">No pending invoices found across all tenant units.</p>
+          </div>
+        )}
+
+        {!chargesLoading && !chargesError && charges.length > 0 && (
+          <div className="mt-6 space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={onSelectAll}
+                  className="inline-flex items-center gap-1 rounded-lg border border-primary/40 px-3 py-1 text-xs font-semibold text-primary transition hover:bg-primary/10"
+                >
+                  Select All
+                </button>
+                {selectedCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={onDeselectAll}
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                  >
+                    Deselect All
+                  </button>
+                )}
+              </div>
+              {selectedCount > 0 && (
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {selectedCount} invoice{selectedCount !== 1 ? "s" : ""} selected
+                  </p>
+                  {currencyGroups.size === 1 && (
+                    <p className="mt-1 text-xs text-slate-600">
+                      Total: {formatAmount(totalAmount, Array.from(currencyGroups.keys())[0])}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {sections.map(({ key, label }) => {
+              const items = getItemsForKey(key);
+              if (!items.length) {
+                return null;
+              }
+
+              return (
+                <div key={key} className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {label} ({items.length})
+                  </p>
+
+                  <div className="space-y-2">
+                    {items.map((charge) => {
+                      const isSelected = selectedInvoices.has(charge.id);
+                      const currency = normalizeCurrency(charge.currency || getDefaultCurrency());
+                      const amountLabel = formatAmount(
+                        Number(charge.amount ?? charge.original_amount ?? 0),
+                        currency
+                      );
+                      const dueLabel = charge.due_date ?? charge.issued_date ?? null;
+
+                      return (
+                        <div
+                          key={charge.id}
+                          className={`flex items-start gap-3 rounded-xl border p-3 transition ${
+                            isSelected
+                              ? "border-primary bg-primary/5 shadow-sm"
+                              : "border-slate-200 hover:border-primary/40 hover:bg-primary/5"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => onToggleInvoice(charge.id)}
+                            className="mt-1 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+                          />
+                          <div className="flex-1">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div className="flex-1">
+                                <p className="text-sm font-semibold text-slate-900">
+                                  {charge.title ?? "Invoice"}
+                                </p>
+                                <p className="mt-1 text-xs text-slate-600">
+                                  {buildTenantUnitLabel(charge)}
+                                </p>
+                                {charge.description && (
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    {charge.description}
+                                  </p>
+                                )}
+                                {dueLabel && (
+                                  <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">
+                                    Due • {dueLabel}
+                                  </p>
+                                )}
+                                <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">
+                                  Status • {charge.status ?? "pending"}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm font-semibold text-slate-900">
+                                  {amountLabel}
+                                </p>
+                                <p className="mt-1 text-xs text-slate-500">{currency}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {selectedCount > 0 && (
+        <div className="rounded-2xl border border-primary/20 bg-primary/5 p-6 shadow-sm">
+          <h3 className="text-base font-semibold text-slate-900">
+            Payment Configuration
+          </h3>
+          <p className="mt-1 text-sm text-slate-600">
+            Configure shared payment details for all selected invoices.
+          </p>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <PaymentMethodField
+              value={bulkPaymentConfig.payment_method}
+              onChange={onConfigChange}
+              options={paymentMethodOptions}
+              loading={paymentMethodsLoading}
+              error={paymentMethodsError}
+              onRefresh={onRefreshPaymentMethods}
+            />
+
+            <InputField
+              label="Transaction Date"
+              name="transaction_date"
+              type="date"
+              value={bulkPaymentConfig.transaction_date}
+              onChange={onConfigChange}
+              required
+            />
+
+            <InputField
+              label="Reference Number"
+              name="reference_number"
+              value={bulkPaymentConfig.reference_number}
+              onChange={onConfigChange}
+              placeholder="Optional"
+            />
+
+            <div className="md:col-span-2">
+              <label className="text-sm font-medium text-slate-700">
+                Description / Notes
+              </label>
+              <textarea
+                name="description"
+                value={bulkPaymentConfig.description}
+                onChange={onConfigChange}
+                rows={3}
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                placeholder="Optional notes for all payments..."
+              />
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-xl bg-slate-50/80 p-4">
+            <p className="text-sm font-semibold text-slate-800">
+              Summary ({selectedCount} invoice{selectedCount !== 1 ? "s" : ""})
+            </p>
+            {currencyGroups.size === 1 ? (
+              <p className="mt-2 text-lg font-semibold text-slate-900">
+                {formatAmount(totalAmount, Array.from(currencyGroups.keys())[0])}
+              </p>
+            ) : (
+              <div className="mt-2 space-y-1">
+                {Array.from(currencyGroups.entries()).map(([currency, items]) => {
+                  const sum = items.reduce(
+                    (acc, c) => acc + Number(c.amount || c.original_amount || 0),
+                    0
+                  );
+                  return (
+                    <p key={currency} className="text-sm font-semibold text-slate-900">
+                      {formatAmount(sum, currency)} ({items.length} invoice{items.length !== 1 ? "s" : ""})
+                    </p>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-between">
+        <button
+          type="button"
+          onClick={onBack}
+          className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+        >
+          Back
+        </button>
+
+        <button
+          type="button"
+          onClick={onPaySelected}
+          disabled={paymentLoading || selectedCount === 0 || !bulkPaymentConfig.payment_method || !bulkPaymentConfig.transaction_date}
+          className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {paymentLoading && <Loader2 size={16} className="animate-spin" />}
+          Pay {selectedCount > 0 ? `${selectedCount} ` : ""}Selected Invoice{selectedCount !== 1 ? "s" : ""}
+        </button>
+      </div>
     </div>
   );
 }

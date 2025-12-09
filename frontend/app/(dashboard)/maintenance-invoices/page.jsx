@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { DataDisplay } from "@/components/DataDisplay";
+import { printDocument } from "@/utils/printDocument";
 import { API_BASE_URL } from "@/utils/api-config";
 
 const statusFilters = [
@@ -1043,45 +1044,22 @@ export default function MaintenanceInvoicesPage() {
     setExportingPdf(false);
   };
 
-  const handlePrintPreview = () => {
-    if (!previewRef.current || !previewInvoice) return;
+  const handlePrintPreview = async () => {
+    if (!previewInvoice?.id) return;
 
-    const printContents = previewRef.current.innerHTML;
-    const invoiceNumber = previewInvoice?.invoice_number ?? "maintenance-invoice";
-    const printWindow = window.open("", "_blank", "width=900,height=650");
-
-    if (!printWindow) {
-      setFlashMessage("Unable to open print window. Check your browser settings.");
-      return;
+    try {
+      await printDocument("maintenance-invoice", previewInvoice.id, {
+        format: "html",
+        onError: (error) => {
+          setFlashMessage(error);
+        },
+        onSuccess: () => {
+          // Optional: Show success message
+        },
+      });
+    } catch (err) {
+      setFlashMessage(err?.message ?? "Unable to print invoice.");
     }
-
-    printWindow.document.write(`<!doctype html>
-<html>
-  <head>
-    <title>${invoiceNumber}</title>
-    <style>
-      body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 32px; color: #0f172a; }
-      h1, h2, h3 { margin: 0; }
-      .invoice-preview { max-width: 720px; margin: 0 auto; }
-      .invoice-section { margin-bottom: 24px; }
-      table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-      th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
-      th { background-color: #f8fafc; text-transform: uppercase; font-size: 12px; letter-spacing: 0.08em; color: #64748b; }
-      .totals-row td { font-weight: 600; }
-    </style>
-  </head>
-  <body>
-    ${printContents}
-  </body>
-</html>`);
-
-    printWindow.document.close();
-    printWindow.focus();
-
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 150);
   };
 
   const handleExportPdf = async () => {

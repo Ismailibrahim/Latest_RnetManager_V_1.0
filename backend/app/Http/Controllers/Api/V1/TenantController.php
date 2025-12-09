@@ -15,6 +15,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class TenantController extends Controller
@@ -23,14 +24,31 @@ class TenantController extends Controller
 
     public function index(Request $request)
     {
+        // Check database connection
+        try {
+            DB::connection()->getPdo();
+        } catch (\Exception $e) {
+            Log::error('Database connection failed in TenantController', ['error' => $e->getMessage()]);
+            return response()->json([
+                'message' => 'Database connection failed. Please check your database configuration.',
+                'error' => 'Database connection error',
+            ], 500);
+        }
+
         $this->authorize('viewAny', Tenant::class);
 
         $perPage = $this->resolvePerPage($request);
+        $user = $this->getAuthenticatedUser($request);
 
-        $landlordId = $this->getLandlordId($request);
-        $query = Tenant::query()
-            ->where('landlord_id', $landlordId)
-            ->with(['nationality:id,name'])
+        $query = Tenant::query();
+
+        // Super admins can view all tenants, others only their landlord's
+        if ($this->shouldFilterByLandlord($request)) {
+            $landlordId = $this->getLandlordId($request);
+            $query->where('landlord_id', $landlordId);
+        }
+
+        $query->with(['nationality:id,name'])
             ->withCount([
                 'tenantUnits',
                 'assets',
@@ -51,9 +69,16 @@ class TenantController extends Controller
             });
         }
 
+        // Optimize: Add index hint for search queries and select only required columns
+        // Paginate without withQueryString to avoid potential issues
         $tenants = $query
-            ->paginate($perPage)
-            ->withQueryString();
+            ->select([
+                'id', 'landlord_id', 'full_name', 'email', 'phone', 'alternate_phone',
+                'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
+                'nationality_id', 'id_proof_type', 'id_proof_number', 'id_proof_document_id',
+                'status', 'created_at', 'updated_at'
+            ])
+            ->paginate($perPage);
 
         return TenantResource::collection($tenants);
     }
@@ -61,7 +86,19 @@ class TenantController extends Controller
     public function store(StoreTenantRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $data['landlord_id'] = $this->getLandlordId($request);
+        $user = $request->user();
+
+        // Super admins must specify landlord_id when creating tenants
+        if ($user->isSuperAdmin() && !isset($data['landlord_id'])) {
+            return response()->json([
+                'message' => 'Super admin must specify landlord_id when creating tenants.',
+                'errors' => [
+                    'landlord_id' => ['The landlord_id field is required for super admin users.'],
+                ],
+            ], 422);
+        }
+
+        $data['landlord_id'] = $user->isSuperAdmin() ? $data['landlord_id'] : $this->getLandlordId($request);
         $data['status'] = $data['status'] ?? 'active';
 
         $tenant = Tenant::create($data);
@@ -77,8 +114,11 @@ class TenantController extends Controller
     {
         $this->authorize('view', $tenant);
 
+        $user = $request->user();
+
         // Ensure tenant belongs to authenticated user's landlord (defense in depth)
-        if ($tenant->landlord_id !== $request->user()->landlord_id) {
+        // Super admins can view any tenant
+        if (!$user->isSuperAdmin() && $tenant->landlord_id !== $user->landlord_id) {
             abort(403, 'Unauthorized access to this tenant.');
         }
 
@@ -99,8 +139,11 @@ class TenantController extends Controller
     {
         $this->authorize('update', $tenant);
 
+        $user = $request->user();
+
         // Ensure tenant belongs to authenticated user's landlord (defense in depth)
-        if ($tenant->landlord_id !== $request->user()->landlord_id) {
+        // Super admins can update any tenant
+        if (!$user->isSuperAdmin() && $tenant->landlord_id !== $user->landlord_id) {
             abort(403, 'Unauthorized access to this tenant.');
         }
 
@@ -189,7 +232,22 @@ class TenantController extends Controller
         $this->authorize('create', Tenant::class);
 
         $user = $request->user();
-        $landlordId = $user->landlord_id;
+
+        // Super admins must specify landlord_id in bulk import
+        if ($user->isSuperAdmin()) {
+            $landlordId = $request->input('landlord_id');
+            if (!$landlordId) {
+                return response()->json([
+                    'message' => 'Super admin must specify landlord_id for bulk import.',
+                    'errors' => [
+                        'landlord_id' => ['The landlord_id field is required for super admin users.'],
+                    ],
+                ], 422);
+            }
+        } else {
+            $landlordId = $user->landlord_id;
+        }
+
         $mode = $request->input('mode', 'create');
         $tenantsData = $request->input('tenants', []);
 

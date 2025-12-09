@@ -47,6 +47,11 @@ class User extends Authenticatable
         'is_active',
         'email_verified_at',
         'last_login_at',
+        'approval_status',
+        'approved_at',
+        'approved_by',
+        'rejected_at',
+        'rejected_reason',
     ];
 
     /**
@@ -79,6 +84,8 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
             'is_active' => 'boolean',
+            'approved_at' => 'datetime',
+            'rejected_at' => 'datetime',
         ];
     }
 
@@ -113,6 +120,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Relationship: approved by user (super admin who approved).
+     */
+    public function approvedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    /**
      * Accessor: get full name.
      */
     public function getFullNameAttribute(): string
@@ -143,5 +158,38 @@ class User extends Authenticatable
     public function isSuperAdmin(): bool
     {
         return $this->role === self::ROLE_SUPER_ADMIN;
+    }
+
+    /**
+     * Check if user is pending approval.
+     */
+    public function isPending(): bool
+    {
+        return $this->approval_status === 'pending';
+    }
+
+    /**
+     * Check if user is approved.
+     */
+    public function isApproved(): bool
+    {
+        return $this->approval_status === 'approved';
+    }
+
+    /**
+     * Check if user is rejected.
+     */
+    public function isRejected(): bool
+    {
+        return $this->approval_status === 'rejected';
+    }
+
+    /**
+     * Check if user can access the system.
+     * User must be active and approved.
+     */
+    public function canAccessSystem(): bool
+    {
+        return $this->is_active && $this->isApproved();
     }
 }

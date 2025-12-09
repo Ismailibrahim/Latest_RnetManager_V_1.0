@@ -30,20 +30,55 @@ class SystemSettingsService
         $cacheKey = self::CACHE_PREFIX . $landlordId;
 
         try {
-            return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($landlordId) {
+            // OPTIMIZED: Try direct database query first (faster, no cache dependency)
+            // Cache can cause timeouts if Redis/cache server is slow or unavailable
+            $startTime = microtime(true);
+            
+            try {
                 $setting = LandlordSetting::where('landlord_id', $landlordId)->first();
 
                 if (! $setting) {
                     // Return defaults if no settings exist
-                    // Settings will be created on first update
                     return LandlordSetting::getDefaultSettings();
                 }
 
-                return $setting->getMergedSettings();
-            });
+                $result = $setting->getMergedSettings();
+                
+                $duration = microtime(true) - $startTime;
+                if ($duration > 1) {
+                    Log::warning("Database query took {$duration} seconds for landlord {$landlordId}");
+                }
+                
+                // Cache the result asynchronously (don't wait for it)
+                try {
+                    Cache::put($cacheKey, $result, self::CACHE_TTL);
+                } catch (\Exception $cacheError) {
+                    // Ignore cache errors - database query succeeded
+                    Log::debug('Cache put failed (non-critical): ' . $cacheError->getMessage());
+                }
+                
+                return $result;
+            } catch (\Exception $dbError) {
+                Log::error('Database query failed, trying cache: ' . $dbError->getMessage());
+                
+                // Fallback to cache if database fails
+                try {
+                    $result = Cache::get($cacheKey);
+                    if ($result !== null) {
+                        Log::info('Retrieved settings from cache after DB failure');
+                        return $result;
+                    }
+                } catch (\Exception $cacheError) {
+                    Log::error('Cache retrieval also failed: ' . $cacheError->getMessage());
+                }
+                
+                // Last resort: return defaults
+                return LandlordSetting::getDefaultSettings();
+            }
         } catch (\Exception $e) {
             // If there's an error (e.g., table doesn't exist), return defaults
             Log::error('Failed to get settings for landlord ' . $landlordId . ': ' . $e->getMessage());
+            
             return LandlordSetting::getDefaultSettings();
         }
     }

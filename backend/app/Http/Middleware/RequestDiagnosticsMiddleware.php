@@ -36,6 +36,14 @@ class RequestDiagnosticsMiddleware
 
         try {
             $response = $next($request);
+            
+            // Ensure response is not null
+            if ($response === null) {
+                Log::channel('probe')->error('request.null_response', SystemProbe::context([
+                    'message' => 'Middleware returned null response',
+                ]));
+                $response = response()->json(['error' => 'Internal server error'], 500);
+            }
         } catch (Throwable $exception) {
             Log::channel('probe')->error('request.exception', SystemProbe::context([
                 'exception' => $exception::class,
@@ -47,7 +55,18 @@ class RequestDiagnosticsMiddleware
 
         $durationMs = (microtime(true) - $start) * 1000;
 
-        $response->headers->set('X-Request-Id', $requestId);
+        // Only set headers if response exists
+        if ($response !== null) {
+            $response->headers->set('X-Request-Id', $requestId);
+        }
+
+        // Ensure response exists before accessing it
+        if ($response === null) {
+            Log::channel('probe')->error('request.null_response_finish', SystemProbe::context([
+                'duration_ms' => round($durationMs, 2),
+            ]));
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
 
         $context = [
             'status' => $response->getStatusCode(),

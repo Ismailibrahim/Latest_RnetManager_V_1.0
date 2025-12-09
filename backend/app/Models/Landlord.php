@@ -105,6 +105,15 @@ class Landlord extends Model
         return $this->hasMany(User::class);
     }
 
+    /**
+     * Get the owner user (first user with role 'owner').
+     * This relationship helps avoid N+1 queries.
+     */
+    public function owner(): HasOne
+    {
+        return $this->hasOne(User::class)->where('role', 'owner');
+    }
+
     public function properties(): HasMany
     {
         return $this->hasMany(Property::class);

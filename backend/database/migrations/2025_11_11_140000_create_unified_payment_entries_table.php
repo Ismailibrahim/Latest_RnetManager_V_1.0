@@ -19,6 +19,7 @@ return new class extends Migration
             $table->enum('payment_type', [
                 'rent',
                 'maintenance_expense',
+                'security_deposit',
                 'security_refund',
                 'fee',
                 'other_income',

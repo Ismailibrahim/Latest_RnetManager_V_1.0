@@ -24,6 +24,7 @@ class MaintenanceRequest extends Model
         'location',
         'serviced_by',
         'invoice_number',
+        'receipt_path',
         'is_billable',
         'billed_to_tenant',
         'tenant_share',

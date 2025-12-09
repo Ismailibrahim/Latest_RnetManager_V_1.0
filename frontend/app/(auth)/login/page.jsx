@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -11,7 +11,7 @@ import {
   Mail,
   ShieldCheck,
 } from "lucide-react";
-import { API_BASE_URL } from "@/utils/api-config";
+import { useAuth } from "@/contexts/AuthContext";
 
 const initialFormState = {
   email: "",
@@ -21,10 +21,18 @@ const initialFormState = {
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login, isAuthenticated, isLoading } = useAuth();
   const [form, setForm] = useState(initialFormState);
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [apiError, setApiError] = useState(null);
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      router.push("/");
+    }
+  }, [isAuthenticated, isLoading, router]);
 
   const handleChange = (event) => {
     const { name, type, value, checked } = event.target;
@@ -47,43 +55,17 @@ export default function LoginPage() {
     setFieldErrors({});
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: form.email,
-          password: form.password,
-          device_name: "web",
-        }),
-      });
+      const result = await login(form.email, form.password, form.remember);
 
-      if (response.status === 422) {
-        const payload = await response.json();
-        setFieldErrors(payload.errors ?? {});
-        throw new Error(
-          payload.message ??
-            "We couldn't verify those details. Please try again.",
-        );
+      if (!result.success) {
+        // Handle validation errors
+        if (result.errors) {
+          setFieldErrors(result.errors);
+        }
+        throw new Error(result.error || "Login failed");
       }
 
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        const message =
-          payload?.message ??
-          `Something went wrong (HTTP ${response.status}). Please try again.`;
-        throw new Error(message);
-      }
-
-      const payload = await response.json();
-
-      localStorage.setItem("auth_token", payload.token);
-      if (payload.user) {
-        localStorage.setItem("auth_user", JSON.stringify(payload.user));
-      }
-
+      // Login successful, redirect will happen via useEffect
       router.push("/");
       router.refresh();
     } catch (error) {
@@ -92,6 +74,18 @@ export default function LoginPage() {
       setSubmitting(false);
     }
   };
+
+  // Show loading while checking auth state
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+          <p className="mt-4 text-sm text-slate-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 rounded-3xl border border-slate-200 bg-white p-8 shadow-xl">
@@ -111,6 +105,18 @@ export default function LoginPage() {
           </p>
         </div>
       </header>
+
+      <div className="text-center">
+        <p className="text-sm text-slate-600">
+          Don't have an account?{" "}
+          <Link
+            href="/signup"
+            className="font-medium text-primary transition hover:text-primary/80 hover:underline"
+          >
+            Sign up
+          </Link>
+        </p>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
         {apiError && (

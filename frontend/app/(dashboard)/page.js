@@ -10,11 +10,14 @@ import {
   Calendar,
   Wrench,
   Loader2,
+  Shield,
 } from "lucide-react";
 import { formatMVR } from "@/lib/currency";
 import { API_BASE_URL } from "@/utils/api-config";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function Home() {
+  const { user } = useAuth();
   const [properties, setProperties] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [tenantUnits, setTenantUnits] = useState([]);
@@ -23,6 +26,14 @@ export default function Home() {
   const [maintenanceRequests, setMaintenanceRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // Determine user role and permissions
+  const userRole = user?.role || null;
+  const isSuperAdmin = userRole === "super_admin";
+  const isOwner = userRole === "owner";
+  const isAdmin = userRole === "admin";
+  const isManager = userRole === "manager";
+  const isAgent = userRole === "agent";
 
   useEffect(() => {
     let isMounted = true;
@@ -319,20 +330,61 @@ export default function Home() {
       ? `${stats.propertiesByLocation.male} in Malé · ${stats.propertiesByLocation.addu} in Addu`
       : "Properties across portfolio";
 
+  // Role-based welcome message and description
+  const getRoleBasedContent = () => {
+    if (isSuperAdmin) {
+      return {
+        title: "Super Admin Dashboard",
+        description: "Manage all landlords, subscriptions, and system-wide operations. Monitor signups and platform health.",
+        badge: "System Administration",
+      };
+    } else if (isOwner) {
+      return {
+        title: "Owner Dashboard",
+        description: "Track your property portfolio, tenant occupancy, and financial performance across all your properties.",
+        badge: "Portfolio Overview",
+      };
+    } else if (isAdmin) {
+      return {
+        title: "Admin Dashboard",
+        description: "Manage properties, tenants, and financial operations. Coordinate with your team to keep everything running smoothly.",
+        badge: "Administration",
+      };
+    } else if (isManager) {
+      return {
+        title: "Manager Dashboard",
+        description: "Monitor maintenance requests, tenant communications, and day-to-day operations for assigned properties.",
+        badge: "Operations",
+      };
+    } else if (isAgent) {
+      return {
+        title: "Agent Dashboard",
+        description: "View assigned properties and tenants. Track maintenance requests and tenant communications.",
+        badge: "Field Operations",
+      };
+    }
+    return {
+      title: "Dashboard Overview",
+      description: "Track occupancy, revenue, and maintenance workstreams across the Maldives portfolio. Insights update in real-time as your team works.",
+      badge: "Real-time data",
+    };
+  };
+
+  const roleContent = getRoleBasedContent();
+
   return (
     <div className="space-y-6">
       <section className="card flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="badge">
             <TrendingUp size={14} />
-            Real-time data
+            {roleContent.badge}
           </div>
           <h2 className="mt-3 text-2xl font-semibold text-slate-900">
-            Dashboard Overview
+            {roleContent.title}
           </h2>
           <p className="mt-2 max-w-2xl text-sm text-slate-500">
-            Track occupancy, revenue, and maintenance workstreams across the
-            Maldives portfolio. Insights update in real-time as your team works.
+            {roleContent.description}
           </p>
         </div>
         <div className="grid gap-2 text-sm text-slate-600">
@@ -354,33 +406,68 @@ export default function Home() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          icon={HomeIcon}
-          title="Active Properties"
-          value={stats.activeProperties.toString()}
-          subtitle={locationSubtitle}
-        />
+        {/* Show properties card for all roles except agents (unless they have access) */}
+        {(isSuperAdmin || isOwner || isAdmin || isManager) && (
+          <StatCard
+            icon={HomeIcon}
+            title="Active Properties"
+            value={stats.activeProperties.toString()}
+            subtitle={locationSubtitle}
+            link="/properties"
+          />
+        )}
+        
+        {/* Show tenants card for all roles */}
         <StatCard
           icon={Users}
           title="Current Tenants"
           value={stats.activeTenants.toString()}
           subtitle={`${tenantUnits.length} active lease${tenantUnits.length !== 1 ? "s" : ""}`}
+          link="/tenants"
         />
-        <StatCard
-          icon={Wallet}
-          title="Rent Collected (MVR)"
-          value={formatMVR(stats.rentCollected).replace("MVR ", "")}
-          subtitle={`USD ${stats.rentCollectedUSD.toLocaleString("en-US", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}`}
-        />
-        <StatCard
-          icon={Calendar}
-          title="Upcoming Renewals"
-          value={stats.upcomingRenewals.toString()}
-          subtitle="Next 30 days"
-        />
+        
+        {/* Show financial cards for owners, admins, and super admins */}
+        {(isSuperAdmin || isOwner || isAdmin) && (
+          <>
+            <StatCard
+              icon={Wallet}
+              title="Rent Collected (MVR)"
+              value={formatMVR(stats.rentCollected).replace("MVR ", "")}
+              subtitle={`USD ${stats.rentCollectedUSD.toLocaleString("en-US", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}`}
+              link="/unified-payments"
+            />
+            <StatCard
+              icon={Calendar}
+              title="Upcoming Renewals"
+              value={stats.upcomingRenewals.toString()}
+              subtitle="Next 30 days"
+              link="/tenant-units"
+            />
+          </>
+        )}
+        
+        {/* For managers and agents, show different metrics */}
+        {(isManager || isAgent) && (
+          <>
+            <StatCard
+              icon={Wrench}
+              title="Active Maintenance"
+              value={topMaintenanceRequests.length.toString()}
+              subtitle="Open requests"
+              link="/maintenance"
+            />
+            <StatCard
+              icon={Calendar}
+              title="Upcoming Renewals"
+              value={stats.upcomingRenewals.toString()}
+              subtitle="Next 30 days"
+              link="/tenant-units"
+            />
+          </>
+        )}
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
@@ -426,65 +513,150 @@ export default function Home() {
           </ul>
         </div>
 
-        <div className="card space-y-4">
-          <header className="flex items-center gap-3">
-            <Wrench className="h-9 w-9 rounded-full bg-primary/10 p-2 text-primary" />
-            <div>
-              <h3 className="text-base font-semibold text-slate-900">
-                Rent Collection Snapshot
-              </h3>
-              <p className="text-xs text-slate-500">
-                Maldives Rufiyaa converted to US Dollar for reporting.
-              </p>
-            </div>
-          </header>
+        {/* Show financial snapshot for owners, admins, and super admins */}
+        {(isSuperAdmin || isOwner || isAdmin) && (
+          <div className="card space-y-4">
+            <header className="flex items-center gap-3">
+              <Wallet className="h-9 w-9 rounded-full bg-primary/10 p-2 text-primary" />
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">
+                  Rent Collection Snapshot
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Maldives Rufiyaa converted to US Dollar for reporting.
+                </p>
+              </div>
+            </header>
 
-          <div className="grid gap-3 text-sm text-slate-600">
-            <div className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-white px-3 py-3">
-              <div>
-                <p className="text-xs text-slate-500">Collected this month</p>
-                <p className="text-lg font-semibold text-slate-900">
-                  {formatMVR(stats.rentCollected)}
+            <div className="grid gap-3 text-sm text-slate-600">
+              <div className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-white px-3 py-3">
+                <div>
+                  <p className="text-xs text-slate-500">Collected this month</p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {formatMVR(stats.rentCollected)}
+                  </p>
+                </div>
+                <span className="badge">
+                  USD {stats.rentCollectedUSD.toLocaleString("en-US", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-white px-3 py-3">
+                <div>
+                  <p className="text-xs text-slate-500">Outstanding</p>
+                  <p className="text-lg font-semibold text-warning">
+                    {formatMVR(stats.outstandingRent)}
+                  </p>
+                </div>
+                <p className="text-xs text-slate-500">
+                  {stats.invoicesDue} invoice{stats.invoicesDue !== 1 ? "s" : ""} due in 7 days
                 </p>
               </div>
-              <span className="badge">
-                USD {stats.rentCollectedUSD.toLocaleString("en-US", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </span>
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-white px-3 py-3">
-              <div>
-                <p className="text-xs text-slate-500">Outstanding</p>
-                <p className="text-lg font-semibold text-warning">
-                  {formatMVR(stats.outstandingRent)}
+              <div className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-white px-3 py-3">
+                <div>
+                  <p className="text-xs text-slate-500">Security deposits held</p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {formatMVR(stats.depositsHeld)}
+                  </p>
+                </div>
+                <p className="text-xs text-slate-500">
+                  {tenantUnits.length} active lease{tenantUnits.length !== 1 ? "s" : ""}
                 </p>
               </div>
-              <p className="text-xs text-slate-500">
-                {stats.invoicesDue} invoice{stats.invoicesDue !== 1 ? "s" : ""} due in 7 days
-              </p>
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-white px-3 py-3">
-              <div>
-                <p className="text-xs text-slate-500">Security deposits held</p>
-                <p className="text-lg font-semibold text-slate-900">
-                  {formatMVR(stats.depositsHeld)}
-                </p>
-              </div>
-              <p className="text-xs text-slate-500">
-                {tenantUnits.length} active lease{tenantUnits.length !== 1 ? "s" : ""}
-              </p>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* Show quick actions for managers and agents */}
+        {(isManager || isAgent) && (
+          <div className="card space-y-4">
+            <header className="flex items-center gap-3">
+              <Wrench className="h-9 w-9 rounded-full bg-primary/10 p-2 text-primary" />
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">
+                  Quick Actions
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Common tasks and shortcuts for your role.
+                </p>
+              </div>
+            </header>
+
+            <div className="grid gap-2 text-sm">
+              <Link
+                href="/maintenance/new"
+                className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-white px-3 py-3 hover:bg-slate-50 transition-colors"
+              >
+                <span className="font-medium text-slate-900">Record Maintenance</span>
+                <span className="text-slate-400">→</span>
+              </Link>
+              <Link
+                href="/tenant-units"
+                className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-white px-3 py-3 hover:bg-slate-50 transition-colors"
+              >
+                <span className="font-medium text-slate-900">View Active Leases</span>
+                <span className="text-slate-400">→</span>
+              </Link>
+              <Link
+                href="/tenants"
+                className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-white px-3 py-3 hover:bg-slate-50 transition-colors"
+              >
+                <span className="font-medium text-slate-900">Manage Tenants</span>
+                <span className="text-slate-400">→</span>
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* Show admin actions for super admins */}
+        {isSuperAdmin && (
+          <div className="card space-y-4">
+            <header className="flex items-center gap-3">
+              <Shield className="h-9 w-9 rounded-full bg-primary/10 p-2 text-primary" />
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">
+                  Admin Actions
+                </h3>
+                <p className="text-xs text-slate-500">
+                  System administration and management tools.
+                </p>
+              </div>
+            </header>
+
+            <div className="grid gap-2 text-sm">
+              <Link
+                href="/admin/signups"
+                className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-white px-3 py-3 hover:bg-slate-50 transition-colors"
+              >
+                <span className="font-medium text-slate-900">Pending Signups</span>
+                <span className="text-slate-400">→</span>
+              </Link>
+              <Link
+                href="/admin/subscriptions"
+                className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-white px-3 py-3 hover:bg-slate-50 transition-colors"
+              >
+                <span className="font-medium text-slate-900">Manage Subscriptions</span>
+                <span className="text-slate-400">→</span>
+              </Link>
+              <Link
+                href="/admin/subscription-settings"
+                className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-white px-3 py-3 hover:bg-slate-50 transition-colors"
+              >
+                <span className="font-medium text-slate-900">Subscription Limits</span>
+                <span className="text-slate-400">→</span>
+              </Link>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );
 }
 
-function StatCard({ icon: Icon, title, value, subtitle }) {
-  return (
+function StatCard({ icon: Icon, title, value, subtitle, link }) {
+  const content = (
     <div className="card">
       <div className="flex items-center justify-between">
         <div className="rounded-full bg-primary/10 p-2 text-primary">
@@ -498,5 +670,15 @@ function StatCard({ icon: Icon, title, value, subtitle }) {
       <p className="mt-2 text-xs text-slate-500">{subtitle}</p>
     </div>
   );
+
+  if (link) {
+    return (
+      <Link href={link} className="block transition-opacity hover:opacity-80">
+        {content}
+      </Link>
+    );
+  }
+
+  return content;
 }
 

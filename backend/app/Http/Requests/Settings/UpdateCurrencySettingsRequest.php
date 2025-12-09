@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Settings;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateCurrencySettingsRequest extends FormRequest
 {
@@ -22,8 +23,8 @@ class UpdateCurrencySettingsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'primary' => ['sometimes', 'nullable', 'string', 'max:3'],
-            'secondary' => ['sometimes', 'nullable', 'string', 'max:3'],
+            'primary' => ['sometimes', 'nullable', 'string', 'size:3', Rule::in(['MVR', 'USD'])],
+            'secondary' => ['sometimes', 'nullable', 'string', 'size:3', Rule::in(['MVR', 'USD'])],
             'exchange_rate' => ['sometimes', 'nullable', 'numeric', 'min:0'],
         ];
     }

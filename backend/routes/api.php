@@ -10,12 +10,15 @@ use App\Http\Controllers\Api\V1\EmailTemplateController;
 use App\Http\Controllers\Api\V1\FinancialRecordController;
 use App\Http\Controllers\Api\V1\FinancialSummaryController;
 use App\Http\Controllers\Api\V1\LandlordController;
+use App\Http\Controllers\Api\V1\OccupancyReportController;
 use App\Http\Controllers\Api\V1\MaintenanceInvoiceController;
 use App\Http\Controllers\Api\V1\MaintenanceRequestController;
 use App\Http\Controllers\Api\V1\NationalityController;
 use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\CurrencyController;
+use App\Http\Controllers\Api\V1\DocumentTemplateController;
 use App\Http\Controllers\Api\V1\PaymentMethodController;
+use App\Http\Controllers\Api\V1\PrintController;
 use App\Http\Controllers\Api\V1\PropertyController;
 use App\Http\Controllers\Api\V1\RentInvoiceController;
 use App\Http\Controllers\Api\V1\SecurityDepositRefundController;
@@ -34,6 +37,9 @@ use App\Http\Controllers\Api\V1\Mobile\MobilePropertyController;
 use App\Http\Controllers\Api\V1\Mobile\MobileUnitController;
 use App\Http\Controllers\Api\V1\Mobile\MobilePaymentController;
 use App\Http\Controllers\Api\V1\Admin\AdminLandlordController;
+use App\Http\Controllers\Api\V1\Admin\AdminSignupController;
+use App\Http\Controllers\Api\V1\Admin\SubscriptionLimitsController;
+use App\Http\Middleware\EnsureCorsHeaders;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 
@@ -55,16 +61,47 @@ Route::get('/health', function () {
 
 Route::prefix('v1')->group(function (): void {
     // Handle ALL OPTIONS requests FIRST (before other routes)
+    // ForceCors middleware will handle this, but route handler provides fallback
     Route::options('{any}', function (Request $request) {
-        $origin = $request->headers->get('Origin', 'http://localhost:3000');
+        $requestOrigin = $request->headers->get('Origin');
+        $allowedOrigins = config('cors.allowed_origins', []);
+        $allowedPatterns = config('cors.allowed_origins_patterns', []);
+        
+        // Validate origin against allowlist
+        $validOrigin = null;
+        
+        if ($requestOrigin) {
+            // Check exact match in allowed origins
+            if (in_array($requestOrigin, $allowedOrigins) || in_array('*', $allowedOrigins)) {
+                $validOrigin = $requestOrigin;
+            } else {
+                // Check against patterns
+                foreach ($allowedPatterns as $pattern) {
+                    if (preg_match($pattern, $requestOrigin)) {
+                        $validOrigin = $requestOrigin;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Fallback: use first allowed origin or default
+        if (!$validOrigin) {
+            $validOrigin = $allowedOrigins[0] ?? 'http://localhost:3000';
+            // In debug mode, allow the requested origin if no match found (for development)
+            if (config('app.debug') && $requestOrigin) {
+                $validOrigin = $requestOrigin;
+            }
+        }
+        
         $requestedHeaders = $request->headers->get('Access-Control-Request-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
         
         return response('', 204)->withHeaders([
-            'Access-Control-Allow-Origin' => $origin,
+            'Access-Control-Allow-Origin' => $validOrigin,
             'Access-Control-Allow-Methods' => 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
             'Access-Control-Allow-Headers' => $requestedHeaders,
             'Access-Control-Allow-Credentials' => 'true',
-            'Access-Control-Max-Age' => '86400',
+            'Access-Control-Max-Age' => (string) config('cors.max_age', 86400),
         ]);
     })->where('any', '.*');
     
@@ -87,17 +124,84 @@ Route::prefix('v1')->group(function (): void {
                 'middleware' => $request->route()?->middleware() ?? [],
             ]);
         });
+        
+        // Test endpoint to verify auth middleware works
+        Route::get('/test-auth', function (Request $request) {
+            \Illuminate\Support\Facades\Log::info('Test auth endpoint called', [
+                'has_user' => $request->user() !== null,
+                'user_id' => $request->user()?->id,
+                'is_super_admin' => $request->user()?->isSuperAdmin() ?? false,
+            ]);
+            
+            $origin = $request->headers->get('Origin', '*');
+            return response()->json([
+                'status' => 'ok',
+                'message' => 'Auth test endpoint works',
+                'authenticated' => $request->user() !== null,
+                'user' => $request->user() ? [
+                    'id' => $request->user()->id,
+                    'email' => $request->user()->email,
+                    'is_super_admin' => $request->user()->isSuperAdmin(),
+                ] : null,
+            ])->withHeaders([
+                'Access-Control-Allow-Origin' => $origin,
+                'Access-Control-Allow-Methods' => 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+                'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-Requested-With, Accept',
+                'Access-Control-Allow-Credentials' => 'true',
+            ]);
+        })->middleware('auth:sanctum')->name('api.v1.test-auth');
 
         // CORS test endpoint (no auth required)
         Route::get('/cors-test', function (Request $request) {
+            $origin = $request->headers->get('Origin', '*');
             return response()->json([
                 'status' => 'ok',
                 'message' => 'CORS is working!',
                 'origin' => $request->headers->get('Origin'),
                 'referer' => $request->headers->get('Referer'),
                 'timestamp' => now()->toIso8601String(),
-            ]);
+            ])->header('Access-Control-Allow-Origin', $origin)
+                ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
+                ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept')
+                ->header('Access-Control-Allow-Credentials', 'true');
         })->name('api.v1.cors-test');
+        
+        // Settings system CORS test (no auth required for testing)
+        Route::get('/settings-system-test', function (Request $request) {
+            $origin = $request->headers->get('Origin', '*');
+            $corsHeaders = [
+                'Access-Control-Allow-Origin' => $origin,
+                'Access-Control-Allow-Methods' => 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+                'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-Requested-With, Accept',
+                'Access-Control-Allow-Credentials' => 'true',
+            ];
+            return response()->json([
+                'status' => 'ok',
+                'message' => 'Settings system route is accessible',
+                'path' => $request->path(),
+                'method' => $request->method(),
+                'origin' => $origin,
+                'url' => $request->fullUrl(),
+            ])->withHeaders($corsHeaders);
+        })->name('api.v1.settings-system-test');
+        
+        // Test the exact settings/system endpoint (with auth)
+        Route::get('/settings/system/test', function (Request $request) {
+            $origin = $request->headers->get('Origin', '*');
+            $corsHeaders = [
+                'Access-Control-Allow-Origin' => $origin,
+                'Access-Control-Allow-Methods' => 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+                'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-Requested-With, Accept',
+                'Access-Control-Allow-Credentials' => 'true',
+            ];
+            return response()->json([
+                'status' => 'ok',
+                'message' => 'Settings system endpoint is accessible',
+                'authenticated' => $request->user() !== null,
+                'user_id' => $request->user()?->id,
+                'is_super_admin' => $request->user()?->isSuperAdmin() ?? false,
+            ])->withHeaders($corsHeaders);
+        })->middleware('auth:sanctum')->name('api.v1.settings.system.test');
         
         // OPTIONS test endpoint - explicitly handle OPTIONS requests
         // This endpoint ALWAYS sets CORS headers, bypassing all middleware
@@ -161,15 +265,54 @@ Route::prefix('v1')->group(function (): void {
     });
 
     Route::prefix('auth')->group(function (): void {
+        // Public endpoints
+        Route::post('signup', [AuthController::class, 'signup'])
+            ->middleware('throttle:5,60')
+            ->name('api.v1.auth.signup');
+        
+        Route::get('subscription-limits', [AuthController::class, 'getSubscriptionLimits'])
+            ->name('api.v1.auth.subscription-limits');
+        
         Route::post('login', [AuthController::class, 'login'])
             ->middleware('throttle:10,1')
             ->name('api.v1.auth.login');
 
+        // Authenticated endpoints
         Route::middleware('auth:sanctum')->group(function (): void {
             Route::get('me', [AuthController::class, 'me']);
             Route::post('logout', [AuthController::class, 'logout']);
         });
     });
+
+    // OPTIONS routes for settings/system - MUST be BEFORE auth middleware
+    // CORS preflight requests don't include auth tokens, so they must be public
+    Route::match(['OPTIONS'], 'settings/system', function (Request $request) {
+        $origin = $request->headers->get('Origin', '*');
+        $requestedHeaders = $request->headers->get('Access-Control-Request-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+        
+        $response = response('', 204);
+        $response->headers->set('Access-Control-Allow-Origin', $origin, true);
+        $response->headers->set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS', true);
+        $response->headers->set('Access-Control-Allow-Headers', $requestedHeaders, true);
+        $response->headers->set('Access-Control-Allow-Credentials', 'true', true);
+        $response->headers->set('Access-Control-Max-Age', '86400', true);
+        
+        return $response;
+    });
+    
+    Route::match(['OPTIONS'], 'settings/system/{any}', function (Request $request) {
+        $origin = $request->headers->get('Origin', '*');
+        $requestedHeaders = $request->headers->get('Access-Control-Request-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+        
+        $response = response('', 204);
+        $response->headers->set('Access-Control-Allow-Origin', $origin, true);
+        $response->headers->set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS', true);
+        $response->headers->set('Access-Control-Allow-Headers', $requestedHeaders, true);
+        $response->headers->set('Access-Control-Allow-Credentials', 'true', true);
+        $response->headers->set('Access-Control-Max-Age', '86400', true);
+        
+        return $response;
+    })->where('any', '.*');
 
     Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
         Route::apiResource('landlords', LandlordController::class)->only(['store'])->names('api.v1.landlords');
@@ -179,6 +322,16 @@ Route::prefix('v1')->group(function (): void {
             ->name('api.v1.units.bulk-import');
         Route::get('units/import-template', [UnitController::class, 'downloadTemplate'])
             ->name('api.v1.units.import-template');
+        
+        // Custom route binding for units to handle super admins
+        Route::bind('unit', function ($value) {
+            $user = auth()->user();
+            if ($user && $user->isSuperAdmin()) {
+                return \App\Models\Unit::withoutGlobalScope('landlord')->findOrFail($value);
+            }
+            return \App\Models\Unit::findOrFail($value);
+        });
+        
         Route::apiResource('units', UnitController::class)->names('api.v1.units');
 
         Route::post('tenants/bulk-import', [TenantController::class, 'bulkImport'])->middleware('throttle:6,1')
@@ -204,6 +357,8 @@ Route::prefix('v1')->group(function (): void {
         ])->names('api.v1.financial-records');
         Route::get('financial-summary', FinancialSummaryController::class)
             ->name('api.v1.financial-summary');
+        Route::get('occupancy-report', OccupancyReportController::class)
+            ->name('api.v1.occupancy-report');
 
         // Simple test route
         Route::get('test-route-loading', function () {
@@ -343,6 +498,12 @@ Route::prefix('v1')->group(function (): void {
             Route::get('unified-payments', [UnifiedPaymentController::class, 'index'])->name('api.v1.reports.unified-payments');
         });
 
+        // Print/Export routes for documents
+        Route::get('print/{type}/{id}', [PrintController::class, 'print'])
+            ->where(['type' => 'rent-invoice|maintenance-invoice|security-deposit-slip|advance-rent-receipt|fee-collection-receipt|security-deposit-refund|other-income-receipt|payment-voucher|unified-payment-entry'])
+            ->where(['id' => '[0-9]+'])
+            ->name('api.v1.print');
+
         Route::get('account', [AccountController::class, 'show'])->name('api.v1.account.show');
         Route::patch('account', [AccountController::class, 'update'])->name('api.v1.account.update');
         Route::patch('account/password', [AccountController::class, 'updatePassword'])->name('api.v1.account.password');
@@ -357,7 +518,27 @@ Route::prefix('v1')->group(function (): void {
         Route::get('settings/billing', [BillingSettingsController::class, 'show'])
             ->name('api.v1.settings.billing');
 
+        // NOTE: OPTIONS routes for settings/system are defined OUTSIDE this auth middleware group
+        // (see lines 236-262) to allow preflight requests without authentication
+        // ForceCors middleware (prepended to API group) handles CORS, no need for EnsureCorsHeaders
+        
         Route::prefix('settings/system')->group(function (): void {
+            // Simple test route to verify middleware stack works
+            Route::get('/test-simple', function (Request $request) {
+                \Illuminate\Support\Facades\Log::info('Test simple route called');
+                $origin = $request->headers->get('Origin', '*');
+                return response()->json([
+                    'status' => 'ok',
+                    'message' => 'Simple test route works',
+                    'user' => $request->user() ? $request->user()->email : 'not authenticated',
+                ])->withHeaders([
+                    'Access-Control-Allow-Origin' => $origin,
+                    'Access-Control-Allow-Methods' => 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+                    'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-Requested-With, Accept',
+                    'Access-Control-Allow-Credentials' => 'true',
+                ]);
+            })->name('api.v1.settings.system.test-simple');
+            
             Route::get('/', [SystemSettingsController::class, 'show'])
                 ->name('api.v1.settings.system.show');
             Route::patch('/', [SystemSettingsController::class, 'update'])
@@ -430,6 +611,14 @@ Route::prefix('v1')->group(function (): void {
         Route::post('sms-templates/{smsTemplate}/preview', [SmsTemplateController::class, 'preview'])
             ->name('api.v1.sms-templates.preview');
 
+        Route::apiResource('document-templates', DocumentTemplateController::class)
+            ->parameters(['document-templates' => 'documentTemplate'])
+            ->names('api.v1.document-templates');
+        Route::post('document-templates/{documentTemplate}/set-default', [DocumentTemplateController::class, 'setDefault'])
+            ->name('api.v1.document-templates.set-default');
+        Route::post('document-templates/{documentTemplate}/preview', [DocumentTemplateController::class, 'preview'])
+            ->name('api.v1.document-templates.preview');
+
         // Mobile API routes - optimized endpoints for mobile app
         Route::prefix('mobile')->group(function (): void {
             Route::get('properties', [MobilePropertyController::class, 'index'])
@@ -446,19 +635,47 @@ Route::prefix('v1')->group(function (): void {
 
         // Admin routes - only accessible to super_admin users
         // Must be authenticated first, then controller middleware checks for super_admin
-        Route::middleware('auth:sanctum')->prefix('admin')->group(function (): void {
+        // Add rate limiting to prevent abuse of sensitive admin endpoints
+        Route::middleware(['auth:sanctum', 'throttle:60,1'])->prefix('admin')->group(function (): void {
             Route::get('landlords', [AdminLandlordController::class, 'index'])
+                ->middleware('throttle:120,1') // Higher limit for listing
                 ->name('api.v1.admin.landlords.index');
             Route::get('landlords/{landlord}', [AdminLandlordController::class, 'show'])
                 ->name('api.v1.admin.landlords.show');
+            Route::get('owners', [AdminLandlordController::class, 'owners'])
+                ->middleware('throttle:120,1') // Higher limit for listing
+                ->name('api.v1.admin.owners.index');
             Route::patch('landlords/{landlord}/subscription', [AdminLandlordController::class, 'updateSubscription'])
+                ->middleware('throttle:30,1') // Lower limit for modifications
                 ->name('api.v1.admin.landlords.subscription.update');
             Route::post('landlords/{landlord}/subscription/extend', [AdminLandlordController::class, 'extendSubscription'])
+                ->middleware('throttle:30,1')
                 ->name('api.v1.admin.landlords.subscription.extend');
             Route::post('landlords/{landlord}/subscription/suspend', [AdminLandlordController::class, 'suspendSubscription'])
+                ->middleware('throttle:20,1') // Very low limit for destructive actions
                 ->name('api.v1.admin.landlords.subscription.suspend');
             Route::post('landlords/{landlord}/subscription/activate', [AdminLandlordController::class, 'activateSubscription'])
+                ->middleware('throttle:30,1')
                 ->name('api.v1.admin.landlords.subscription.activate');
+            
+            // Pending signups management
+            Route::get('signups', [AdminSignupController::class, 'index'])
+                ->middleware('throttle:120,1')
+                ->name('api.v1.admin.signups.index');
+            Route::post('signups/{user}/approve', [AdminSignupController::class, 'approve'])
+                ->middleware('throttle:30,1')
+                ->name('api.v1.admin.signups.approve');
+            Route::post('signups/{user}/reject', [AdminSignupController::class, 'reject'])
+                ->middleware('throttle:30,1')
+                ->name('api.v1.admin.signups.reject');
+            
+            // Subscription limits management
+            Route::get('subscription-limits', [SubscriptionLimitsController::class, 'index'])
+                ->middleware('throttle:120,1')
+                ->name('api.v1.admin.subscription-limits.index');
+            Route::put('subscription-limits/{tier}', [SubscriptionLimitsController::class, 'update'])
+                ->middleware('throttle:20,1') // Very low limit for critical configuration changes
+                ->name('api.v1.admin.subscription-limits.update');
         });
     });
 });

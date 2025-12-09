@@ -41,36 +41,286 @@ class SystemSettingsController extends Controller
     }
 
     /**
+     * NOTE: CORS headers are now handled by ForceCors middleware
+     * This method is kept for backward compatibility but is no longer used
+     * All CORS headers are automatically added by middleware to all API responses
+     * 
+     * @deprecated Use ForceCors middleware instead
+     */
+    private function getCorsHeaders(Request $request): array
+    {
+        // CORS is handled by ForceCors middleware - this method is deprecated
+        return [];
+    }
+
+    /**
+     * Get landlord_id for the current request, handling super admins.
+     * Optimized: Super admins can use default (first landlord) if none specified.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  bool  $required  Whether landlord_id is required (false for GET, true for POST/PATCH)
+     * @return int|\Illuminate\Http\JsonResponse|null
+     */
+    protected function getLandlordIdForSettings(Request $request, bool $required = true): int|\Illuminate\Http\JsonResponse|null
+    {
+        /** @var \App\Models\User $user */
+        $user = $request->user();
+        $corsHeaders = $this->getCorsHeaders($request);
+
+        // Super admins can specify landlord_id, or use default (first landlord)
+        if ($user->isSuperAdmin()) {
+            $landlordId = $request->input('landlord_id');
+            
+            if (! $landlordId) {
+                // For GET requests, try to use first landlord as default
+                if (! $required) {
+                    try {
+                        $startTime = microtime(true);
+                        $firstLandlord = \App\Models\Landlord::orderBy('id')->limit(1)->first();
+                        
+                        $duration = microtime(true) - $startTime;
+                        if ($duration > 2) {
+                            Log::warning('SystemSettingsController: Default landlord query took longer than 2 seconds', [
+                                'duration' => $duration,
+                            ]);
+                        }
+                        
+                        if ($firstLandlord) {
+                            Log::info('SystemSettingsController: Super admin using default landlord', [
+                                'landlord_id' => $firstLandlord->id,
+                                'duration' => round($duration, 3),
+                            ]);
+                            return $firstLandlord->id;
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning('SystemSettingsController: Could not get default landlord', [
+                            'error' => $e->getMessage(),
+                            'file' => $e->getFile(),
+                            'line' => $e->getLine(),
+                        ]);
+                    }
+                    // Return null if no landlords exist
+                    return null;
+                }
+                
+                // For POST/PATCH, require landlord_id
+                // CRITICAL: Use response()->json() to return JsonResponse
+                $response = response()->json([
+                    'message' => 'Super admin must specify landlord_id.',
+                    'errors' => [
+                        'landlord_id' => ['The landlord_id parameter is required for super admin users.'],
+                    ],
+                ], 422, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                
+                // CORS headers are handled by ForceCors middleware
+                return $response;
+            }
+            
+            // Validate landlord exists (with timeout protection)
+            try {
+                $startTime = microtime(true);
+                $landlord = \App\Models\Landlord::find($landlordId);
+                
+                $duration = microtime(true) - $startTime;
+                if ($duration > 2) {
+                    Log::warning('SystemSettingsController: Landlord validation query took longer than 2 seconds', [
+                        'duration' => $duration,
+                        'landlord_id' => $landlordId,
+                    ]);
+                }
+                
+                if (!$landlord) {
+                    // CRITICAL: Use response()->json() to return JsonResponse
+                    $response = response()->json([
+                        'message' => 'Landlord not found.',
+                        'errors' => [
+                            'landlord_id' => ['The specified landlord does not exist.'],
+                        ],
+                    ], 404, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                    
+                    foreach ($corsHeaders as $key => $value) {
+                        $response->header($key, $value);
+                    }
+                    
+                    return $response;
+                }
+            } catch (\Exception $e) {
+                Log::error('SystemSettingsController: Error validating landlord', [
+                    'landlord_id' => $landlordId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+            
+            return (int) $landlordId;
+        }
+
+        // Regular users use their own landlord_id
+        $landlordId = $user->landlord_id;
+        if (! $landlordId) {
+            $response = response()->json([
+                'message' => 'User is not associated with a landlord.',
+            ], 403);
+            foreach ($corsHeaders as $key => $value) {
+                $response->header($key, $value);
+            }
+            return $response;
+        }
+
+        return $landlordId;
+    }
+
+    /**
      * Get all system settings.
      */
     public function show(Request $request): JsonResponse
     {
+        Log::info('SystemSettingsController::show called', [
+            'path' => $request->path(),
+            'method' => $request->method(),
+            'has_user' => $request->user() !== null,
+        ]);
+
         /** @var \App\Models\User|null $user */
         $user = $request->user();
 
+        $corsHeaders = $this->getCorsHeaders($request);
+        
         if (! $user) {
-            return response()->json([
+            Log::warning('SystemSettingsController::show - Unauthenticated');
+            // CRITICAL: Use response()->json() to return JsonResponse
+            $response = response()->json([
                 'message' => 'Unauthenticated.',
-            ], 401);
+            ], 401, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            
+            // Force set CORS headers using header() method
+            foreach ($corsHeaders as $key => $value) {
+                $response->header($key, $value);
+            }
+            
+            return $response;
         }
+
+        Log::info('SystemSettingsController::show - User authenticated', [
+            'user_id' => $user->id,
+            'is_super_admin' => $user->isSuperAdmin(),
+            'landlord_id' => $user->landlord_id,
+        ]);
 
         // Check authorization
         if (! $user->is_active) {
-            return response()->json([
+            Log::warning('SystemSettingsController::show - User not active', ['user_id' => $user->id]);
+            // CRITICAL: Use response()->json() to return JsonResponse
+            $response = response()->json([
                 'message' => 'Your account is not active.',
-            ], 403);
+            ], 403, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            
+            foreach ($corsHeaders as $key => $value) {
+                $response->header($key, $value);
+            }
+            
+            return $response;
         }
 
-        $landlordId = $user->landlord_id;
-
-        if (! $landlordId) {
-            return response()->json([
-                'message' => 'User is not associated with a landlord.',
-            ], 403);
+        $landlordIdResult = $this->getLandlordIdForSettings($request, false);
+        if ($landlordIdResult instanceof JsonResponse) {
+            Log::info('SystemSettingsController::show - getLandlordIdForSettings returned JsonResponse');
+            // Ensure CORS headers on JsonResponse
+            foreach ($corsHeaders as $key => $value) {
+                $landlordIdResult->header($key, $value);
+            }
+            // CRITICAL: Ensure Content-Type is set
+            $landlordIdResult->header('Content-Type', 'application/json; charset=utf-8');
+            return $landlordIdResult;
         }
+        
+        // Super admin without landlord_id - return empty settings with available landlords
+        if ($landlordIdResult === null) {
+            Log::info('SystemSettingsController::show - Super admin without landlord_id');
+            
+            // Get list of landlords for selection (with timeout protection)
+            $landlords = [];
+            try {
+                $startTime = microtime(true);
+                $landlords = \App\Models\Landlord::select('id', 'name', 'email')
+                    ->orderBy('name')
+                    ->limit(100) // Limit to prevent huge queries
+                    ->get()
+                    ->map(function ($landlord) {
+                        return [
+                            'id' => $landlord->id,
+                            'name' => $landlord->name,
+                            'email' => $landlord->email,
+                        ];
+                    })
+                    ->toArray();
+                
+                $duration = microtime(true) - $startTime;
+                if ($duration > 2) {
+                    Log::warning('SystemSettingsController: Landlord query took longer than 2 seconds', [
+                        'duration' => $duration,
+                        'count' => count($landlords),
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::warning('SystemSettingsController: Could not fetch landlords', [
+                    'error' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ]);
+            }
+            
+            $responseData = [
+                'company' => [],
+                'currency' => [],
+                'invoice_numbering' => [],
+                'payment_terms' => [],
+                'lease' => [],
+                'system' => [],
+                'documents' => [],
+                'tax' => [],
+                'auto_invoice' => [],
+                'super_admin' => true,
+                'landlords' => $landlords,
+                'message' => count($landlords) > 0 
+                    ? 'Super admin: Please select a landlord to view settings, or provide landlord_id as a query parameter.'
+                    : 'No landlords found. Please create a landlord first.',
+            ];
+            
+            // CRITICAL: Use response()->json() to return JsonResponse
+            $response = response()->json($responseData, 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            
+            foreach ($corsHeaders as $key => $value) {
+                $response->header($key, $value);
+            }
+            
+            // Ensure Content-Type is set correctly
+            $response->header('Content-Type', 'application/json; charset=utf-8');
+            
+            return $response;
+        }
+        
+        $landlordId = $landlordIdResult;
+        Log::info('SystemSettingsController::show - Fetching settings', ['landlord_id' => $landlordId]);
 
         try {
+            $startTime = microtime(true);
+            Log::info('SystemSettingsController::show - Calling getSettings', ['landlord_id' => $landlordId]);
+            
             $settings = $this->settingsService->getSettings($landlordId);
+            
+            $duration = microtime(true) - $startTime;
+            Log::info('SystemSettingsController::show - Settings retrieved successfully', [
+                'has_company' => isset($settings['company']),
+                'has_currency' => isset($settings['currency']),
+                'duration_seconds' => round($duration, 3),
+            ]);
+            
+            if ($duration > 5) {
+                Log::warning('SystemSettingsController::show - getSettings took longer than 5 seconds', [
+                    'duration' => $duration,
+                    'landlord_id' => $landlordId,
+                ]);
+            }
 
             // Format settings to ensure all categories are present
             $formattedSettings = [
@@ -85,20 +335,100 @@ class SystemSettingsController extends Controller
                 'auto_invoice' => $settings['auto_invoice'] ?? [],
             ];
         
-        return response()->json($formattedSettings);
-        } catch (QueryException $e) {
+            Log::info('SystemSettingsController::show - Creating response');
+            
+            // CRITICAL: Use response()->json() to return JsonResponse, not Response
+            // This ensures type compatibility and proper JSON encoding
+            // response()->json() automatically handles JSON encoding with proper flags
+            $response = response()->json($formattedSettings, 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            
+            // Force set CORS headers using header() method - more reliable than withHeaders()
+            foreach ($corsHeaders as $key => $value) {
+                $response->header($key, $value);
+            }
+            
+            // Ensure Content-Type is set correctly
+            $response->header('Content-Type', 'application/json; charset=utf-8');
+            
+            Log::info('SystemSettingsController::show - Response created', [
+                'has_origin' => $response->headers->has('Access-Control-Allow-Origin'),
+                'status' => $response->getStatusCode(),
+                'content_type' => $response->headers->get('Content-Type'),
+                'response_type' => get_class($response),
+                'is_json_response' => $response instanceof JsonResponse,
+            ]);
+            
+            // CRITICAL: Verify we're returning JsonResponse, not Response
+            if (!($response instanceof JsonResponse)) {
+                Log::error('SystemSettingsController::show - Response is not JsonResponse!', [
+                    'actual_type' => get_class($response),
+                    'expected_type' => JsonResponse::class,
+                ]);
+                // Convert to JsonResponse
+                $response = response()->json($formattedSettings, 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                foreach ($corsHeaders as $key => $value) {
+                    $response->header($key, $value);
+                }
+                $response->header('Content-Type', 'application/json; charset=utf-8');
+            }
+            
+            return $response;
+        } catch (\Illuminate\Database\QueryException $e) {
             // Database error - likely table doesn't exist
-            Log::error('Database error in SystemSettingsController: ' . $e->getMessage());
-            return response()->json([
+            Log::error('Database error in SystemSettingsController', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            $errorData = [
                 'message' => 'System settings are not available. Please run migrations: php artisan migrate',
-                'error' => config('app.debug') ? $e->getMessage() : null,
-            ], 500);
+            ];
+            if (config('app.debug')) {
+                $errorData['error'] = $e->getMessage();
+            }
+            
+            // CRITICAL: Use response()->json() to return JsonResponse
+            $response = response()->json($errorData, 500, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            
+            foreach ($corsHeaders as $key => $value) {
+                $response->header($key, $value);
+            }
+            
+            // Ensure Content-Type is set correctly
+            $response->header('Content-Type', 'application/json; charset=utf-8');
+            
+            return $response;
         } catch (\Exception $e) {
-            Log::error('Error in SystemSettingsController: ' . $e->getMessage());
-            return response()->json([
+            Log::error('Error in SystemSettingsController', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'exception_class' => get_class($e),
+            ]);
+            
+            $errorData = [
                 'message' => 'Failed to retrieve system settings.',
-                'error' => config('app.debug') ? $e->getMessage() : null,
-            ], 500);
+            ];
+            if (config('app.debug')) {
+                $errorData['error'] = $e->getMessage();
+                $errorData['debug_info'] = [
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ];
+            }
+            
+            // CRITICAL: Use response()->json() to return JsonResponse
+            $response = response()->json($errorData, 500, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            
+            foreach ($corsHeaders as $key => $value) {
+                $response->header($key, $value);
+            }
+            
+            // Ensure Content-Type is set correctly
+            $response->header('Content-Type', 'application/json; charset=utf-8');
+            
+            return $response;
         }
     }
 
@@ -112,7 +442,13 @@ class SystemSettingsController extends Controller
 
         $this->authorize('update', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $corsHeaders = $this->getCorsHeaders($request);
+        
+        $landlordIdResult = $this->getLandlordIdForSettings($request, true);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        $landlordId = $landlordIdResult;
         $validated = $request->validated();
 
         $setting = $this->settingsService->updateSettings($landlordId, $validated);
@@ -121,7 +457,7 @@ class SystemSettingsController extends Controller
         return response()->json([
             'message' => 'System settings updated successfully.',
             'data' => SystemSettingsResource::fromSettings($settings)->toArray($request),
-        ]);
+        ])->withHeaders($corsHeaders);
     }
 
     /**
@@ -134,12 +470,36 @@ class SystemSettingsController extends Controller
 
         $this->authorize('viewAny', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $corsHeaders = $this->getCorsHeaders($request);
+        
+        $landlordIdResult = $this->getLandlordIdForSettings($request, false);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        
+        if ($landlordIdResult === null) {
+            // Super admin without landlord_id - return empty settings
+            $response = response()->json([
+                'company' => [],
+            ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            foreach ($corsHeaders as $key => $value) {
+                $response->header($key, $value);
+            }
+            return $response;
+        }
+        
+        $landlordId = $landlordIdResult;
         $companySettings = $this->settingsService->getCompanySettings($landlordId);
 
-        return response()->json([
+        $response = response()->json([
             'company' => $companySettings,
-        ]);
+        ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        
+        foreach ($corsHeaders as $key => $value) {
+            $response->header($key, $value);
+        }
+        
+        return $response;
     }
 
     /**
@@ -152,7 +512,11 @@ class SystemSettingsController extends Controller
 
         $this->authorize('update', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $landlordIdResult = $this->getLandlordIdForSettings($request, true);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        $landlordId = $landlordIdResult;
         $validated = $request->validated();
 
         $this->settingsService->updateCompanySettings($landlordId, $validated);
@@ -174,12 +538,34 @@ class SystemSettingsController extends Controller
 
         $this->authorize('viewAny', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $corsHeaders = $this->getCorsHeaders($request);
+        
+        $landlordIdResult = $this->getLandlordIdForSettings($request, false);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        if ($landlordIdResult === null) {
+            // Super admin without landlord_id - return empty settings
+            $response = response()->json([
+                'currency' => [],
+            ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            foreach ($corsHeaders as $key => $value) {
+                $response->header($key, $value);
+            }
+            return $response;
+        }
+        $landlordId = $landlordIdResult;
         $currencySettings = $this->settingsService->getCurrencySettings($landlordId);
 
-        return response()->json([
+        $response = response()->json([
             'currency' => $currencySettings,
-        ]);
+        ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        
+        foreach ($corsHeaders as $key => $value) {
+            $response->header($key, $value);
+        }
+        
+        return $response;
     }
 
     /**
@@ -192,7 +578,11 @@ class SystemSettingsController extends Controller
 
         $this->authorize('update', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $landlordIdResult = $this->getLandlordIdForSettings($request, true);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        $landlordId = $landlordIdResult;
         $validated = $request->validated();
 
         $this->settingsService->updateCurrencySettings($landlordId, $validated);
@@ -214,12 +604,34 @@ class SystemSettingsController extends Controller
 
         $this->authorize('viewAny', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $corsHeaders = $this->getCorsHeaders($request);
+        
+        $landlordIdResult = $this->getLandlordIdForSettings($request, false);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        if ($landlordIdResult === null) {
+            // Super admin without landlord_id - return empty settings
+            $response = response()->json([
+                'invoice_numbering' => [],
+            ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            foreach ($corsHeaders as $key => $value) {
+                $response->header($key, $value);
+            }
+            return $response;
+        }
+        $landlordId = $landlordIdResult;
         $invoiceNumberingSettings = $this->settingsService->getInvoiceNumberingSettings($landlordId);
 
-        return response()->json([
+        $response = response()->json([
             'invoice_numbering' => $invoiceNumberingSettings,
-        ]);
+        ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        
+        foreach ($corsHeaders as $key => $value) {
+            $response->header($key, $value);
+        }
+        
+        return $response;
     }
 
     /**
@@ -232,7 +644,11 @@ class SystemSettingsController extends Controller
 
         $this->authorize('update', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $landlordIdResult = $this->getLandlordIdForSettings($request, true);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        $landlordId = $landlordIdResult;
         $validated = $request->validated();
 
         $this->settingsService->updateInvoiceNumberingSettings($landlordId, $validated);
@@ -254,12 +670,34 @@ class SystemSettingsController extends Controller
 
         $this->authorize('viewAny', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $corsHeaders = $this->getCorsHeaders($request);
+        
+        $landlordIdResult = $this->getLandlordIdForSettings($request, false);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        if ($landlordIdResult === null) {
+            // Super admin without landlord_id - return empty settings
+            $response = response()->json([
+                'payment_terms' => [],
+            ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            foreach ($corsHeaders as $key => $value) {
+                $response->header($key, $value);
+            }
+            return $response;
+        }
+        $landlordId = $landlordIdResult;
         $paymentTermsSettings = $this->settingsService->getPaymentTermsSettings($landlordId);
 
-        return response()->json([
+        $response = response()->json([
             'payment_terms' => $paymentTermsSettings,
-        ]);
+        ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        
+        foreach ($corsHeaders as $key => $value) {
+            $response->header($key, $value);
+        }
+        
+        return $response;
     }
 
     /**
@@ -272,7 +710,11 @@ class SystemSettingsController extends Controller
 
         $this->authorize('update', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $landlordIdResult = $this->getLandlordIdForSettings($request, true);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        $landlordId = $landlordIdResult;
         $validated = $request->validated();
 
         $this->settingsService->updatePaymentTermsSettings($landlordId, $validated);
@@ -294,12 +736,34 @@ class SystemSettingsController extends Controller
 
         $this->authorize('viewAny', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $corsHeaders = $this->getCorsHeaders($request);
+        
+        $landlordIdResult = $this->getLandlordIdForSettings($request, false);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        if ($landlordIdResult === null) {
+            // Super admin without landlord_id - return empty settings
+            $response = response()->json([
+                'system' => [],
+            ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            foreach ($corsHeaders as $key => $value) {
+                $response->header($key, $value);
+            }
+            return $response;
+        }
+        $landlordId = $landlordIdResult;
         $systemPreferencesSettings = $this->settingsService->getSystemPreferencesSettings($landlordId);
 
-        return response()->json([
+        $response = response()->json([
             'system' => $systemPreferencesSettings,
-        ]);
+        ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        
+        foreach ($corsHeaders as $key => $value) {
+            $response->header($key, $value);
+        }
+        
+        return $response;
     }
 
     /**
@@ -312,7 +776,11 @@ class SystemSettingsController extends Controller
 
         $this->authorize('update', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $landlordIdResult = $this->getLandlordIdForSettings($request, true);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        $landlordId = $landlordIdResult;
         $validated = $request->validated();
 
         $this->settingsService->updateSystemPreferencesSettings($landlordId, $validated);
@@ -334,12 +802,34 @@ class SystemSettingsController extends Controller
 
         $this->authorize('viewAny', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $corsHeaders = $this->getCorsHeaders($request);
+        
+        $landlordIdResult = $this->getLandlordIdForSettings($request, false);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        if ($landlordIdResult === null) {
+            // Super admin without landlord_id - return empty settings
+            $response = response()->json([
+                'documents' => [],
+            ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            foreach ($corsHeaders as $key => $value) {
+                $response->header($key, $value);
+            }
+            return $response;
+        }
+        $landlordId = $landlordIdResult;
         $documentSettings = $this->settingsService->getDocumentSettings($landlordId);
 
-        return response()->json([
+        $response = response()->json([
             'documents' => $documentSettings,
-        ]);
+        ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        
+        foreach ($corsHeaders as $key => $value) {
+            $response->header($key, $value);
+        }
+        
+        return $response;
     }
 
     /**
@@ -352,7 +842,11 @@ class SystemSettingsController extends Controller
 
         $this->authorize('update', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $landlordIdResult = $this->getLandlordIdForSettings($request, true);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        $landlordId = $landlordIdResult;
         $validated = $request->validated();
 
         $this->settingsService->updateDocumentSettings($landlordId, $validated);
@@ -374,12 +868,34 @@ class SystemSettingsController extends Controller
 
         $this->authorize('viewAny', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $corsHeaders = $this->getCorsHeaders($request);
+        
+        $landlordIdResult = $this->getLandlordIdForSettings($request, false);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        if ($landlordIdResult === null) {
+            // Super admin without landlord_id - return empty settings
+            $response = response()->json([
+                'tax' => [],
+            ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            foreach ($corsHeaders as $key => $value) {
+                $response->header($key, $value);
+            }
+            return $response;
+        }
+        $landlordId = $landlordIdResult;
         $taxSettings = $this->settingsService->getTaxSettings($landlordId);
 
-        return response()->json([
+        $response = response()->json([
             'tax' => $taxSettings,
-        ]);
+        ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        
+        foreach ($corsHeaders as $key => $value) {
+            $response->header($key, $value);
+        }
+        
+        return $response;
     }
 
     /**
@@ -392,7 +908,11 @@ class SystemSettingsController extends Controller
 
         $this->authorize('update', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $landlordIdResult = $this->getLandlordIdForSettings($request, true);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        $landlordId = $landlordIdResult;
         $validated = $request->validated();
 
         $this->settingsService->updateTaxSettings($landlordId, $validated);
@@ -414,15 +934,37 @@ class SystemSettingsController extends Controller
 
         $this->authorize('viewAny', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $corsHeaders = $this->getCorsHeaders($request);
+        
+        $landlordIdResult = $this->getLandlordIdForSettings($request, false);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        if ($landlordIdResult === null) {
+            // Super admin without landlord_id - return empty settings
+            $response = response()->json([
+                'email' => [],
+            ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            foreach ($corsHeaders as $key => $value) {
+                $response->header($key, $value);
+            }
+            return $response;
+        }
+        $landlordId = $landlordIdResult;
         $emailSettings = $this->settingsService->getEmailSettings($landlordId);
 
         // Prepare for response (remove passwords)
         $emailSettings = EmailConfigHelper::prepareForResponse($emailSettings, false);
 
-        return response()->json([
+        $response = response()->json([
             'email' => $emailSettings,
-        ]);
+        ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        
+        foreach ($corsHeaders as $key => $value) {
+            $response->header($key, $value);
+        }
+        
+        return $response;
     }
 
     /**
@@ -435,7 +977,11 @@ class SystemSettingsController extends Controller
 
         $this->authorize('update', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $landlordIdResult = $this->getLandlordIdForSettings($request, true);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        $landlordId = $landlordIdResult;
         $validated = $request->validated();
 
         // If password is provided but empty, don't update it
@@ -470,7 +1016,11 @@ class SystemSettingsController extends Controller
 
         $this->authorize('update', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $landlordIdResult = $this->getLandlordIdForSettings($request, true);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        $landlordId = $landlordIdResult;
         $emailSettings = $this->settingsService->getEmailSettings($landlordId);
 
         // Check if email is enabled
@@ -534,7 +1084,23 @@ class SystemSettingsController extends Controller
 
         $this->authorize('viewAny', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $corsHeaders = $this->getCorsHeaders($request);
+        
+        $landlordIdResult = $this->getLandlordIdForSettings($request, false);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        if ($landlordIdResult === null) {
+            // Super admin without landlord_id - return empty settings
+            $response = response()->json([
+                'sms' => [],
+            ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            foreach ($corsHeaders as $key => $value) {
+                $response->header($key, $value);
+            }
+            return $response;
+        }
+        $landlordId = $landlordIdResult;
         $smsSettings = $this->settingsService->getSmsSettings($landlordId);
 
         // Check if API key is set in settings or environment
@@ -580,9 +1146,15 @@ class SystemSettingsController extends Controller
             }
         }
 
-        return response()->json([
+        $response = response()->json([
             'sms' => $smsSettings,
-        ]);
+        ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        
+        foreach ($corsHeaders as $key => $value) {
+            $response->header($key, $value);
+        }
+        
+        return $response;
     }
 
     /**
@@ -595,7 +1167,11 @@ class SystemSettingsController extends Controller
 
         $this->authorize('update', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $landlordIdResult = $this->getLandlordIdForSettings($request, true);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        $landlordId = $landlordIdResult;
         $validated = $request->validated();
 
         // If API key is provided but empty, don't update it
@@ -625,7 +1201,11 @@ class SystemSettingsController extends Controller
 
         $this->authorize('update', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $landlordIdResult = $this->getLandlordIdForSettings($request, true);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        $landlordId = $landlordIdResult;
         $smsSettings = $this->settingsService->getSmsSettings($landlordId);
 
         // Debug logging
@@ -719,7 +1299,23 @@ class SystemSettingsController extends Controller
 
         $this->authorize('viewAny', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $corsHeaders = $this->getCorsHeaders($request);
+        
+        $landlordIdResult = $this->getLandlordIdForSettings($request, false);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        if ($landlordIdResult === null) {
+            // Super admin without landlord_id - return empty settings
+            $response = response()->json([
+                'telegram' => [],
+            ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            foreach ($corsHeaders as $key => $value) {
+                $response->header($key, $value);
+            }
+            return $response;
+        }
+        $landlordId = $landlordIdResult;
         $telegramSettings = $this->settingsService->getTelegramSettings($landlordId);
 
         // Check if bot token is set in settings or environment
@@ -741,9 +1337,15 @@ class SystemSettingsController extends Controller
             $telegramSettings['bot_token_configured'] = false;
         }
 
-        return response()->json([
+        $response = response()->json([
             'telegram' => $telegramSettings,
-        ]);
+        ], 200, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        
+        foreach ($corsHeaders as $key => $value) {
+            $response->header($key, $value);
+        }
+        
+        return $response;
     }
 
     /**
@@ -756,7 +1358,11 @@ class SystemSettingsController extends Controller
 
         $this->authorize('update', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $landlordIdResult = $this->getLandlordIdForSettings($request, true);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        $landlordId = $landlordIdResult;
         $validated = $request->validated();
 
         // If bot token is provided but empty, don't update it
@@ -786,7 +1392,11 @@ class SystemSettingsController extends Controller
 
         $this->authorize('update', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $landlordIdResult = $this->getLandlordIdForSettings($request, true);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        $landlordId = $landlordIdResult;
         $telegramSettings = $this->settingsService->getTelegramSettings($landlordId);
 
         // Check if Telegram is enabled
@@ -857,7 +1467,20 @@ class SystemSettingsController extends Controller
 
         $this->authorize('viewAny', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $landlordIdResult = $this->getLandlordIdForSettings($request, false);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        if ($landlordIdResult === null) {
+            // Super admin without landlord_id - return empty settings
+            return response()->json([
+                'company' => [],
+            ])->header('Access-Control-Allow-Origin', $request->headers->get('Origin', '*'))
+                ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
+                ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept')
+                ->header('Access-Control-Allow-Credentials', 'true');
+        }
+        $landlordId = $landlordIdResult;
         $autoInvoiceSettings = $this->settingsService->getAutoInvoiceSettings($landlordId);
 
         return response()->json([
@@ -875,7 +1498,11 @@ class SystemSettingsController extends Controller
 
         $this->authorize('update', LandlordSetting::class);
 
-        $landlordId = $user->landlord_id;
+        $landlordIdResult = $this->getLandlordIdForSettings($request, true);
+        if ($landlordIdResult instanceof JsonResponse) {
+            return $landlordIdResult;
+        }
+        $landlordId = $landlordIdResult;
         
         $validated = $request->validate([
             'enabled' => ['sometimes', 'boolean'],

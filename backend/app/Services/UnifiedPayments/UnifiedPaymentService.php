@@ -29,6 +29,11 @@ class UnifiedPaymentService
             'requires_tenant_unit' => true,
             'default_status' => 'pending',
         ],
+        'security_deposit' => [
+            'flow_direction' => 'income',
+            'requires_tenant_unit' => true,
+            'default_status' => 'pending',
+        ],
         'security_refund' => [
             'flow_direction' => 'outgoing',
             'requires_tenant_unit' => true,
@@ -136,8 +141,8 @@ class UnifiedPaymentService
 
         $currency = strtoupper(Arr::get($payload, 'currency', 'MVR'));
 
-        // Safeguard: Always use MVR if AED is provided (legacy support)
-        if ($currency === 'AED') {
+        // Only allow MVR or USD, default to MVR
+        if ($currency !== 'MVR' && $currency !== 'USD') {
             $currency = 'MVR';
         }
 
@@ -379,6 +384,11 @@ class UnifiedPaymentService
             // If financial records are needed, they should be created through their own dedicated endpoints
         }
 
+        // Update tenant unit security deposit if this is a security deposit payment
+        if ($entry->payment_type === 'security_deposit' && $entry->status === 'completed' && $entry->tenant_unit_id) {
+            $this->updateTenantUnitSecurityDeposit($entry);
+        }
+
         return $entry;
     }
 
@@ -422,6 +432,11 @@ class UnifiedPaymentService
         if (in_array($entry->status, ['completed', 'partial'], true)) {
             $this->updateLinkedSourceStatus($entry);
             // NOTE: Financial record creation disabled - unified payment entry is source of truth
+        }
+
+        // Update tenant unit security deposit if this is a security deposit payment
+        if ($entry->payment_type === 'security_deposit' && $entry->status === 'completed' && $entry->tenant_unit_id) {
+            $this->updateTenantUnitSecurityDeposit($entry);
         }
 
         return $entry;
@@ -1089,6 +1104,8 @@ class UnifiedPaymentService
         $paymentTypeLabel = match ($entry->payment_type) {
             'rent' => 'Rent Payment',
             'fee' => 'Fee Payment',
+            'security_deposit' => 'Security Deposit Payment',
+            'security_refund' => 'Security Deposit Refund',
             'maintenance_expense' => 'Maintenance Expense',
             'other_income' => 'Other Income',
             'other_outgoing' => 'Other Outgoing',
@@ -1096,6 +1113,47 @@ class UnifiedPaymentService
         };
 
         return sprintf('%s - %s', $paymentTypeLabel, $entry->reference_number ?? 'No reference');
+    }
+
+    /**
+     * Update tenant unit security deposit when a security deposit payment is completed.
+     */
+    private function updateTenantUnitSecurityDeposit(UnifiedPaymentEntry $entry): void
+    {
+        if (!$entry->tenant_unit_id) {
+            return;
+        }
+
+        $tenantUnit = TenantUnit::query()
+            ->where('id', $entry->tenant_unit_id)
+            ->where('landlord_id', $entry->landlord_id)
+            ->first();
+
+        if (!$tenantUnit) {
+            \Log::warning('Tenant unit not found for security deposit update', [
+                'entry_id' => $entry->id,
+                'tenant_unit_id' => $entry->tenant_unit_id,
+                'landlord_id' => $entry->landlord_id,
+            ]);
+            return;
+        }
+
+        // Update security_deposit_paid with the payment amount
+        // If there's already a deposit recorded, we add to it (allows for partial deposits)
+        $currentDeposit = (float) ($tenantUnit->security_deposit_paid ?? 0);
+        $paymentAmount = (float) $entry->amount;
+        $newDeposit = $currentDeposit + $paymentAmount;
+
+        $tenantUnit->security_deposit_paid = $newDeposit;
+        $tenantUnit->save();
+
+        \Log::info('Tenant unit security deposit updated', [
+            'entry_id' => $entry->id,
+            'tenant_unit_id' => $entry->tenant_unit_id,
+            'previous_deposit' => $currentDeposit,
+            'payment_amount' => $paymentAmount,
+            'new_deposit' => $newDeposit,
+        ]);
     }
 
     /**

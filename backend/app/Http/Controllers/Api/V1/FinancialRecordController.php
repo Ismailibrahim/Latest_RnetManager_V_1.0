@@ -10,6 +10,8 @@ use App\Models\FinancialRecord;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class FinancialRecordController extends Controller
 {
@@ -17,15 +19,36 @@ class FinancialRecordController extends Controller
 
     public function index(Request $request)
     {
+        // Check database connection
+        try {
+            DB::connection()->getPdo();
+        } catch (\Exception $e) {
+            Log::error('Database connection failed in FinancialRecordController', ['error' => $e->getMessage()]);
+            return response()->json([
+                'message' => 'Database connection failed. Please check your database configuration.',
+                'error' => 'Database connection error',
+            ], 500);
+        }
+
         $this->authorize('viewAny', FinancialRecord::class);
 
         $perPage = $this->resolvePerPage($request);
+        $user = $this->getAuthenticatedUser($request);
 
-        $landlordId = $this->getLandlordId($request);
-        $query = FinancialRecord::query()
-            ->where('landlord_id', $landlordId)
-            ->with(['tenantUnit.tenant:id,full_name', 'tenantUnit.unit:id,unit_number,property_id'])
-            ->latest('transaction_date');
+        $query = FinancialRecord::query();
+
+        // Super admins can view all financial records, others only their landlord's
+        if ($this->shouldFilterByLandlord($request)) {
+            $landlordId = $this->getLandlordId($request);
+            $query->where('landlord_id', $landlordId);
+        }
+
+        $query->with([
+            'tenantUnit.tenant:id,full_name,email,phone',
+            'tenantUnit.unit:id,unit_number,property_id,rent_amount',
+            'tenantUnit.unit.property:id,name'
+        ])
+        ->latest('transaction_date');
 
         if ($request->filled('type')) {
             $query->where('type', $request->input('type'));
@@ -46,9 +69,8 @@ class FinancialRecordController extends Controller
             ]);
         }
 
-        $records = $query
-            ->paginate($perPage)
-            ->withQueryString();
+        // Paginate without withQueryString to avoid potential issues
+        $records = $query->paginate($perPage);
 
         return FinancialRecordResource::collection($records);
     }
@@ -56,7 +78,19 @@ class FinancialRecordController extends Controller
     public function store(StoreFinancialRecordRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $data['landlord_id'] = $this->getLandlordId($request);
+        $user = $request->user();
+
+        // Super admins must specify landlord_id when creating financial records
+        if ($user->isSuperAdmin() && !isset($data['landlord_id'])) {
+            return response()->json([
+                'message' => 'Super admin must specify landlord_id when creating financial records.',
+                'errors' => [
+                    'landlord_id' => ['The landlord_id field is required for super admin users.'],
+                ],
+            ], 422);
+        }
+
+        $data['landlord_id'] = $user->isSuperAdmin() ? $data['landlord_id'] : $this->getLandlordId($request);
 
         $record = FinancialRecord::create($data);
         $record->load(['tenantUnit.tenant:id,full_name', 'tenantUnit.unit:id,unit_number,property_id']);
@@ -70,9 +104,11 @@ class FinancialRecordController extends Controller
     {
         $this->authorize('view', $financialRecord);
 
+        $user = $request->user();
+
         // Ensure financial record belongs to authenticated user's landlord (defense in depth)
-        $landlordId = $this->getLandlordId($request);
-        if ($financialRecord->landlord_id !== $landlordId) {
+        // Super admins can view any financial record
+        if (!$user->isSuperAdmin() && $financialRecord->landlord_id !== $user->landlord_id) {
             abort(403, 'Unauthorized access to this financial record.');
         }
 
@@ -89,9 +125,11 @@ class FinancialRecordController extends Controller
     {
         $this->authorize('update', $financialRecord);
 
+        $user = $request->user();
+
         // Ensure financial record belongs to authenticated user's landlord (defense in depth)
-        $landlordId = $this->getLandlordId($request);
-        if ($financialRecord->landlord_id !== $landlordId) {
+        // Super admins can update any financial record
+        if (!$user->isSuperAdmin() && $financialRecord->landlord_id !== $user->landlord_id) {
             abort(403, 'Unauthorized access to this financial record.');
         }
 

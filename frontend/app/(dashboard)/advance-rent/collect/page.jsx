@@ -13,7 +13,8 @@ import {
   CalendarRange,
   Users,
 } from "lucide-react";
-import { formatMVR } from "@/lib/currency";
+import { formatCurrency } from "@/lib/currency-formatter";
+import { getCurrencyOptions, getDefaultCurrency } from "@/utils/currency-config";
 import { usePaymentMethods } from "@/hooks/usePaymentMethods";
 import { API_BASE_URL } from "@/utils/api-config";
 
@@ -21,6 +22,7 @@ const initialFormState = {
   tenantUnitId: "",
   advanceRentMonths: "",
   advanceRentAmount: "",
+  currency: "",
   paymentMethod: "",
   transactionDate: "",
   referenceNumber: "",
@@ -46,6 +48,8 @@ function CollectAdvanceRentPageContent() {
     loading: paymentMethodsLoading,
     error: paymentMethodsError,
   } = usePaymentMethods();
+
+  const currencyOptions = getCurrencyOptions();
 
   useEffect(() => {
     const tenantUnitParam =
@@ -144,6 +148,17 @@ function CollectAdvanceRentPageContent() {
     return tenantUnits.find((tu) => String(tu.id) === form.tenantUnitId) ?? null;
   }, [tenantUnits, form.tenantUnitId]);
 
+  // Auto-populate currency from selected unit when tenant unit changes
+  useEffect(() => {
+    if (selectedTenantUnit && !form.currency) {
+      const unitCurrency = selectedTenantUnit.unit?.currency || selectedTenantUnit.currency || getDefaultCurrency();
+      setForm((previous) => ({
+        ...previous,
+        currency: unitCurrency,
+      }));
+    }
+  }, [selectedTenantUnit, form.currency]);
+
   useEffect(() => {
     if (amountManuallyEdited || !selectedTenantUnit) {
       return;
@@ -233,6 +248,7 @@ function CollectAdvanceRentPageContent() {
       const payload = {
         advance_rent_months: Number(form.advanceRentMonths),
         advance_rent_amount: Number(form.advanceRentAmount),
+        currency: form.currency || selectedTenantUnit?.unit?.currency || selectedTenantUnit?.currency || getDefaultCurrency(),
         payment_method: form.paymentMethod || null,
         transaction_date: form.transactionDate || new Date().toISOString().split("T")[0],
         reference_number: form.referenceNumber || null,
@@ -353,7 +369,10 @@ function CollectAdvanceRentPageContent() {
               <div>
                 <span className="text-xs text-slate-500">Monthly Rent</span>
                 <p className="text-sm font-medium text-slate-900">
-                  {formatMVR(selectedTenantUnit.monthly_rent)}
+                  {formatCurrency(
+                    selectedTenantUnit.monthly_rent,
+                    selectedTenantUnit.unit?.currency || selectedTenantUnit.currency || getDefaultCurrency()
+                  )}
                 </p>
               </div>
               <div>
@@ -372,12 +391,19 @@ function CollectAdvanceRentPageContent() {
                 <div className="sm:col-span-2">
                   <span className="text-xs text-slate-500">Current Advance Rent</span>
                   <p className="text-sm font-medium text-slate-900">
-                    {formatMVR(selectedTenantUnit.advance_rent_amount)} (
-                    {selectedTenantUnit.advance_rent_months} month
+                    {formatCurrency(
+                      selectedTenantUnit.advance_rent_amount,
+                      selectedTenantUnit.currency || selectedTenantUnit.unit?.currency || getDefaultCurrency()
+                    )}{" "}
+                    ({selectedTenantUnit.advance_rent_months} month
                     {selectedTenantUnit.advance_rent_months !== 1 ? "s" : ""})
                     {selectedTenantUnit.advance_rent_remaining > 0 ? (
                       <span className="ml-2 text-xs text-slate-600">
-                        ({formatMVR(selectedTenantUnit.advance_rent_remaining)} remaining)
+                        ({formatCurrency(
+                          selectedTenantUnit.advance_rent_remaining,
+                          selectedTenantUnit.currency || selectedTenantUnit.unit?.currency || getDefaultCurrency()
+                        )}{" "}
+                        remaining)
                       </span>
                     ) : null}
                   </p>
@@ -457,12 +483,13 @@ function CollectAdvanceRentPageContent() {
 
             <Fieldset>
               <Label htmlFor="advanceRentAmount">
-                Advance Rent Amount (MVR) *
+                Advance Rent Amount *
                 {selectedTenantUnit && form.advanceRentMonths ? (
                   <span className="ml-2 text-xs font-normal text-slate-500">
-                    ({formatMVR(
+                    ({formatCurrency(
                       Number(selectedTenantUnit.monthly_rent) *
-                        Number(form.advanceRentMonths)
+                        Number(form.advanceRentMonths),
+                      form.currency || selectedTenantUnit.unit?.currency || selectedTenantUnit.currency || getDefaultCurrency()
                     )}{" "}
                     calculated)
                   </span>
@@ -495,6 +522,36 @@ function CollectAdvanceRentPageContent() {
               ) : null}
             </Fieldset>
           </div>
+
+          <Fieldset>
+            <Label htmlFor="currency">Currency *</Label>
+            <select
+              id="currency"
+              name="currency"
+              value={form.currency || selectedTenantUnit?.unit?.currency || selectedTenantUnit?.currency || getDefaultCurrency()}
+              onChange={handleChange}
+              disabled={disableSubmit || !selectedTenantUnit}
+              required
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+              aria-describedby={
+                validationErrors.currency ? "currency-error" : undefined
+              }
+            >
+              {currencyOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <Hint icon={<Wallet size={14} className="text-slate-400" />}>
+              Currency for advance rent collection. Defaults to unit's currency but can be changed.
+            </Hint>
+            {validationErrors.currency ? (
+              <FieldError id="currency-error">
+                {firstError(validationErrors.currency)}
+              </FieldError>
+            ) : null}
+          </Fieldset>
 
           <div className="grid gap-5 md:grid-cols-2">
             <Fieldset>
@@ -648,6 +705,7 @@ function nameToApiKey(name) {
     tenantUnitId: "tenant_unit_id",
     advanceRentMonths: "advance_rent_months",
     advanceRentAmount: "advance_rent_amount",
+    currency: "currency",
     paymentMethod: "payment_method",
     transactionDate: "transaction_date",
     referenceNumber: "reference_number",

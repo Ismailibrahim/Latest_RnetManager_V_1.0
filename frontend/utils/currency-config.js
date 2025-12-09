@@ -27,19 +27,10 @@ export function getCurrencyOptions() {
   const primary = getPrimaryCurrency();
   const secondary = getSecondaryCurrency();
   
-  // Currency labels mapping
+  // Currency labels mapping - Only MVR and USD are supported
   const currencyLabels = {
     MVR: 'Maldivian Rufiyaa',
     USD: 'US Dollar',
-    AED: 'UAE Dirham',
-    EUR: 'Euro',
-    GBP: 'British Pound',
-    INR: 'Indian Rupee',
-    SAR: 'Saudi Riyal',
-    QAR: 'Qatari Riyal',
-    KWD: 'Kuwaiti Dinar',
-    OMR: 'Omani Rial',
-    BHD: 'Bahraini Dinar',
   };
   
   const getLabel = (code) => {
@@ -64,5 +55,29 @@ export function getCurrencyOptions() {
  */
 export function getDefaultCurrency() {
   return getPrimaryCurrency();
+}
+
+/**
+ * Normalize currency to only MVR or USD, defaulting to MVR
+ * @param {string|null|undefined} currency - Currency code to normalize
+ * @returns {string} Normalized currency code (MVR or USD)
+ */
+export function normalizeCurrency(currency) {
+  const defaultCurrency = getDefaultCurrency();
+  const secondaryCurrency = getSecondaryCurrency();
+  
+  if (!currency) {
+    return defaultCurrency; // Always default to MVR
+  }
+  
+  const upperCurrency = String(currency).toUpperCase().trim();
+  
+  // Only allow MVR or USD
+  if (upperCurrency === 'MVR' || upperCurrency === 'USD') {
+    return upperCurrency;
+  }
+  
+  // If currency is not MVR or USD, default to MVR
+  return defaultCurrency;
 }
 

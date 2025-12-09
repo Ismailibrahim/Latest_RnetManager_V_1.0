@@ -86,30 +86,22 @@ export function useAdminSubscriptions() {
     } catch (err) {
       // Handle network errors (CORS, server down, etc.)
       if (err instanceof TypeError && err.message === "Failed to fetch") {
-        // Try to get more details about the error
-        let errorMessage = `Unable to connect to the server. Please ensure:
-1. The backend server is running at ${API_BASE_URL}
-2. CORS is properly configured (restart backend after CORS changes)
-3. You are logged in with a super_admin account
-
-Troubleshooting:
-- Restart backend: Stop (Ctrl+C) and run 'php artisan serve' again
-- Check browser console Network tab for CORS errors
-- Verify you're logged in as super_admin`;
+        // Concise error message for users
+        const conciseMessage = "Unable to connect to the server. Please check your connection and ensure the backend is running.";
         
-        // Log the full error for debugging
-        const queryString = new URLSearchParams(
-          Object.fromEntries(
-            Object.entries(filters).filter(([_, v]) => v !== undefined && v !== null && v !== '')
-          )
-        ).toString();
-        const url = `${API_BASE_URL}/admin/landlords${queryString ? `?${queryString}` : ""}`;
+        // Store detailed troubleshooting info separately (can be shown in expandable section)
+        const detailedInfo = {
+          message: conciseMessage,
+          troubleshooting: [
+            `Backend server should be running at ${API_BASE_URL}`,
+            "Ensure you are logged in with a super_admin account",
+            "Check browser console Network tab for CORS errors",
+            "Restart backend: Stop (Ctrl+C) and run 'php artisan serve' again",
+          ],
+        };
         
-        // Error details are included in the thrown error message
-        // Logging can be added here if needed, but error is already thrown to caller
-        
-        setError(errorMessage);
-        throw new Error(errorMessage);
+        setError(conciseMessage);
+        throw new Error(conciseMessage);
       }
       setError(err.message);
       throw err;

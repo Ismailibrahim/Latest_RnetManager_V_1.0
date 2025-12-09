@@ -13,6 +13,8 @@ use App\Models\UnifiedPaymentEntry;
 use App\Services\UnifiedPayments\UnifiedPaymentService;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 class UnifiedPaymentController extends Controller
@@ -21,14 +23,35 @@ class UnifiedPaymentController extends Controller
 
     public function index(ListUnifiedPaymentsRequest $request)
     {
+        // Check database connection
+        try {
+            DB::connection()->getPdo();
+        } catch (\Exception $e) {
+            Log::error('Database connection failed in UnifiedPaymentController', ['error' => $e->getMessage()]);
+            return response()->json([
+                'message' => 'Database connection failed. Please check your database configuration.',
+                'error' => 'Database connection error',
+            ], 500);
+        }
+
         $this->authorize('viewAny', UnifiedPayment::class);
 
         $perPage = $this->resolvePerPage($request);
+        $user = $this->getAuthenticatedUser($request);
 
-        $query = UnifiedPayment::query()
-            ->forLandlord($this->getLandlordId($request))
-            ->orderByDesc('transaction_date')
+        $query = UnifiedPayment::query();
+
+        // Super admins can view all payments, others only their landlord's
+        if ($this->shouldFilterByLandlord($request)) {
+            $landlordId = $this->getLandlordId($request);
+            $query->forLandlord($landlordId);
+        }
+
+        $query->orderByDesc('transaction_date')
             ->orderByDesc('composite_id');
+        
+        // Optimize: Limit the query to only fetch necessary data
+        // The UnifiedPaymentResource will handle the data transformation
 
         if ($paymentType = $request->input('payment_type')) {
             $query->where('payment_type', $paymentType);
@@ -70,9 +93,8 @@ class UnifiedPaymentController extends Controller
             $query->whereDate('transaction_date', '<=', $request->input('to'));
         }
 
-        $payments = $query
-            ->paginate($perPage)
-            ->withQueryString();
+        // Paginate without withQueryString to avoid potential issues
+        $payments = $query->paginate($perPage);
 
         return UnifiedPaymentResource::collection($payments);
     }
@@ -97,15 +119,20 @@ class UnifiedPaymentController extends Controller
                 'payload' => $request->validated(),
             ]);
             
-            // Return detailed error
+            // Only expose detailed error information in debug mode
+            $errorDetails = [
+                'message' => config('app.debug') ? $e->getMessage() : 'A database error occurred while processing your request.',
+                'code' => $e->getCode(),
+            ];
+            
+            if (config('app.debug') && config('app.expose_errors', false)) {
+                $errorDetails['sql'] = $e->getSql();
+                $errorDetails['bindings'] = $e->getBindings();
+            }
+            
             return response()->json([
-                'message' => $e->getMessage(),
-                'error' => [
-                    'message' => $e->getMessage(),
-                    'code' => $e->getCode(),
-                    'sql' => $e->getSql(),
-                    'bindings' => $e->getBindings(),
-                ],
+                'message' => $errorDetails['message'],
+                'error' => $errorDetails,
             ], 500);
         } catch (\Exception $e) {
             \Log::error('Failed to create unified payment entry', [
@@ -113,17 +140,24 @@ class UnifiedPaymentController extends Controller
                 'trace' => $e->getTraceAsString(),
                 'payload' => $request->validated(),
                 'class' => get_class($e),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
             ]);
             
-            // Return detailed error for debugging
+            // Only expose detailed error information in debug mode
+            $errorDetails = [
+                'message' => config('app.debug') ? $e->getMessage() : 'An error occurred while processing your request.',
+            ];
+            
+            if (config('app.debug') && config('app.expose_errors', false)) {
+                $errorDetails['class'] = get_class($e);
+                $errorDetails['file'] = $e->getFile();
+                $errorDetails['line'] = $e->getLine();
+            }
+            
             return response()->json([
-                'message' => $e->getMessage(),
-                'error' => [
-                    'message' => $e->getMessage(),
-                    'class' => get_class($e),
-                    'file' => $e->getFile(),
-                    'line' => $e->getLine(),
-                ],
+                'message' => $errorDetails['message'],
+                'error' => $errorDetails,
             ], 500);
         }
 

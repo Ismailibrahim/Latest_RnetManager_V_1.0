@@ -60,7 +60,9 @@ class UpdateUnitRequest extends FormRequest
             ],
             'unit_number' => ['sometimes', 'required', 'string', 'max:50', $unitNumberRule],
             'rent_amount' => ['sometimes', 'required', 'numeric', 'min:0'],
+            'currency' => ['sometimes', 'required', 'string', 'size:3', Rule::in(['MVR', 'USD'])],
             'security_deposit' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'security_deposit_currency' => ['sometimes', 'nullable', 'string', 'size:3', Rule::in(['MVR', 'USD'])],
             'is_occupied' => ['sometimes', 'boolean'],
         ];
 

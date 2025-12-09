@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { formatMVR } from "@/lib/currency";
 import { API_BASE_URL } from "@/utils/api-config";
-import { formatCurrencyNoDecimals } from "@/lib/currency-formatter";
+import { formatCurrency } from "@/lib/currency-formatter";
 
 const statusOptions = [
   { label: "Active", value: "active" },
@@ -37,6 +37,7 @@ const initialFormState = {
   leaseDocumentPath: "",
   leaseDocumentFile: null,
   status: "active",
+  currency: "",
 };
 
 function NewTenantUnitPageContent() {
@@ -51,6 +52,10 @@ function NewTenantUnitPageContent() {
   const [unitDefaults, setUnitDefaults] = useState({
     rent: null,
     deposit: null,
+    currency: null,
+    currencySymbol: null,
+    securityDepositCurrency: null,
+    securityDepositCurrencySymbol: null,
   });
   const [rentManuallyEdited, setRentManuallyEdited] = useState(false);
   const [securityDepositManuallyEdited, setSecurityDepositManuallyEdited] =
@@ -252,10 +257,16 @@ function NewTenantUnitPageContent() {
   }, [tenants]);
 
   const unitOptions = useMemo(() => {
-    return units.map((unit) => ({
-      value: String(unit.id),
-      label: buildUnitLabel(unit),
-    }));
+    return units.map((unit) => {
+      const baseLabel = buildUnitLabel(unit);
+      const isOccupied = Boolean(unit.is_occupied);
+      const statusText = isOccupied ? " [Leased]" : " [Available]";
+      return {
+        value: String(unit.id),
+        label: `${baseLabel}${statusText}`,
+        isOccupied: isOccupied,
+      };
+    });
   }, [units]);
 
   const unitMap = useMemo(() => {
@@ -383,6 +394,10 @@ function NewTenantUnitPageContent() {
       setUnitDefaults({
         rent: null,
         deposit: null,
+        currency: null,
+        currencySymbol: null,
+        securityDepositCurrency: null,
+        securityDepositCurrencySymbol: null,
       });
       return;
     }
@@ -393,6 +408,10 @@ function NewTenantUnitPageContent() {
       setUnitDefaults({
         rent: null,
         deposit: null,
+        currency: null,
+        currencySymbol: null,
+        securityDepositCurrency: null,
+        securityDepositCurrencySymbol: null,
       });
       return;
     }
@@ -412,9 +431,26 @@ function NewTenantUnitPageContent() {
         unit.deposit,
     );
 
+    // Get currency information
+    const currencyCode = unit.currency ?? 'MVR';
+    const securityDepositCurrencyCode = unit.security_deposit_currency ?? currencyCode;
+    
+    // Currency symbol mapping
+    const currencySymbolMap = {
+      'MVR': 'ރ',
+      'USD': '$',
+    };
+    
+    const currencySymbol = unit.currency_symbol ?? currencySymbolMap[currencyCode] ?? currencyCode;
+    const securityDepositCurrencySymbol = unit.security_deposit_currency_symbol ?? currencySymbolMap[securityDepositCurrencyCode] ?? securityDepositCurrencyCode;
+
     setUnitDefaults({
       rent: rentValue,
       deposit: depositValue,
+      currency: currencyCode,
+      currencySymbol: currencySymbol,
+      securityDepositCurrency: securityDepositCurrencyCode,
+      securityDepositCurrencySymbol: securityDepositCurrencySymbol,
     });
 
     setForm((previous) => {
@@ -432,21 +468,20 @@ function NewTenantUnitPageContent() {
         }
       }
 
-      if (!securityDepositManuallyEdited && depositValue !== null) {
-        const depositString = depositValue.toString();
-        const currentDeposit =
-          changed && updated !== previous
-            ? updated.securityDepositPaid
-            : previous.securityDepositPaid;
-
-        if (currentDeposit !== depositString) {
-          if (!changed) {
-            updated = { ...previous };
-            changed = true;
-          }
-          updated.securityDepositPaid = depositString;
+      // Set currency from unit if not manually set
+      if (previous.currency !== currencyCode) {
+        if (!changed) {
+          updated = { ...previous };
+          changed = true;
         }
+        updated.currency = currencyCode;
       }
+
+      // Don't auto-fill securityDepositPaid - it should only be set when payment is actually collected
+      // The depositValue (from unit.security_deposit) is just the expected amount, not what's been paid
+      // Security deposit should default to 0 or empty, and only be updated via payment collection
+      // We'll keep the field empty/0 so users can manually enter if they've already collected it
+      // Otherwise, they should use the payment collection page to record the payment
 
       if (!changed) {
         return previous;
@@ -612,6 +647,10 @@ function NewTenantUnitPageContent() {
       setUnitDefaults({
         rent: null,
         deposit: null,
+        currency: null,
+        currencySymbol: null,
+        securityDepositCurrency: null,
+        securityDepositCurrencySymbol: null,
       });
 
       const preferredDestination = form.tenantId
@@ -632,16 +671,20 @@ function NewTenantUnitPageContent() {
   const disableSubmit = submitting || optionsLoading;
 
   const formattedDefaultRent =
-    unitDefaults.rent !== null ? formatMVR(unitDefaults.rent) : null;
+    unitDefaults.rent !== null 
+      ? formatCurrency(unitDefaults.rent, unitDefaults.currency, unitDefaults.currencySymbol)
+      : null;
   const formattedDefaultDeposit =
-    unitDefaults.deposit !== null ? formatMVR(unitDefaults.deposit) : null;
+    unitDefaults.deposit !== null 
+      ? formatCurrency(unitDefaults.deposit, unitDefaults.securityDepositCurrency, unitDefaults.securityDepositCurrencySymbol)
+      : null;
 
-  const monthlyRentLabel = formattedDefaultRent
+  const monthlyRentHint = formattedDefaultRent
     ? `Monthly rent for this lease (default from unit: ${formattedDefaultRent})`
-    : "Monthly rent for this lease (MVR)";
-  const securityDepositLabel = formattedDefaultDeposit
-    ? `Security deposit for this lease (default from unit: ${formattedDefaultDeposit})`
-    : "Security deposit for this lease (MVR)";
+    : "Enter the agreed monthly rental amount.";
+  const securityDepositHint = formattedDefaultDeposit
+    ? `Expected security deposit: ${formattedDefaultDeposit}. Leave as 0 and collect the deposit via the payment collection page after assigning the tenant.`
+    : "Leave as 0 and collect the deposit via the payment collection page after assigning the tenant.";
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
@@ -747,13 +790,34 @@ function NewTenantUnitPageContent() {
                   Select unit
                 </option>
                 {unitOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
+                  <option 
+                    key={option.value} 
+                    value={option.value}
+                  >
                     {option.label}
                   </option>
                 ))}
               </select>
+              {(() => {
+                const selectedUnit = unitMap.get(String(form.unitId));
+                const isSelectedUnitOccupied = selectedUnit?.is_occupied;
+                if (isSelectedUnitOccupied) {
+                  return (
+                    <div className="mt-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-800">
+                      <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="font-semibold">This unit is already leased</p>
+                        <p className="mt-0.5 text-amber-700">
+                          This unit is marked as occupied. Only proceed if you&apos;re reassigning or updating an existing lease.
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
               <Hint icon={<Building2 size={14} className="text-slate-400" />}>
-                Units must already exist in your portfolio.
+                Units marked as [Leased] are already occupied. Select [Available] units to avoid conflicts.
               </Hint>
               {validationErrors.unit_id ? (
                 <FieldError id="unitId-error">
@@ -832,24 +896,33 @@ function NewTenantUnitPageContent() {
 
           <div className="grid gap-5 md:grid-cols-2">
             <Fieldset>
-              <Label htmlFor="monthlyRent">{monthlyRentLabel}</Label>
-              <Input
-                id="monthlyRent"
-                name="monthlyRent"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="25000"
-                value={form.monthlyRent}
-                onChange={handleChange}
-                disabled={disableSubmit}
-                required
-                aria-describedby={
-                  validationErrors.monthly_rent ? "monthlyRent-error" : undefined
-                }
-              />
+              <Label htmlFor="monthlyRent">Monthly Rental</Label>
+              <div className="relative">
+                {unitDefaults.currencySymbol && (
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-600">
+                    {unitDefaults.currencySymbol}
+                  </span>
+                )}
+                <Input
+                  id="monthlyRent"
+                  name="monthlyRent"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="25000"
+                  value={form.monthlyRent}
+                  onChange={handleChange}
+                  disabled={disableSubmit}
+                  readOnly
+                  required
+                  className={unitDefaults.currencySymbol ? "pl-8" : ""}
+                  aria-describedby={
+                    validationErrors.monthly_rent ? "monthlyRent-error" : undefined
+                  }
+                />
+              </div>
               <Hint icon={<Wallet size={14} className="text-slate-400" />}>
-                Enter the agreed monthly rental amount.
+                {monthlyRentHint}
               </Hint>
               {validationErrors.monthly_rent ? (
                 <FieldError id="monthlyRent-error">
@@ -859,28 +932,33 @@ function NewTenantUnitPageContent() {
             </Fieldset>
 
             <Fieldset>
-              <Label htmlFor="securityDepositPaid">
-                {securityDepositLabel}
-              </Label>
-              <Input
-                id="securityDepositPaid"
-                name="securityDepositPaid"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="25000"
-                value={form.securityDepositPaid}
-                onChange={handleChange}
-                disabled={disableSubmit}
-                required
-                aria-describedby={
-                  validationErrors.security_deposit_paid
-                    ? "securityDeposit-error"
-                    : undefined
-                }
-              />
+              <Label htmlFor="securityDepositPaid">Security Deposit</Label>
+              <div className="relative">
+                {unitDefaults.securityDepositCurrencySymbol && (
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-600">
+                    {unitDefaults.securityDepositCurrencySymbol}
+                  </span>
+                )}
+                <Input
+                  id="securityDepositPaid"
+                  name="securityDepositPaid"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={form.securityDepositPaid || "0"}
+                  onChange={handleChange}
+                  disabled={disableSubmit}
+                  className={unitDefaults.securityDepositCurrencySymbol ? "pl-8" : ""}
+                  aria-describedby={
+                    validationErrors.security_deposit_paid
+                      ? "securityDeposit-error"
+                      : undefined
+                  }
+                />
+              </div>
               <Hint icon={<FileText size={14} className="text-slate-400" />}>
-                Record the deposit collected at lease signing.
+                {securityDepositHint}
               </Hint>
               {validationErrors.security_deposit_paid ? (
                 <FieldError id="securityDeposit-error">
@@ -1161,11 +1239,22 @@ function buildFormData(form) {
   appendRequiredField(formData, "lease_start", form.leaseStart);
   appendRequiredField(formData, "lease_end", form.leaseEnd);
   appendRequiredNumeric(formData, "monthly_rent", form.monthlyRent);
-  appendRequiredNumeric(
+  // security_deposit_paid should default to 0 - only update when payment is actually collected
+  // Always send 0 if empty, since this field should only be set when payment is collected via payment collection page
+  const securityDepositPaid = form.securityDepositPaid && form.securityDepositPaid.trim() !== "" 
+    ? form.securityDepositPaid 
+    : "0";
+  appendOptionalNumeric(
     formData,
     "security_deposit_paid",
-    form.securityDepositPaid,
+    securityDepositPaid,
   );
+  
+  // Add currency from form (set from unit when unit is selected)
+  const currency = form.currency || 'MVR';
+  if (currency) {
+    formData.append("currency", currency);
+  }
   appendOptionalNumeric(formData, "notice_period_days", form.noticePeriodDays);
   appendOptionalNumeric(
     formData,
@@ -1270,10 +1359,6 @@ function buildUnitLabel(unit) {
   const propertyName = unit?.property?.name ?? unit?.property_name;
 
   return propertyName ? `${unitNumber} • ${propertyName}` : unitNumber;
-}
-
-function formatCurrency(value) {
-  return formatCurrencyNoDecimals(value);
 }
 
 function nameToApiKey(name) {

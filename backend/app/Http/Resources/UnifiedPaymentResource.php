@@ -13,6 +13,45 @@ class UnifiedPaymentResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        // For views, access attributes directly via the model
+        // The view columns should be accessible as regular attributes
+        $propertyName = $this->resource->property_name ?? null;
+        $unitNumber = $this->resource->unit_number ?? null;
+        
+        // Fallback: If view columns are null but unit_id exists, fetch from relationships
+        if (($propertyName === null || $unitNumber === null) && $this->resource->unit_id) {
+            try {
+                $unit = \App\Models\Unit::with('property')->find($this->resource->unit_id);
+                if ($unit) {
+                    if ($unitNumber === null) {
+                        $unitNumber = $unit->unit_number;
+                    }
+                    if ($propertyName === null && $unit->property) {
+                        $propertyName = $unit->property->name;
+                    }
+                }
+            } catch (\Exception $e) {
+                // Silently fail
+            }
+        }
+        
+        // Another fallback: If still null, try via tenant_unit_id
+        if (($propertyName === null || $unitNumber === null) && $this->resource->tenant_unit_id) {
+            try {
+                $tenantUnit = \App\Models\TenantUnit::with(['unit.property'])->find($this->resource->tenant_unit_id);
+                if ($tenantUnit && $tenantUnit->unit) {
+                    if ($unitNumber === null) {
+                        $unitNumber = $tenantUnit->unit->unit_number;
+                    }
+                    if ($propertyName === null && $tenantUnit->unit->property) {
+                        $propertyName = $tenantUnit->unit->property->name;
+                    }
+                }
+            } catch (\Exception $e) {
+                // Silently fail
+            }
+        }
+
         return [
             'id' => $this->id,
             'composite_id' => $this->composite_id,
@@ -32,6 +71,8 @@ class UnifiedPaymentResource extends JsonResource
             'invoice_number' => $this->invoice_number,
             'tenant_name' => $this->tenant_name,
             'vendor_name' => $this->vendor_name,
+            'property_name' => $propertyName,
+            'unit_number' => $unitNumber,
             'metadata' => $this->metadata,
             'source_type' => $this->source_type,
             'source_id' => $this->source_id,

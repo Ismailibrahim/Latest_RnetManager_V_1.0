@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Shield, Calculator, Plus, Trash2, Loader2, AlertCircle } from "lucide-react";
 import { formatMVR } from "@/lib/currency";
+import { formatCurrency as formatCurrencyUtil } from "@/lib/currency-formatter";
 import { API_BASE_URL } from "@/utils/api-config";
 import { usePaymentMethods } from "@/hooks/usePaymentMethods";
 
@@ -165,7 +166,15 @@ export function SecurityDepositCalculator({ tenantUnit, onRefundCreated }) {
               Original Deposit
             </label>
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-900">
-              {formatMVR(originalDeposit)}
+              {(() => {
+                // Use security_deposit_currency from API response, or fall back to unit's security_deposit_currency
+                const securityDepositCurrency = tenantUnit?.security_deposit_currency 
+                  ?? tenantUnit?.unit?.security_deposit_currency
+                  ?? tenantUnit?.unit?.currency
+                  ?? tenantUnit?.currency
+                  ?? 'MVR';
+                return formatCurrencyUtil(originalDeposit, securityDepositCurrency);
+              })()}
             </div>
           </div>
 
@@ -185,7 +194,15 @@ export function SecurityDepositCalculator({ tenantUnit, onRefundCreated }) {
               Refund Amount
             </span>
             <span className="text-xl font-bold text-primary">
-              {formatMVR(refundAmount)}
+              {(() => {
+                // Use security_deposit_currency from API response, or fall back to unit's security_deposit_currency
+                const securityDepositCurrency = tenantUnit?.security_deposit_currency 
+                  ?? tenantUnit?.unit?.security_deposit_currency
+                  ?? tenantUnit?.unit?.currency
+                  ?? tenantUnit?.currency
+                  ?? 'MVR';
+                return formatCurrencyUtil(refundAmount, securityDepositCurrency);
+              })()}
             </span>
           </div>
         </div>

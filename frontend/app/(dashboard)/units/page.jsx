@@ -268,15 +268,27 @@ export default function UnitsPage() {
         }
 
         const rent = Number(unit?.rent_amount);
+        const currency = (unit?.currency || 'MVR').toUpperCase();
 
         if (!Number.isNaN(rent) && rent > 0) {
-          accumulator.rentSum += rent;
+          // Sum by currency - no conversion, just separate totals
+          if (currency === 'MVR') {
+            accumulator.rentSumMVR += rent;
+            accumulator.rentCountMVR += 1;
+          } else if (currency === 'USD') {
+            accumulator.rentSumUSD += rent;
+            accumulator.rentCountUSD += 1;
+          } else {
+            // For other currencies, add to MVR as default
+            accumulator.rentSumMVR += rent;
+            accumulator.rentCountMVR += 1;
+          }
           accumulator.rentCount += 1;
         }
 
         return accumulator;
       },
-      { total: 0, occupied: 0, rentSum: 0, rentCount: 0 },
+      { total: 0, occupied: 0, rentSumMVR: 0, rentSumUSD: 0, rentCount: 0, rentCountMVR: 0, rentCountUSD: 0 },
     );
 
     return {
@@ -287,8 +299,11 @@ export default function UnitsPage() {
         totals.total > 0
           ? Math.round((totals.occupied / totals.total) * 100)
           : 0,
-      totalRent: totals.rentSum,
+      totalRentMVR: totals.rentSumMVR,
+      totalRentUSD: totals.rentSumUSD,
       rentTracked: totals.rentCount,
+      rentCountMVR: totals.rentCountMVR,
+      rentCountUSD: totals.rentCountUSD,
     };
   }, [filteredUnits]);
 
@@ -474,17 +489,12 @@ export default function UnitsPage() {
             stats.vacant > 0 ? "Ready to lease" : "All units occupied"
           }
         />
-        <SummaryCard
-          title="Total monthly rent (MVR)"
-          value={
-            stats.totalRent > 0 ? formatCurrency(stats.totalRent) : "—"
-          }
-          icon={<Wallet size={20} />}
-          description={
-            stats.rentTracked > 0
-              ? `From ${stats.rentTracked} ${stats.rentTracked === 1 ? 'unit' : 'units'}`
-              : "Add rent amounts to track total"
-          }
+        <RentSummaryCard
+          totalRentMVR={stats.totalRentMVR}
+          totalRentUSD={stats.totalRentUSD}
+          rentCountMVR={stats.rentCountMVR}
+          rentCountUSD={stats.rentCountUSD}
+          rentTracked={stats.rentTracked}
         />
       </section>
 
@@ -618,12 +628,16 @@ export default function UnitsPage() {
                 {
                   key: "rent_amount",
                   label: "Rent",
-                  render: (value) => formatCurrency(value),
+                  render: (value, item) => formatCurrency(value, item?.currency, item?.currency_symbol),
                 },
                 {
                   key: "security_deposit",
                   label: "Deposit",
-                  render: (value) => formatCurrency(value),
+                  render: (value, item) => formatCurrency(
+                    value, 
+                    item?.security_deposit_currency || item?.currency,
+                    item?.security_deposit_currency_symbol || item?.currency_symbol
+                  ),
                 },
                 {
                   key: "assets_count",
@@ -764,14 +778,64 @@ function SummaryCard({ title, value, icon, description }) {
   );
 }
 
+function RentSummaryCard({ totalRentMVR, totalRentUSD, rentCountMVR, rentCountUSD, rentTracked }) {
+  const hasRent = totalRentMVR > 0 || totalRentUSD > 0;
+  
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-slate-500">Total monthly rent</p>
+        <span className="text-primary"><Wallet size={20} /></span>
+      </div>
+      {hasRent ? (
+        <div className="mt-3 space-y-2">
+          {totalRentMVR > 0 && (
+            <div>
+              <p className="text-2xl font-semibold text-slate-900">
+                {formatCurrency(totalRentMVR, 'MVR')}
+              </p>
+              {rentCountMVR > 0 && (
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {rentCountMVR} {rentCountMVR === 1 ? 'unit' : 'units'} in MVR
+                </p>
+              )}
+            </div>
+          )}
+          {totalRentUSD > 0 && (
+            <div className={totalRentMVR > 0 ? "pt-2 border-t border-slate-200" : ""}>
+              <p className="text-lg font-semibold text-slate-900">
+                {formatCurrency(totalRentUSD, 'USD')}
+              </p>
+              {rentCountUSD > 0 && (
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {rentCountUSD} {rentCountUSD === 1 ? 'unit' : 'units'} in USD
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="mt-3 text-2xl font-semibold text-slate-900">—</p>
+      )}
+      {!hasRent && (
+        <p className="mt-1 text-xs text-slate-500">Add rent amounts to track total</p>
+      )}
+    </div>
+  );
+}
+
 function UnitCard({ unit, onDelete, deleting }) {
   const router = useRouter();
   const unitId = unit?.id;
   const propertyId = unit?.property_id;
   const propertyLabel = unit?.property?.name ?? "Unassigned property";
   const unitType = unit?.unit_type?.name ?? "Not set";
-  const rentAmount = formatCurrency(unit?.rent_amount);
-  const depositAmount = formatCurrency(unit?.security_deposit);
+  const rentAmount = formatCurrency(unit?.rent_amount, unit?.currency, unit?.currency_symbol);
+  const depositAmount = formatCurrency(
+    unit?.security_deposit, 
+    unit?.security_deposit_currency || unit?.currency,
+    unit?.security_deposit_currency_symbol || unit?.currency_symbol
+  );
   const assetsCount = Number(
     unit?.assets_count ?? (Array.isArray(unit?.assets) ? unit.assets.length : 0),
   );
@@ -1012,8 +1076,8 @@ function EmptyState({ hasFilters }) {
   );
 }
 
-function formatCurrency(value) {
-  return formatCurrencyUtil(value);
+function formatCurrency(value, currency = null, symbol = null) {
+  return formatCurrencyUtil(value, currency, symbol);
 }
 
 

@@ -34,7 +34,7 @@ export default function ReportsPage() {
       title: "Financial Summary",
       description:
         "Comprehensive financial overview with income, expenses, and net cash flow analysis.",
-      href: "#",
+      href: "/reports/financial-summary",
       icon: TrendingUp,
       color: "blue",
       features: [
@@ -43,14 +43,14 @@ export default function ReportsPage() {
         "Property-wise financial analysis",
         "Export to PDF/CSV",
       ],
-      comingSoon: true,
+      comingSoon: false,
     },
     {
       id: "occupancy-report",
       title: "Occupancy Report",
       description:
         "Track unit occupancy rates, lease expirations, and tenant turnover across properties.",
-      href: "#",
+      href: "/reports/occupancy",
       icon: Calendar,
       color: "purple",
       features: [
@@ -59,7 +59,7 @@ export default function ReportsPage() {
         "Tenant turnover analysis",
         "Vacancy trends",
       ],
-      comingSoon: true,
+      comingSoon: false,
     },
   ];
 

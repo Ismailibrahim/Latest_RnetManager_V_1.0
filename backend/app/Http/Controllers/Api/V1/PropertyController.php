@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StorePropertyRequest;
 use App\Http\Requests\UpdatePropertyRequest;
 use App\Http\Resources\PropertyResource;
+use App\Models\Landlord;
 use App\Models\Property;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class PropertyController extends Controller
 {
@@ -20,6 +23,17 @@ class PropertyController extends Controller
      */
     public function index(Request $request)
     {
+        // Check database connection
+        try {
+            DB::connection()->getPdo();
+        } catch (\Exception $e) {
+            Log::error('Database connection failed in PropertyController', ['error' => $e->getMessage()]);
+            return response()->json([
+                'message' => 'Database connection failed. Please check your database configuration.',
+                'error' => 'Database connection error',
+            ], 500);
+        }
+
         $this->authorize('viewAny', Property::class);
 
         $perPage = $this->resolvePerPage($request);
@@ -35,7 +49,11 @@ class PropertyController extends Controller
             $query->where('landlord_id', $landlordId);
         }
 
-        $properties = $query->paginate($perPage)->withQueryString();
+        // Optimize: Add index hint if needed and select only required columns
+        // Paginate without withQueryString to avoid potential issues
+        $properties = $query
+            ->select(['id', 'landlord_id', 'name', 'address', 'type', 'created_at', 'updated_at'])
+            ->paginate($perPage);
 
         return PropertyResource::collection($properties);
     }
@@ -150,8 +168,21 @@ class PropertyController extends Controller
             ], 401);
         }
 
-        $user->loadMissing('landlord.subscriptionLimit');
-        $landlord = $user->landlord;
+        // For super admins, get landlord_id from request data
+        // For regular users, use their own landlord_id
+        if ($user->isSuperAdmin()) {
+            $landlordId = $request->input('landlord_id');
+            
+            if (! $landlordId) {
+                // Skip limit check if landlord_id not provided yet (validation will catch this)
+                return null;
+            }
+
+            $landlord = Landlord::with('subscriptionLimit')->find($landlordId);
+        } else {
+            $user->loadMissing('landlord.subscriptionLimit');
+            $landlord = $user->landlord;
+        }
 
         if (! $landlord) {
             return response()->json([

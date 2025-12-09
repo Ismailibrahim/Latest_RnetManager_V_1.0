@@ -29,9 +29,8 @@ class NationalityController extends Controller
         }
 
         if ($request->boolean('paginate', true)) {
-            $nationalities = $query
-                ->paginate($perPage)
-                ->withQueryString();
+            // Paginate without withQueryString to avoid potential issues
+            $nationalities = $query->paginate($perPage);
 
             return NationalityResource::collection($nationalities);
         }

@@ -30,9 +30,8 @@ class TenantDocumentController extends Controller
         }
 
         if ($request->boolean('paginate', true)) {
-            $documents = $query
-                ->paginate($perPage)
-                ->withQueryString();
+            // Paginate without withQueryString to avoid potential issues
+            $documents = $query->paginate($perPage);
 
             return TenantDocumentResource::collection($documents);
         }

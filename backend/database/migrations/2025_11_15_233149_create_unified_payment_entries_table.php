@@ -20,7 +20,7 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger('landlord_id');
             $table->unsignedBigInteger('tenant_unit_id')->nullable();
-            $table->enum('payment_type', ['rent', 'maintenance_expense', 'security_refund', 'fee', 'other_income', 'other_outgoing']);
+            $table->enum('payment_type', ['rent', 'maintenance_expense', 'security_deposit', 'security_refund', 'fee', 'other_income', 'other_outgoing']);
             $table->enum('flow_direction', ['income', 'outgoing']);
             $table->decimal('amount', 12, 2);
             $table->string('currency', 3)->default('USD');

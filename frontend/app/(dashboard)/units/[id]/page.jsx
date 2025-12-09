@@ -15,8 +15,11 @@ import {
   MapPin,
   Pencil,
   Wallet,
+  Wrench,
+  Calendar,
 } from "lucide-react";
 import { API_BASE_URL } from "@/utils/api-config";
+import { formatCurrency as formatCurrencyUtil } from "@/lib/currency-formatter";
 
 export default function UnitDetailsPage({ params }) {
   const routeParams = React.use(params);
@@ -28,6 +31,9 @@ export default function UnitDetailsPage({ params }) {
   const [assets, setAssets] = useState([]);
   const [assetsLoading, setAssetsLoading] = useState(true);
   const [assetsError, setAssetsError] = useState(null);
+  const [maintenanceRequests, setMaintenanceRequests] = useState([]);
+  const [maintenanceLoading, setMaintenanceLoading] = useState(true);
+  const [maintenanceError, setMaintenanceError] = useState(null);
 
   useEffect(() => {
     if (!unitId) {
@@ -61,14 +67,22 @@ export default function UnitDetailsPage({ params }) {
 
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));
-          const message =
-            payload?.message ??
-            `Unable to load unit (HTTP ${response.status}).`;
+          let message = payload?.message ?? `Unable to load unit (HTTP ${response.status}).`;
+          
+          // Add more context for common errors
+          if (response.status === 403) {
+            message = "You don't have permission to view this unit.";
+          } else if (response.status === 404) {
+            message = "Unit not found. It may have been deleted or you don't have access to it.";
+          }
+          
           throw new Error(message);
         }
 
         const payload = await response.json();
-        setUnit(payload?.data ?? null);
+        // Handle both wrapped and unwrapped responses
+        const unitData = payload?.data ?? payload;
+        setUnit(unitData);
       } catch (err) {
         if (err.name === "AbortError") {
           return;
@@ -140,11 +154,75 @@ export default function UnitDetailsPage({ params }) {
     return () => controller.abort();
   }, [unitId, refreshKey]);
 
+  useEffect(() => {
+    if (!unitId) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    async function fetchMaintenanceRequests() {
+      setMaintenanceLoading(true);
+      setMaintenanceError(null);
+
+      try {
+        const token = localStorage.getItem("auth_token");
+
+        if (!token) {
+          throw new Error("Please log in so we can load maintenance history for this unit.");
+        }
+
+        const url = new URL(`${API_BASE_URL}/maintenance-requests`);
+        url.searchParams.set("unit_id", unitId);
+        url.searchParams.set("per_page", "50");
+
+        const response = await fetch(url.toString(), {
+          signal: controller.signal,
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          const message =
+            payload?.message ??
+            `Unable to load maintenance history for this unit (HTTP ${response.status}).`;
+          throw new Error(message);
+        }
+
+        const payload = await response.json();
+        const data = Array.isArray(payload?.data) ? payload.data : [];
+        setMaintenanceRequests(data);
+      } catch (err) {
+        if (err.name === "AbortError") {
+          return;
+        }
+        setMaintenanceError(err.message);
+      } finally {
+        setMaintenanceLoading(false);
+      }
+    }
+
+    fetchMaintenanceRequests();
+
+    return () => controller.abort();
+  }, [unitId, refreshKey]);
+
   const occupancy = unit?.is_occupied ? "Occupied" : "Vacant";
   const propertyId = unit?.property?.id;
   const propertyLabel = unit?.property?.name ?? "Unassigned property";
-  const rentAmount = formatCurrency(unit?.rent_amount);
-  const depositAmount = formatCurrency(unit?.security_deposit);
+  const rentAmount = formatCurrency(
+    unit?.rent_amount,
+    unit?.currency,
+    unit?.currency_symbol
+  );
+  const depositAmount = formatCurrency(
+    unit?.security_deposit,
+    unit?.security_deposit_currency || unit?.currency,
+    unit?.security_deposit_currency_symbol || unit?.currency_symbol
+  );
   const unitTypeLabel = unit?.unit_type?.name ?? "Not set";
 
   const handleRetry = () => {
@@ -270,6 +348,14 @@ export default function UnitDetailsPage({ params }) {
                 onRetry={handleRetry}
               />
             </div>
+
+            <MaintenanceHistoryCard
+              unitId={unitId}
+              maintenanceRequests={maintenanceRequests}
+              loading={maintenanceLoading}
+              error={maintenanceError}
+              onRetry={handleRetry}
+            />
 
             <div className="rounded-2xl border border-slate-200 bg-white/70 p-5 text-xs text-slate-500">
               <p>
@@ -494,19 +580,8 @@ function ErrorState({ message, onRetry }) {
   );
 }
 
-function formatCurrency(value) {
-  const amount = Number(value);
-
-  if (value === null || value === undefined || Number.isNaN(amount)) {
-    return "—";
-  }
-
-  const formatted = new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-
-  return `MVR ${formatted}`;
+function formatCurrency(value, currency = null, symbol = null) {
+  return formatCurrencyUtil(value, currency, symbol);
 }
 
 function formatAssetStatus(status) {
@@ -550,6 +625,168 @@ function getStatusBadgeClass(status) {
     default:
       return `${baseClasses} bg-slate-200 text-slate-700`;
   }
+}
+
+function MaintenanceHistoryCard({ unitId, maintenanceRequests, loading, error, onRetry }) {
+  const visibleRequests = Array.isArray(maintenanceRequests) ? maintenanceRequests.slice(0, 5) : [];
+  const remainingCount = Math.max((maintenanceRequests?.length ?? 0) - visibleRequests.length, 0);
+  const requestCountLabel =
+    maintenanceRequests?.length === 1
+      ? "1 maintenance record for this unit."
+      : `${maintenanceRequests?.length ?? 0} maintenance records for this unit.`;
+
+  const formatMaintenanceDate = (dateString) => {
+    if (!dateString) return "N/A";
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  const formatMaintenanceType = (type) => {
+    if (!type) return "Unknown";
+    return type
+      .toString()
+      .replace(/[_-]/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  const getTypeBadgeClass = (type) => {
+    const baseClasses =
+      "inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide";
+    
+    switch (type) {
+      case "repair":
+        return `${baseClasses} bg-blue-100 text-blue-700`;
+      case "replacement":
+        return `${baseClasses} bg-purple-100 text-purple-700`;
+      case "service":
+        return `${baseClasses} bg-green-100 text-green-700`;
+      default:
+        return `${baseClasses} bg-slate-200 text-slate-700`;
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 lg:col-span-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            <Wrench size={16} className="text-primary" />
+            Maintenance History
+          </h2>
+          {!loading && !error ? (
+            <p className="text-xs text-slate-500">{requestCountLabel}</p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/maintenance?unit_id=${unitId}`}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-primary/40 hover:text-primary"
+          >
+            View all
+          </Link>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="mt-6 flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-4 text-sm text-slate-500">
+          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          <p>Fetching maintenance history for this unit…</p>
+        </div>
+      ) : error ? (
+        <div className="mt-6 space-y-3 rounded-xl border border-red-100 bg-red-50/80 p-4 text-sm text-red-600">
+          <p className="font-semibold">We ran into a problem.</p>
+          <p className="text-xs text-red-500">{error}</p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary/90"
+          >
+            Try again
+          </button>
+        </div>
+      ) : visibleRequests.length > 0 ? (
+        <>
+          <ul className="mt-4 space-y-3">
+            {visibleRequests.map((request) => {
+              const cost = formatCurrency(
+                request?.cost ?? 0,
+                null,
+                null
+              );
+
+              return (
+                <li
+                  key={request?.id}
+                  className="rounded-xl border border-slate-100 bg-slate-50/80 p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-slate-900">
+                        {request?.description ?? "No description"}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                        {request?.maintenance_date && (
+                          <span className="flex items-center gap-1">
+                            <Calendar size={12} />
+                            {formatMaintenanceDate(request.maintenance_date)}
+                          </span>
+                        )}
+                        {request?.type && (
+                          <span className={getTypeBadgeClass(request.type)}>
+                            {formatMaintenanceType(request.type)}
+                          </span>
+                        )}
+                        {request?.serviced_by && (
+                          <span>Serviced by: {request.serviced_by}</span>
+                        )}
+                      </div>
+                      {request?.location && (
+                        <p className="mt-2 text-xs text-slate-500">
+                          Location: <span className="font-medium">{request.location}</span>
+                        </p>
+                      )}
+                      {request?.asset?.name && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Asset: <span className="font-medium">{request.asset.name}</span>
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <span className="text-sm font-semibold text-slate-900">
+                        {cost}
+                      </span>
+                      {request?.is_billable && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-semibold text-emerald-700">
+                          Billable
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          {remainingCount > 0 ? (
+            <p className="mt-3 text-xs text-slate-500">
+              And {remainingCount} more {remainingCount === 1 ? "record" : "records"} in this
+              unit. Visit the maintenance workspace for the full history.
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <div className="mt-6 rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm text-slate-500">
+          <p className="font-semibold text-slate-700">No maintenance history yet.</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Maintenance records will appear here once they are created for this unit.
+          </p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 

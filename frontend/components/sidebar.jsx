@@ -26,6 +26,8 @@ import {
   BarChart,
   Banknote,
   Shield,
+  UserPlus,
+  Settings2,
 } from "lucide-react";
 import clsx from "clsx";
 import { API_BASE_URL } from "@/utils/api-config";
@@ -150,11 +152,32 @@ export function Sidebar({ onNavigate }) {
               </p>
             </div>
             <Link
+              href="/admin/signups"
+              onClick={handleLinkClick}
+              className={clsx(
+                "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                pathname === "/admin/signups" || pathname.startsWith("/admin/signups")
+                  ? "bg-primary/15 text-primary"
+                  : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+              )}
+            >
+              <UserPlus
+                size={18}
+                className={clsx(
+                  "transition-colors",
+                  pathname === "/admin/signups" || pathname.startsWith("/admin/signups")
+                    ? "text-primary"
+                    : "text-slate-400 group-hover:text-slate-900"
+                )}
+              />
+              Pending Signups
+            </Link>
+            <Link
               href="/admin/subscriptions"
               onClick={handleLinkClick}
               className={clsx(
                 "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
-                pathname === "/admin/subscriptions" || pathname.startsWith("/admin/")
+                pathname === "/admin/subscriptions" || pathname.startsWith("/admin/subscriptions")
                   ? "bg-primary/15 text-primary"
                   : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
               )}
@@ -163,12 +186,33 @@ export function Sidebar({ onNavigate }) {
                 size={18}
                 className={clsx(
                   "transition-colors",
-                  pathname === "/admin/subscriptions" || pathname.startsWith("/admin/")
+                  pathname === "/admin/subscriptions" || pathname.startsWith("/admin/subscriptions")
                     ? "text-primary"
                     : "text-slate-400 group-hover:text-slate-900"
                 )}
               />
               Subscription Management
+            </Link>
+            <Link
+              href="/admin/subscription-settings"
+              onClick={handleLinkClick}
+              className={clsx(
+                "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                pathname === "/admin/subscription-settings" || pathname.startsWith("/admin/subscription-settings")
+                  ? "bg-primary/15 text-primary"
+                  : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+              )}
+            >
+              <Settings2
+                size={18}
+                className={clsx(
+                  "transition-colors",
+                  pathname === "/admin/subscription-settings" || pathname.startsWith("/admin/subscription-settings")
+                    ? "text-primary"
+                    : "text-slate-400 group-hover:text-slate-900"
+                )}
+              />
+              Subscription Settings
             </Link>
           </>
         )}

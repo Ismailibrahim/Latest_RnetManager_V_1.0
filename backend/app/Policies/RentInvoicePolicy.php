@@ -9,7 +9,14 @@ class RentInvoicePolicy extends BaseLandlordPolicy
 {
     protected function canFinance(User $user): bool
     {
-        return $user->isOwner() || $user->isAdmin();
+        return $user->isSuperAdmin() || $user->isOwner() || $user->isAdmin();
+    }
+
+    public function viewAny(User $user): bool
+    {
+        // Super admins can view all rent invoices
+        // Regular users need to be active (filtering by landlord happens in controller)
+        return $user->is_active;
     }
 
     public function create(User $user): bool

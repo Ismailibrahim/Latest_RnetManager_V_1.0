@@ -13,6 +13,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             SubscriptionLimitSeeder::class,
+            CurrencySeeder::class,
             UnitTypeSeeder::class,
             AssetTypeSeeder::class,
             DemoDataSeeder::class,

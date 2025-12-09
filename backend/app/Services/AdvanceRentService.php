@@ -95,16 +95,30 @@ class AdvanceRentService
         int $months,
         float $amount,
         Carbon|string $transactionDate,
+        ?string $currency = null,
         ?string $paymentMethod = null,
         ?string $referenceNumber = null,
         ?string $notes = null
     ): array {
         $transactionDate = is_string($transactionDate) ? Carbon::parse($transactionDate) : $transactionDate;
+        
+        // Default currency to unit's currency or MVR if not provided
+        if (!$currency) {
+            $tenantUnit->loadMissing('unit:id,currency');
+            $currency = $tenantUnit->unit->currency ?? 'MVR';
+        }
+        
+        // Normalize currency to uppercase
+        $currency = strtoupper($currency ?? 'MVR');
+        if (!in_array($currency, ['MVR', 'USD'], true)) {
+            $currency = 'MVR';
+        }
 
-        return DB::transaction(function () use ($tenantUnit, $months, $amount, $transactionDate, $paymentMethod, $referenceNumber, $notes) {
+        return DB::transaction(function () use ($tenantUnit, $months, $amount, $currency, $transactionDate, $paymentMethod, $referenceNumber, $notes) {
             // Update tenant unit
             $tenantUnit->advance_rent_months = $months;
             $tenantUnit->advance_rent_amount = $amount;
+            $tenantUnit->currency = $currency;
             $tenantUnit->advance_rent_used = 0; // Reset usage
             $tenantUnit->advance_rent_collected_date = $transactionDate;
             $tenantUnit->save();
@@ -119,6 +133,7 @@ class AdvanceRentService
                 'type' => 'rent',
                 'category' => 'monthly_rent',
                 'amount' => $amount,
+                'currency' => $currency,
                 'description' => $description,
                 'transaction_date' => $transactionDate,
                 'paid_date' => $transactionDate,

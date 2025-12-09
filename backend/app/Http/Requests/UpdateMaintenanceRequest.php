@@ -45,6 +45,7 @@ class UpdateMaintenanceRequest extends FormRequest
             'location' => ['sometimes', 'nullable', 'string', 'max:100'],
             'serviced_by' => ['sometimes', 'nullable', 'string', 'max:255'],
             'invoice_number' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'receipt' => ['sometimes', 'nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:' . (int) env('MAINTENANCE_RECEIPT_MAX_KB', 10240)], // 10MB default
             'is_billable' => ['sometimes', 'boolean'],
             'billed_to_tenant' => ['sometimes', 'boolean'],
             'tenant_share' => ['sometimes', 'nullable', 'numeric', 'min:0'],

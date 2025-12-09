@@ -17,7 +17,8 @@ class LandlordResource extends JsonResource
     {
         $subscriptionLimit = $this->subscriptionLimit;
         $daysUntilExpiry = $this->daysUntilExpiry();
-        $owner = $this->users()->where('role', 'owner')->first();
+        // Use the owner relationship to avoid N+1 queries
+        $owner = $this->relationLoaded('owner') ? $this->getRelation('owner') : $this->owner;
 
         return [
             'id' => $this->id,

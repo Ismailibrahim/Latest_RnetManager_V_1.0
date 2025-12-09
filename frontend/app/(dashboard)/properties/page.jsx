@@ -132,8 +132,9 @@ export default function PropertiesPage() {
           return;
         }
 
+        // Fetch all units by using a large per_page value and handling pagination
         const url = new URL(`${API_BASE_URL}/units`);
-        url.searchParams.set("per_page", "500"); // Fetch all units for stats
+        url.searchParams.set("per_page", "1000"); // Fetch all units for stats
 
         const response = await fetch(url.toString(), {
           headers: {
@@ -152,7 +153,14 @@ export default function PropertiesPage() {
         const payload = await response.json();
         if (!isMounted) return;
 
-        const data = Array.isArray(payload?.data) ? payload.data : [];
+        // Handle paginated response structure
+        let data = [];
+        if (payload?.data && Array.isArray(payload.data)) {
+          data = payload.data;
+        } else if (Array.isArray(payload)) {
+          data = payload;
+        }
+
         setUnits(data);
       } catch (err) {
         if (!isMounted) return;
@@ -236,6 +244,35 @@ export default function PropertiesPage() {
       occupied: totals.occupied,
       unoccupied: Math.max(totals.total - totals.occupied, 0),
     };
+  }, [units]);
+
+  // Calculate unit stats per property
+  const propertyUnitStats = useMemo(() => {
+    const stats = {};
+    
+    units.forEach((unit) => {
+      // Handle both string and number property_id
+      const propertyId = unit?.property_id;
+      if (!propertyId) return;
+      
+      // Normalize property_id to number for consistent key matching
+      const normalizedPropertyId = Number(propertyId);
+      if (isNaN(normalizedPropertyId)) return;
+      
+      if (!stats[normalizedPropertyId]) {
+        stats[normalizedPropertyId] = {
+          total: 0,
+          vacant: 0,
+        };
+      }
+      
+      stats[normalizedPropertyId].total += 1;
+      if (!unit?.is_occupied) {
+        stats[normalizedPropertyId].vacant += 1;
+      }
+    });
+    
+    return stats;
   }, [units]);
 
   const handleDelete = useCallback(async (property) => {
@@ -349,7 +386,7 @@ export default function PropertiesPage() {
         />
         <SummaryCard
           title="Total Units"
-          value={insights.totalUnits}
+          value={unitsLoading ? "..." : unitStats.occupied + unitStats.unoccupied}
           icon={<LayersIcon />}
         />
       </section>
@@ -455,21 +492,34 @@ export default function PropertiesPage() {
                 ),
               },
               {
-                key: "units_count",
-                label: "Units",
-                render: (value) => (
-                  <span className="font-semibold text-slate-900">
-                    {value ?? 0}
-                  </span>
-                ),
+                key: "total_units",
+                label: "Total Unit",
+                render: (_, item) => {
+                  // Normalize property ID to number for consistent lookup
+                  const propertyId = Number(item.id);
+                  const stats = propertyUnitStats[propertyId] || { total: 0 };
+                  const total = stats.total || item.units_count || 0;
+                  return (
+                    <span className="font-semibold text-slate-900">
+                      {total}
+                    </span>
+                  );
+                },
               },
               {
-                key: "created_at",
-                label: "Created",
-                render: (value) =>
-                  value
-                    ? new Date(value).toLocaleDateString()
-                    : "N/A",
+                key: "total_vacant",
+                label: "Total Vacant",
+                render: (_, item) => {
+                  // Normalize property ID to number for consistent lookup
+                  const propertyId = Number(item.id);
+                  const stats = propertyUnitStats[propertyId] || { vacant: 0 };
+                  const vacant = stats.vacant || 0;
+                  return (
+                    <span className="font-semibold text-slate-900">
+                      {vacant}
+                    </span>
+                  );
+                },
               },
               {
                 key: "actions",
@@ -518,6 +568,7 @@ export default function PropertiesPage() {
             renderCard={(property) => (
               <PropertyCard
                 property={property}
+                propertyUnitStats={propertyUnitStats}
                 onDelete={handleDelete}
                 isDeleting={deletingId === property.id}
               />
@@ -560,7 +611,13 @@ function summaryTone(tone) {
   return mapping[tone] ?? mapping.default;
 }
 
-function PropertyCard({ property, onDelete, isDeleting }) {
+function PropertyCard({ property, propertyUnitStats, onDelete, isDeleting }) {
+  // Calculate unit stats for this property
+  const propertyId = Number(property.id);
+  const stats = propertyUnitStats[propertyId] || { total: 0, vacant: 0 };
+  const totalUnits = stats.total || property.units_count || 0;
+  const vacantUnits = stats.vacant || 0;
+
   return (
     <article className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg">
       <div className="mb-4 flex items-start justify-between">
@@ -586,20 +643,18 @@ function PropertyCard({ property, onDelete, isDeleting }) {
       <dl className="grid grid-cols-2 gap-3 text-sm">
         <div className="rounded-xl bg-slate-50 p-3 text-slate-600">
           <dt className="text-xs uppercase tracking-wide text-slate-400">
-            Units
+            Total Unit
           </dt>
           <dd className="mt-1 text-lg font-semibold text-slate-900">
-            {property.units_count ?? 0}
+            {totalUnits}
           </dd>
         </div>
         <div className="rounded-xl bg-slate-50 p-3 text-slate-600">
           <dt className="text-xs uppercase tracking-wide text-slate-400">
-            Created
+            Total Vacant
           </dt>
-          <dd className="mt-1 text-sm font-medium text-slate-900">
-            {property.created_at
-              ? new Date(property.created_at).toLocaleDateString()
-              : "N/A"}
+          <dd className="mt-1 text-lg font-semibold text-slate-900">
+            {vacantUnits}
           </dd>
         </div>
       </dl>

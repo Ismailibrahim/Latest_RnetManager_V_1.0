@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -17,8 +17,11 @@ const initialFormState = {
   unitTypeId: "",
   unitNumber: "",
   rentAmount: "",
+  currency: "MVR",
   securityDeposit: "",
+  securityDepositCurrency: "MVR",
   isOccupied: false,
+  landlordId: "",
 };
 
 export default function NewUnitPage() {
@@ -29,6 +32,9 @@ export default function NewUnitPage() {
   const [apiError, setApiError] = useState(null);
   const [validationErrors, setValidationErrors] = useState({});
   const [success, setSuccess] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [landlords, setLandlords] = useState([]);
+  const [landlordsLoading, setLandlordsLoading] = useState(false);
 
   const [propertyOptions, setPropertyOptions] = useState([]);
   const [propertyOptionsError, setPropertyOptionsError] = useState(null);
@@ -36,6 +42,7 @@ export default function NewUnitPage() {
   const [unitTypeOptionsError, setUnitTypeOptionsError] = useState(null);
   const [selectedDepositMultiplier, setSelectedDepositMultiplier] =
     useState(null);
+  const isSecurityDepositManuallyEditedRef = useRef(false);
   const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
   const [typeModalMode, setTypeModalMode] = useState("create"); // 'create' | 'edit'
   const [typeModalName, setTypeModalName] = useState("");
@@ -49,6 +56,79 @@ export default function NewUnitPage() {
   const [bulkResults, setBulkResults] = useState([]);
   const [isMissingModalOpen, setIsMissingModalOpen] = useState(false);
   const [missingFields, setMissingFields] = useState([]);
+
+  // Check if user is super admin and fetch landlords if needed
+  useEffect(() => {
+    let isMounted = true;
+
+    async function checkUserRole() {
+      try {
+        const token = localStorage.getItem("auth_token");
+        if (!token) {
+          return;
+        }
+
+        const response = await fetch(`${API_BASE_URL}/account`, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const payload = await response.json();
+          const userRole = payload?.user?.role;
+          const superAdmin = userRole === "super_admin";
+          
+          if (!isMounted) return;
+          setIsSuperAdmin(superAdmin);
+
+          // If super admin, fetch landlords
+          if (superAdmin) {
+            fetchLandlords();
+          }
+        }
+      } catch {
+        // Ignore errors
+      }
+    }
+
+    async function fetchLandlords() {
+      setLandlordsLoading(true);
+      try {
+        const token = localStorage.getItem("auth_token");
+        if (!token) {
+          return;
+        }
+
+        const response = await fetch(`${API_BASE_URL}/admin/landlords?per_page=1000`, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const payload = await response.json();
+          const data = Array.isArray(payload?.data) ? payload.data : [];
+          if (isMounted) {
+            setLandlords(data);
+          }
+        }
+      } catch {
+        // Ignore errors
+      } finally {
+        if (isMounted) {
+          setLandlordsLoading(false);
+        }
+      }
+    }
+
+    checkUserRole();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -210,20 +290,28 @@ export default function NewUnitPage() {
     [],
   );
 
-  const fieldKeyMap = useMemo(
-    () => ({
-      propertyId: "property_id",
-      unitTypeId: "unit_type_id",
-      unitNumber: "unit_number",
-      rentAmount: "rent_amount",
-      securityDeposit: "security_deposit",
-      isOccupied: "is_occupied",
-    }),
-    [],
-  );
+      const fieldKeyMap = useMemo(
+        () => ({
+          propertyId: "property_id",
+          unitTypeId: "unit_type_id",
+          unitNumber: "unit_number",
+          rentAmount: "rent_amount",
+          currency: "currency",
+          securityDeposit: "security_deposit",
+          securityDepositCurrency: "security_deposit_currency",
+          isOccupied: "is_occupied",
+          landlordId: "landlord_id",
+        }),
+        [],
+      );
 
   const handleChange = (event) => {
     const { name, value, type, checked } = event.target;
+
+    // Track if security deposit is manually edited
+    if (name === "securityDeposit") {
+      isSecurityDepositManuallyEditedRef.current = true;
+    }
 
     setForm((prev) => ({
       ...prev,
@@ -245,6 +333,8 @@ export default function NewUnitPage() {
   const handleDepositMultiplierChange = (value, isChecked) => {
     setSelectedDepositMultiplier((prev) => {
       if (isChecked) {
+        // Reset manual edit flag when a new multiplier is selected
+        isSecurityDepositManuallyEditedRef.current = false;
         return value;
       }
 
@@ -288,13 +378,26 @@ export default function NewUnitPage() {
         payload.rent_amount = Number(form.rentAmount);
       }
 
+      if (form.currency) {
+        payload.currency = form.currency;
+      }
+
       if (form.securityDeposit !== "") {
         payload.security_deposit = Number(form.securityDeposit);
+        if (form.securityDepositCurrency) {
+          payload.security_deposit_currency = form.securityDepositCurrency;
+        }
       } else {
         payload.security_deposit = null;
+        payload.security_deposit_currency = null;
       }
 
       payload.is_occupied = Boolean(form.isOccupied);
+
+      // Include landlord_id if super admin
+      if (isSuperAdmin && form.landlordId) {
+        payload.landlord_id = Number(form.landlordId);
+      }
 
       const response = await fetch(`${API_BASE_URL}/units`, {
         method: "POST",
@@ -344,6 +447,8 @@ export default function NewUnitPage() {
 
   useEffect(() => {
     if (!selectedDepositMultiplier) {
+      // Reset manual edit flag when multiplier is cleared
+      isSecurityDepositManuallyEditedRef.current = false;
       setForm((prev) => {
         if (prev.securityDeposit === "") {
           return prev;
@@ -355,6 +460,11 @@ export default function NewUnitPage() {
         };
       });
 
+      return;
+    }
+
+    // Only auto-update if the user hasn't manually edited the security deposit
+    if (isSecurityDepositManuallyEditedRef.current) {
       return;
     }
 
@@ -424,244 +534,349 @@ export default function NewUnitPage() {
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-5"
+          className="space-y-6"
           suppressHydrationWarning
         >
-          <Fieldset>
-            <Label htmlFor="propertyId">Property</Label>
-            <select
-              id="propertyId"
-              name="propertyId"
-              value={form.propertyId}
-              onChange={handleChange}
-              disabled={submitting}
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
-              aria-describedby={
-                validationErrors.property_id ? "property-error" : undefined
-              }
-              suppressHydrationWarning
-            >
-              <option value="">Select a property…</option>
-              {sortedPropertyOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            {validationErrors.property_id ? (
-              <FieldError id="property-error">
-                {validationErrors.property_id[0]}
-              </FieldError>
-            ) : null}
-            {propertyOptionsError ? (
-              <p className="text-xs text-amber-600">{propertyOptionsError}</p>
-            ) : null}
-          </Fieldset>
+          {/* Basic Information Section */}
+          <div className="space-y-5 rounded-2xl border border-slate-200 bg-slate-50/50 p-5">
+            <h2 className="text-base font-semibold text-slate-900">Basic Information</h2>
+            
+            <div className="grid gap-5 md:grid-cols-2">
+              {isSuperAdmin && (
+                <Fieldset>
+                  <Label htmlFor="landlordId">Landlord *</Label>
+                  <select
+                    id="landlordId"
+                    name="landlordId"
+                    value={form.landlordId}
+                    onChange={handleChange}
+                    disabled={submitting || landlordsLoading}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    aria-describedby={validationErrors.landlord_id ? "landlordId-error" : undefined}
+                    required
+                    suppressHydrationWarning
+                  >
+                    <option value="">Select a landlord…</option>
+                    {landlords.map((landlord) => (
+                      <option key={landlord.id} value={landlord.id}>
+                        {landlord.company_name || `Landlord #${landlord.id}`}
+                      </option>
+                    ))}
+                  </select>
+                  {validationErrors.landlord_id ? (
+                    <FieldError id="landlordId-error">
+                      {validationErrors.landlord_id[0]}
+                    </FieldError>
+                  ) : null}
+                </Fieldset>
+              )}
 
-          <Fieldset>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="unitTypeId">Unit type</Label>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTypeModalMode("create");
-                    setTypeModalName("");
-                    setIsTypeModalOpen(true);
-                  }}
-                  className="text-xs font-semibold text-primary hover:text-primary/80"
+              <Fieldset>
+                <Label htmlFor="propertyId">Property *</Label>
+                <select
+                  id="propertyId"
+                  name="propertyId"
+                  value={form.propertyId}
+                  onChange={handleChange}
+                  disabled={submitting}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-describedby={
+                    validationErrors.property_id ? "property-error" : undefined
+                  }
+                  suppressHydrationWarning
                 >
-                  + Add type
-                </button>
+                  <option value="">Select a property…</option>
+                  {sortedPropertyOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {validationErrors.property_id ? (
+                  <FieldError id="property-error">
+                    {validationErrors.property_id[0]}
+                  </FieldError>
+                ) : null}
+                {propertyOptionsError ? (
+                  <p className="text-xs text-amber-600">{propertyOptionsError}</p>
+                ) : null}
+              </Fieldset>
+
+              <Fieldset>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="unitTypeId">Unit type *</Label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTypeModalMode("create");
+                        setTypeModalName("");
+                        setIsTypeModalOpen(true);
+                      }}
+                      className="text-xs font-semibold text-primary hover:text-primary/80"
+                    >
+                      + Add
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!form.unitTypeId) {
+                          alert("Select a unit type first to edit.");
+                          return;
+                        }
+                        const current = unitTypeOptions.find(
+                          (o) => o.value === String(form.unitTypeId),
+                        );
+                        setTypeModalMode("edit");
+                        setTypeModalName(current?.label ?? "");
+                        setIsTypeModalOpen(true);
+                      }}
+                      className="text-xs font-semibold text-slate-600 hover:text-primary disabled:opacity-50"
+                      disabled={!form.unitTypeId}
+                      title={form.unitTypeId ? "Edit selected type" : "Select a type to edit"}
+                    >
+                      Edit
+                    </button>
+                  </div>
+                </div>
+                <select
+                  id="unitTypeId"
+                  name="unitTypeId"
+                  value={form.unitTypeId}
+                  onChange={handleChange}
+                  disabled={submitting}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-describedby={
+                    validationErrors.unit_type_id ? "unit-type-error" : undefined
+                  }
+                  suppressHydrationWarning
+                >
+                  <option value="">Select a unit type…</option>
+                  {sortedUnitTypeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {validationErrors.unit_type_id ? (
+                  <FieldError id="unit-type-error">
+                    {validationErrors.unit_type_id[0]}
+                  </FieldError>
+                ) : null}
+                {unitTypeOptionsError ? (
+                  <p className="text-xs text-amber-600">{unitTypeOptionsError}</p>
+                ) : null}
+              </Fieldset>
+            </div>
+
+            <Fieldset>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="unitNumber">Unit number *</Label>
                 <button
                   type="button"
+                  className="text-xs font-semibold text-primary hover:text-primary/80"
                   onClick={() => {
-                    if (!form.unitTypeId) {
-                      alert("Select a unit type first to edit.");
+                    const missing = [];
+                    if (!form.propertyId) missing.push("Property");
+                    if (!form.unitTypeId) missing.push("Unit type");
+                    if (String(form.rentAmount).trim() === "") missing.push("Monthly rent");
+
+                    if (missing.length > 0) {
+                      setMissingFields(missing);
+                      setIsMissingModalOpen(true);
                       return;
                     }
-                    const current = unitTypeOptions.find(
-                      (o) => o.value === String(form.unitTypeId),
-                    );
-                    setTypeModalMode("edit");
-                    setTypeModalName(current?.label ?? "");
-                    setIsTypeModalOpen(true);
+
+                    setIsBulkModalOpen(true);
                   }}
-                  className="text-xs font-semibold text-slate-600 hover:text-primary disabled:opacity-50"
-                  disabled={!form.unitTypeId}
-                  title={form.unitTypeId ? "Edit selected type" : "Select a type to edit"}
+                  title="Create multiple units by sequence"
                 >
-                  Edit type
+                  Bulk Creation →
                 </button>
               </div>
-            </div>
-            <select
-              id="unitTypeId"
-              name="unitTypeId"
-              value={form.unitTypeId}
-              onChange={handleChange}
-              disabled={submitting}
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
-              aria-describedby={
-                validationErrors.unit_type_id ? "unit-type-error" : undefined
-              }
-              suppressHydrationWarning
-            >
-              <option value="">Select a unit type…</option>
-              {sortedUnitTypeOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            {validationErrors.unit_type_id ? (
-              <FieldError id="unit-type-error">
-                {validationErrors.unit_type_id[0]}
-              </FieldError>
-            ) : null}
-            {unitTypeOptionsError ? (
-              <p className="text-xs text-amber-600">{unitTypeOptionsError}</p>
-            ) : null}
-          </Fieldset>
-
-          <Fieldset>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="unitNumber">Unit number</Label>
-              <button
-                type="button"
-                className="text-xs font-semibold text-primary hover:text-primary/80"
-                onClick={() => {
-                  const missing = [];
-                  if (!form.propertyId) missing.push("Property");
-                  if (!form.unitTypeId) missing.push("Unit type");
-                  if (String(form.rentAmount).trim() === "") missing.push("Monthly rent");
-
-                  if (missing.length > 0) {
-                    setMissingFields(missing);
-                    setIsMissingModalOpen(true);
-                    return;
-                  }
-
-                  setIsBulkModalOpen(true);
-                }}
-                title="Create multiple units by sequence"
-              >
-                Bulk Unit Creation
-              </button>
-            </div>
-            <Input
-              id="unitNumber"
-              name="unitNumber"
-              placeholder="A-101"
-              value={form.unitNumber}
-              onChange={handleChange}
-              disabled={submitting}
-              aria-describedby={
-                validationErrors.unit_number ? "unit-number-error" : undefined
-              }
-              suppressHydrationWarning
-            />
-            {validationErrors.unit_number ? (
-              <FieldError id="unit-number-error">
-                {validationErrors.unit_number[0]}
-              </FieldError>
-            ) : null}
-          </Fieldset>
-
-          <Fieldset>
-            <Label htmlFor="rentAmount">Monthly rent (MVR)</Label>
-            <Input
-              id="rentAmount"
-              name="rentAmount"
-              type="number"
-              min="0"
-              step="1"
-              placeholder="15000"
-              value={form.rentAmount}
-              onChange={handleChange}
-              disabled={submitting}
-              aria-describedby={
-                validationErrors.rent_amount ? "rent-amount-error" : undefined
-              }
-              suppressHydrationWarning
-            />
-            {validationErrors.rent_amount ? (
-              <FieldError id="rent-amount-error">
-                {validationErrors.rent_amount[0]}
-              </FieldError>
-            ) : null}
-          </Fieldset>
-
-  <Fieldset>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <Label htmlFor="securityDeposit">Security deposit (MVR)</Label>
-              <div className="flex items-center gap-3">
-                {securityDepositOptions.map((option) => (
-                  <label
-                    key={option.value}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600"
-                  >
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
-                      checked={selectedDepositMultiplier === option.value}
-                      onChange={(event) =>
-                        handleDepositMultiplierChange(
-                          option.value,
-                          event.target.checked,
-                        )
-                      }
-                      disabled={submitting}
-                    />
-                    {option.label}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <Input
-              id="securityDeposit"
-              name="securityDeposit"
-              type="number"
-              min="0"
-              step="1"
-              placeholder="20000"
-              value={form.securityDeposit}
-              onChange={handleChange}
-              disabled={submitting}
-              readOnly={selectedDepositMultiplier !== null}
-              aria-describedby={
-                validationErrors.security_deposit
-                  ? "security-deposit-error"
-                  : undefined
-              }
-              suppressHydrationWarning
-            />
-            {validationErrors.security_deposit ? (
-              <FieldError id="security-deposit-error">
-                {validationErrors.security_deposit[0]}
-              </FieldError>
-            ) : null}
-          </Fieldset>
-
-          <Fieldset>
-            <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
-              <input
-                type="checkbox"
-                name="isOccupied"
-                checked={form.isOccupied}
+              <Input
+                id="unitNumber"
+                name="unitNumber"
+                placeholder="e.g. A-101, 201, Ground-01"
+                value={form.unitNumber}
                 onChange={handleChange}
                 disabled={submitting}
-                className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
+                aria-describedby={
+                  validationErrors.unit_number ? "unit-number-error" : undefined
+                }
                 suppressHydrationWarning
               />
-              Mark as occupied
-            </label>
-            {validationErrors.is_occupied ? (
-              <FieldError id="occupied-error">
-                {validationErrors.is_occupied[0]}
-              </FieldError>
-            ) : null}
-          </Fieldset>
+              {validationErrors.unit_number ? (
+                <FieldError id="unit-number-error">
+                  {validationErrors.unit_number[0]}
+                </FieldError>
+              ) : null}
+            </Fieldset>
+          </div>
+
+          {/* Financial Information Section */}
+          <div className="space-y-5 rounded-2xl border border-slate-200 bg-slate-50/50 p-5">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">Financial Information</h2>
+              <div className="mt-3 flex items-center gap-4">
+                <span className="text-xs font-medium text-slate-600">Quick calculate security deposit:</span>
+                <div className="flex items-center gap-3">
+                  {securityDepositOptions.map((option) => (
+                    <label
+                      key={option.value}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
+                        checked={selectedDepositMultiplier === option.value}
+                        onChange={(event) =>
+                          handleDepositMultiplierChange(
+                            option.value,
+                            event.target.checked,
+                          )
+                        }
+                        disabled={submitting}
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            
+            <div className="grid gap-5 md:grid-cols-2">
+              <Fieldset>
+                <Label htmlFor="rentAmount">Monthly rent *</Label>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <Input
+                      id="rentAmount"
+                      name="rentAmount"
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="15000"
+                      value={form.rentAmount}
+                      onChange={handleChange}
+                      disabled={submitting}
+                      aria-describedby={
+                        validationErrors.rent_amount ? "rent-amount-error" : undefined
+                      }
+                      suppressHydrationWarning
+                    />
+                    {validationErrors.rent_amount ? (
+                      <FieldError id="rent-amount-error">
+                        {validationErrors.rent_amount[0]}
+                      </FieldError>
+                    ) : null}
+                  </div>
+                  <div className="w-28">
+                    <select
+                      id="currency"
+                      name="currency"
+                      value={form.currency}
+                      onChange={handleChange}
+                      disabled={submitting}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      aria-describedby={
+                        validationErrors.currency ? "currency-error" : undefined
+                      }
+                      suppressHydrationWarning
+                    >
+                      <option value="MVR">MVR</option>
+                      <option value="USD">USD</option>
+                    </select>
+                    {validationErrors.currency ? (
+                      <FieldError id="currency-error">
+                        {validationErrors.currency[0]}
+                      </FieldError>
+                    ) : null}
+                  </div>
+                </div>
+              </Fieldset>
+
+              <Fieldset>
+                <Label htmlFor="securityDeposit">Security deposit</Label>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <Input
+                      id="securityDeposit"
+                      name="securityDeposit"
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="20000"
+                      value={form.securityDeposit}
+                      onChange={handleChange}
+                      disabled={submitting}
+                      aria-describedby={
+                        validationErrors.security_deposit
+                          ? "security-deposit-error"
+                          : undefined
+                      }
+                      suppressHydrationWarning
+                    />
+                    {validationErrors.security_deposit ? (
+                      <FieldError id="security-deposit-error">
+                        {validationErrors.security_deposit[0]}
+                      </FieldError>
+                    ) : null}
+                  </div>
+                  <div className="w-28">
+                    <select
+                      id="securityDepositCurrency"
+                      name="securityDepositCurrency"
+                      value={form.securityDepositCurrency}
+                      onChange={handleChange}
+                      disabled={submitting || form.securityDeposit === ""}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      aria-describedby={
+                        validationErrors.security_deposit_currency
+                          ? "security-deposit-currency-error"
+                          : undefined
+                      }
+                      suppressHydrationWarning
+                    >
+                      <option value="MVR">MVR</option>
+                      <option value="USD">USD</option>
+                    </select>
+                    {validationErrors.security_deposit_currency ? (
+                      <FieldError id="security-deposit-currency-error">
+                        {validationErrors.security_deposit_currency[0]}
+                      </FieldError>
+                    ) : null}
+                  </div>
+                </div>
+              </Fieldset>
+            </div>
+          </div>
+
+          {/* Status Section */}
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-5">
+            <Fieldset>
+              <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  name="isOccupied"
+                  checked={form.isOccupied}
+                  onChange={handleChange}
+                  disabled={submitting}
+                  className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
+                  suppressHydrationWarning
+                />
+                Mark as occupied
+              </label>
+              <p className="mt-1 text-xs text-slate-500">
+                Check this if the unit is currently occupied by a tenant
+              </p>
+              {validationErrors.is_occupied ? (
+                <FieldError id="occupied-error">
+                  {validationErrors.is_occupied[0]}
+                </FieldError>
+              ) : null}
+            </Fieldset>
+          </div>
 
           <div className="flex items-center justify-end gap-3 pt-2">
             <Link
@@ -773,8 +988,13 @@ export default function NewUnitPage() {
               property_id: Number(form.propertyId),
               unit_type_id: Number(form.unitTypeId),
               rent_amount: form.rentAmount !== "" ? Number(form.rentAmount) : undefined,
+              currency: form.currency || "MVR",
               security_deposit:
                 form.securityDeposit !== "" ? Number(form.securityDeposit) : null,
+              security_deposit_currency:
+                form.securityDeposit !== "" && form.securityDepositCurrency
+                  ? form.securityDepositCurrency
+                  : null,
               is_occupied: Boolean(form.isOccupied),
             };
 

@@ -96,14 +96,17 @@ export default function AdminSubscriptionsPage() {
         });
       } catch (err) {
         if (!isMounted) return;
-        console.error("Failed to load landlords:", err);
+        // Use logger instead of console.error
+        if (process.env.NODE_ENV === 'development') {
+          logger.error("Failed to load landlords:", err);
+        }
         
-        // Provide more helpful error message
+        // Provide concise error message
         let errorMessage = err.message || "Failed to load landlords. Please check your connection and try again.";
         
-        // Check if it's a network error
+        // Check if it's a network error - show concise message
         if (err.message?.includes("Unable to connect")) {
-          errorMessage = `${err.message}\n\nTroubleshooting:\n1. Ensure backend is running: cd backend && php artisan serve\n2. Check CORS configuration in backend/config/cors.php\n3. Verify API URL in browser console`;
+          errorMessage = "Unable to connect to server. Please ensure the backend is running.";
         }
         
         setFlashMessage({

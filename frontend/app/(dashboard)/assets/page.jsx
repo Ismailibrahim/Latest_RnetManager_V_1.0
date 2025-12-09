@@ -144,6 +144,8 @@ function AssetsPageContent() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [ownershipFilter, setOwnershipFilter] = useState("all");
+  const [assetTypeFilter, setAssetTypeFilter] = useState("all");
+  const [unitFilter, setUnitFilter] = useState("all");
 
   const [assetTypes, setAssetTypes] = useState([]);
   const [units, setUnits] = useState([]);
@@ -348,6 +350,18 @@ function AssetsPageContent() {
           ? true
           : (asset?.ownership ?? "landlord") === ownershipFilter;
 
+      const matchesAssetType =
+        assetTypeFilter === "all"
+          ? true
+          : String(asset?.asset_type_id) === assetTypeFilter ||
+            (asset?.asset_type?.id && String(asset.asset_type.id) === assetTypeFilter);
+
+      const matchesUnit =
+        unitFilter === "all"
+          ? true
+          : String(asset?.unit_id) === unitFilter ||
+            (asset?.unit?.id && String(asset.unit.id) === unitFilter);
+
       const matchesSearch =
         query.length === 0
           ? true
@@ -365,13 +379,15 @@ function AssetsPageContent() {
               .filter(Boolean)
               .some((value) => value.toLowerCase().includes(query));
 
-      return matchesStatus && matchesOwnership && matchesSearch;
+      return matchesStatus && matchesOwnership && matchesAssetType && matchesUnit && matchesSearch;
     });
   }, [
     assets,
     search,
     statusFilter,
     ownershipFilter,
+    assetTypeFilter,
+    unitFilter,
     assetTypeMap,
     unitMap,
     tenantMap,
@@ -380,7 +396,9 @@ function AssetsPageContent() {
   const hasFilters =
     search.trim().length > 0 ||
     statusFilter !== "all" ||
-    ownershipFilter !== "all";
+    ownershipFilter !== "all" ||
+    assetTypeFilter !== "all" ||
+    unitFilter !== "all";
 
   const stats = useMemo(() => {
     return assets.reduce(
@@ -420,6 +438,8 @@ function AssetsPageContent() {
     setSearch("");
     setStatusFilter("all");
     setOwnershipFilter("all");
+    setAssetTypeFilter("all");
+    setUnitFilter("all");
   };
 
   const handleRetry = () => {
@@ -811,6 +831,7 @@ function AssetsPageContent() {
 
   const assetTypeSelectOptions = useMemo(() => {
     return assetTypes
+      .filter((type) => type?.is_active !== false) // Only show active asset types
       .map((type) => ({
         value: String(type.id),
         label: type.name ?? `Type #${type.id}`,
@@ -975,6 +996,46 @@ function AssetsPageContent() {
             ))}
           </select>
 
+          <select
+            value={assetTypeFilter}
+            onChange={(event) => setAssetTypeFilter(event.target.value)}
+            className="min-w-[180px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            disabled={optionsLoading}
+          >
+            <option value="all">All types</option>
+            {assetTypeSelectOptions.length > 0 ? (
+              assetTypeSelectOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))
+            ) : (
+              <option value="" disabled>
+                {optionsLoading ? "Loading types..." : "No types available"}
+              </option>
+            )}
+          </select>
+
+          <select
+            value={unitFilter}
+            onChange={(event) => setUnitFilter(event.target.value)}
+            className="min-w-[180px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            disabled={optionsLoading}
+          >
+            <option value="all">All units</option>
+            {unitSelectOptions.length > 0 ? (
+              unitSelectOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))
+            ) : (
+              <option value="" disabled>
+                {optionsLoading ? "Loading units..." : "No units available"}
+              </option>
+            )}
+          </select>
+
           <button
             type="button"
             onClick={handleResetFilters}
@@ -1026,10 +1087,16 @@ function AssetsPageContent() {
                           {[item?.brand, item?.model].filter(Boolean).join(" · ")}
                         </div>
                       )}
-                      {item?.location && (
-                        <div className="text-xs text-slate-400">{item.location}</div>
-                      )}
                     </div>
+                  ),
+                },
+                {
+                  key: "location",
+                  label: "Location",
+                  render: (value, item) => (
+                    <span className="text-sm text-slate-600">
+                      {item?.location || "—"}
+                    </span>
                   ),
                 },
                 {

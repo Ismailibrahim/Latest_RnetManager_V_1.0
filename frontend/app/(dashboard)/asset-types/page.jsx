@@ -625,15 +625,6 @@ export default function AssetTypesPage() {
                 ),
               },
               {
-                key: "created_at",
-                label: "Created",
-                render: (value) => (
-                  <span className="text-sm text-slate-600">
-                    {value ? new Date(value).toLocaleDateString() : "—"}
-                  </span>
-                ),
-              },
-              {
                 key: "actions",
                 label: "Actions",
                 render: (_, item) => (
@@ -721,10 +712,6 @@ function AssetTypeCard({
   onToggleActive,
   isDeleting,
 }) {
-  const createdAt = assetType?.created_at
-    ? new Date(assetType.created_at).toLocaleDateString()
-    : "—";
-
   return (
     <article className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg">
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -746,10 +733,6 @@ function AssetTypeCard({
           <dd className="mt-1 font-semibold capitalize text-slate-900">
             {assetType?.category ?? "other"}
           </dd>
-        </div>
-        <div className="rounded-xl bg-slate-50 p-3">
-          <dt className="text-xs uppercase tracking-wide text-slate-400">Created</dt>
-          <dd className="mt-1 font-semibold text-slate-900">{createdAt}</dd>
         </div>
       </dl>
 

@@ -29,7 +29,8 @@ class TenantUnitPendingChargeController extends Controller
 
         $user = $request->user();
 
-        if ($tenantUnit->landlord_id !== $user->landlord_id) {
+        // Super admins can view charges for any tenant unit
+        if (!$user->isSuperAdmin() && $tenantUnit->landlord_id !== $user->landlord_id) {
             abort(403, 'You are not allowed to view charges for this tenant unit.');
         }
 
@@ -38,16 +39,21 @@ class TenantUnitPendingChargeController extends Controller
         $currency = 'MVR';
         
         // Optionally sync settings if they're wrong (but don't block on it)
+        // For super admins, use the tenant unit's landlord_id instead of user's landlord_id
+        $landlordId = $user->isSuperAdmin() ? $tenantUnit->landlord_id : $user->landlord_id;
+        
         try {
-            $this->settingsService->clearCache($user->landlord_id);
-            $currencySettings = $this->settingsService->getCurrencySettings($user->landlord_id);
-            if (isset($currencySettings['primary']) && strtoupper($currencySettings['primary']) !== 'MVR') {
-                // Fix settings in background (don't wait for it)
-                $this->settingsService->updateCurrencySettings($user->landlord_id, [
-                    'primary' => 'MVR',
-                    'secondary' => $currencySettings['secondary'] ?? 'USD',
-                    'exchange_rate' => $currencySettings['exchange_rate'] ?? null,
-                ]);
+            if ($landlordId !== null) {
+                $this->settingsService->clearCache($landlordId);
+                $currencySettings = $this->settingsService->getCurrencySettings($landlordId);
+                if (isset($currencySettings['primary']) && strtoupper($currencySettings['primary']) !== 'MVR') {
+                    // Fix settings in background (don't wait for it)
+                    $this->settingsService->updateCurrencySettings($landlordId, [
+                        'primary' => 'MVR',
+                        'secondary' => $currencySettings['secondary'] ?? 'USD',
+                        'exchange_rate' => $currencySettings['exchange_rate'] ?? null,
+                    ]);
+                }
             }
         } catch (\Exception $e) {
             // Ignore errors - we're already using MVR anyway
@@ -57,7 +63,7 @@ class TenantUnitPendingChargeController extends Controller
 
         // Get all invoices for this tenant unit (regardless of status)
         $allInvoices = RentInvoice::query()
-            ->where('landlord_id', $user->landlord_id)
+            ->where('landlord_id', $landlordId)
             ->where('tenant_unit_id', $tenantUnit->id)
             ->get();
 
@@ -69,7 +75,7 @@ class TenantUnitPendingChargeController extends Controller
         
         // Get payments directly linked by source_id
         UnifiedPaymentEntry::query()
-            ->where('landlord_id', $user->landlord_id)
+            ->where('landlord_id', $landlordId)
             ->where('tenant_unit_id', $tenantUnit->id)
             ->whereIn('status', ['completed', 'partial'])
             ->where('source_type', 'rent_invoice')
@@ -95,7 +101,7 @@ class TenantUnitPendingChargeController extends Controller
 
         // Also check payments by invoice number in description as fallback
         UnifiedPaymentEntry::query()
-            ->where('landlord_id', $user->landlord_id)
+            ->where('landlord_id', $landlordId)
             ->where('tenant_unit_id', $tenantUnit->id)
             ->whereIn('status', ['completed', 'partial'])
             ->whereNotNull('description')
@@ -187,7 +193,7 @@ class TenantUnitPendingChargeController extends Controller
 
         // Get maintenance invoices for this tenant unit
         $allMaintenanceInvoices = MaintenanceInvoice::query()
-            ->where('landlord_id', $user->landlord_id)
+            ->where('landlord_id', $landlordId)
             ->where('tenant_unit_id', $tenantUnit->id)
             ->get();
 
@@ -197,7 +203,7 @@ class TenantUnitPendingChargeController extends Controller
         
         // Get payments directly linked by source_id
         UnifiedPaymentEntry::query()
-            ->where('landlord_id', $user->landlord_id)
+            ->where('landlord_id', $landlordId)
             ->where('tenant_unit_id', $tenantUnit->id)
             ->whereIn('status', ['completed', 'partial'])
             ->where('source_type', 'maintenance_invoice')
@@ -220,7 +226,7 @@ class TenantUnitPendingChargeController extends Controller
 
         // Also check payments linked via financial records (maintenance invoices create financial records)
         UnifiedPaymentEntry::query()
-            ->where('landlord_id', $user->landlord_id)
+            ->where('landlord_id', $landlordId)
             ->where('tenant_unit_id', $tenantUnit->id)
             ->whereIn('status', ['completed', 'partial'])
             ->where('source_type', 'financial_record')
@@ -314,7 +320,7 @@ class TenantUnitPendingChargeController extends Controller
             });
 
         $financialRecords = FinancialRecord::query()
-            ->where('landlord_id', $user->landlord_id)
+            ->where('landlord_id', $landlordId)
             ->where('tenant_unit_id', $tenantUnit->id)
             ->whereIn('status', ['pending', 'partial'])
             // Exclude financial records that are linked to maintenance invoices (they're handled separately)

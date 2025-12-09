@@ -21,6 +21,7 @@ class FinancialRecord extends Model
         'type',
         'category',
         'amount',
+        'currency',
         'description',
         'due_date',
         'paid_date',

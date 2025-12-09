@@ -16,13 +16,16 @@ import {
 } from "lucide-react";
 import { DataDisplay } from "@/components/DataDisplay";
 import { API_BASE_URL } from "@/utils/api-config";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function OwnersPage() {
+  const { user: currentUser } = useAuth();
   const [account, setAccount] = useState(null);
   const [delegates, setDelegates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -41,41 +44,124 @@ export default function OwnersPage() {
           );
         }
 
-        // Fetch account info (includes landlord info)
-        const accountResponse = await fetch(`${API_BASE_URL}/account`, {
-          signal: controller.signal,
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${token}`,
-          },
+        // Check if user is super admin from AuthContext or localStorage
+        let userRole = currentUser?.role;
+        if (!userRole) {
+          try {
+            const cachedUser = localStorage.getItem("auth_user");
+            if (cachedUser) {
+              const userData = JSON.parse(cachedUser);
+              userRole = userData?.role;
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+        }
+        
+        const isAdmin = userRole === "super_admin";
+        setIsSuperAdmin(isAdmin);
+        
+        // Debug logging
+        console.log('Owners page - User role check:', {
+          role: userRole,
+          isSuperAdmin: isAdmin,
+          currentUserFromContext: currentUser,
         });
 
-        if (!accountResponse.ok) {
-          throw new Error("Unable to load account information.");
+        if (isAdmin) {
+          // For super admins, fetch all owners from admin endpoint
+          console.log('Fetching all owners from admin endpoint...');
+          try {
+            const ownersResponse = await fetch(`${API_BASE_URL}/admin/owners?per_page=1000`, {
+              signal: controller.signal,
+              headers: {
+                Accept: "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+            });
+
+            if (!ownersResponse.ok) {
+              const errorData = await ownersResponse.json().catch(() => ({}));
+              // If 403, user might not actually be super admin, fall back to regular endpoint
+              if (ownersResponse.status === 403) {
+                console.warn("Super admin endpoint returned 403, falling back to regular account endpoint");
+                setIsSuperAdmin(false);
+                // Fall through to regular user flow
+              } else {
+                throw new Error(errorData.message || `Unable to load owners. (Status: ${ownersResponse.status})`);
+              }
+            } else {
+              const ownersData = await ownersResponse.json();
+              if (!isMounted) return;
+
+              const ownersList = Array.isArray(ownersData?.data) 
+                ? ownersData.data 
+                : [];
+
+              // Log for debugging
+              console.log('Fetched owners:', {
+                count: ownersList.length,
+                total: ownersData?.meta?.total || ownersList.length,
+                currentPage: ownersData?.meta?.current_page || 1,
+                lastPage: ownersData?.meta?.last_page || 1,
+              });
+
+              setDelegates(ownersList);
+              setAccount(null); // No account info for super admin view
+              return; // Success, exit early
+            }
+          } catch (fetchError) {
+            // If fetch fails (network error, etc.), fall back to regular endpoint
+            if (fetchError.name !== "AbortError") {
+              console.warn("Super admin endpoint failed, falling back to regular account endpoint:", fetchError);
+              setIsSuperAdmin(false);
+              // Fall through to regular user flow
+            } else {
+              throw fetchError;
+            }
+          }
         }
-
-        const accountData = await accountResponse.json();
-        if (!isMounted) return;
-
-        // The /account endpoint returns: { user: {...}, delegates: [...], meta: {...} }
-        const currentUser = accountData?.user ?? accountData?.data?.user ?? null;
-        const delegatesList = Array.isArray(accountData?.delegates) 
-          ? accountData.delegates 
-          : [];
-
-        setAccount(currentUser);
-
-        // Include the current user as the primary owner, then add delegates
-        if (currentUser) {
-          setDelegates([
-            {
-              ...currentUser,
-              is_primary: true,
+        
+        // Regular users (or fallback from super admin endpoint failure)
+        {
+          console.log('Fetching owners from regular account endpoint...');
+          // For regular users, fetch account info (includes landlord info)
+          const accountResponse = await fetch(`${API_BASE_URL}/account`, {
+            signal: controller.signal,
+            headers: {
+              Accept: "application/json",
+              Authorization: `Bearer ${token}`,
             },
-            ...delegatesList,
-          ]);
-        } else {
-          setDelegates(delegatesList);
+          });
+
+          if (!accountResponse.ok) {
+            const errorData = await accountResponse.json().catch(() => ({}));
+            throw new Error(errorData.message || `Unable to load account information. (Status: ${accountResponse.status})`);
+          }
+
+          const accountData = await accountResponse.json();
+          if (!isMounted) return;
+
+          // The /account endpoint returns: { user: {...}, delegates: [...], meta: {...} }
+          const currentUserData = accountData?.user ?? accountData?.data?.user ?? null;
+          const delegatesList = Array.isArray(accountData?.delegates) 
+            ? accountData.delegates 
+            : [];
+
+          setAccount(currentUserData);
+
+          // Include the current user as the primary owner, then add delegates
+          if (currentUserData) {
+            setDelegates([
+              {
+                ...currentUserData,
+                is_primary: true,
+              },
+              ...delegatesList,
+            ]);
+          } else {
+            setDelegates(delegatesList);
+          }
         }
       } catch (err) {
         if (!isMounted || err.name === "AbortError") return;
@@ -100,7 +186,7 @@ export default function OwnersPage() {
       isMounted = false;
       controller.abort();
     };
-  }, []);
+  }, [currentUser]);
 
   const filteredOwners = useMemo(() => {
     if (!delegates.length) return [];
@@ -114,11 +200,14 @@ export default function OwnersPage() {
         owner.full_name ??
         `${owner.first_name || ""} ${owner.last_name || ""}`.trim();
 
+      const landlordName = owner.landlord?.company_name || "";
+
       return (
         fullName.toLowerCase().includes(query) ||
         owner.email?.toLowerCase().includes(query) ||
         owner.mobile?.toLowerCase().includes(query) ||
-        owner.role?.toLowerCase().includes(query)
+        owner.role?.toLowerCase().includes(query) ||
+        landlordName.toLowerCase().includes(query)
       );
     });
   }, [delegates, search]);
@@ -126,12 +215,12 @@ export default function OwnersPage() {
   const landlordName =
     account?.landlord?.company_name ??
     account?.company_name ??
-    "N/A";
+    (isSuperAdmin ? "All Companies" : "N/A");
   
   const subscriptionTier =
     account?.landlord?.subscription_tier ??
     account?.subscription_tier ??
-    "N/A";
+    (isSuperAdmin ? "All Tiers" : "N/A");
 
   return (
     <div className="space-y-6">
@@ -142,7 +231,9 @@ export default function OwnersPage() {
             Owners
           </h1>
           <p className="text-sm text-slate-600">
-            Manage property owners and team members. {landlordName && landlordName !== "N/A" && `Company: ${landlordName}`}
+            {isSuperAdmin 
+              ? "View and manage all registered property owners across all companies."
+              : `Manage property owners and team members. ${landlordName && landlordName !== "N/A" && `Company: ${landlordName}`}`}
           </p>
         </div>
 
@@ -157,12 +248,12 @@ export default function OwnersPage() {
         </div>
       </header>
 
-      {account && (
+      {(account || isSuperAdmin) && (
         <section className="grid gap-4 sm:grid-cols-1 lg:grid-cols-3">
           <div className="rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-slate-500">
-                Company Name
+                {isSuperAdmin ? "Viewing" : "Company Name"}
               </p>
               <span className="text-primary">
                 <Building2 size={20} />
@@ -176,7 +267,7 @@ export default function OwnersPage() {
           <div className="rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-slate-500">
-                Subscription Tier
+                {isSuperAdmin ? "Subscription Tiers" : "Subscription Tier"}
               </p>
               <span className="text-primary">
                 <Shield size={20} />
@@ -297,6 +388,12 @@ export default function OwnersPage() {
                         {item.role}
                       </div>
                     )}
+                    {isSuperAdmin && item.landlord?.company_name && (
+                      <div className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                        <Building2 size={12} />
+                        <span>{item.landlord.company_name}</span>
+                      </div>
+                    )}
                   </div>
                 );
               },
@@ -330,6 +427,16 @@ export default function OwnersPage() {
                 </span>
               ),
             },
+            ...(isSuperAdmin ? [{
+              key: "landlord",
+              label: "Company",
+              render: (value, item) => (
+                <div className="flex items-center gap-1 text-sm text-slate-600">
+                  <Building2 size={14} />
+                  {item.landlord?.company_name ?? "N/A"}
+                </div>
+              ),
+            }] : []),
             {
               key: "created_at",
               label: "Added",
@@ -367,6 +474,12 @@ export default function OwnersPage() {
                         {owner.role}
                       </p>
                     )}
+                    {isSuperAdmin && owner.landlord?.company_name && (
+                      <p className="mt-1 flex items-center gap-1 text-sm text-slate-500">
+                        <Building2 size={14} />
+                        <span>{owner.landlord.company_name}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -379,6 +492,12 @@ export default function OwnersPage() {
                     <div className="flex items-center gap-2 text-slate-600">
                       <Phone size={14} />
                       <span>{owner.mobile}</span>
+                    </div>
+                  )}
+                  {isSuperAdmin && owner.landlord?.subscription_tier && (
+                    <div className="flex items-center gap-2 text-slate-600">
+                      <Shield size={14} />
+                      <span className="capitalize">{owner.landlord.subscription_tier}</span>
                     </div>
                   )}
                   {owner.created_at && (

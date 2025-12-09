@@ -37,6 +37,7 @@ class StoreMaintenanceRequest extends FormRequest
             'location' => ['nullable', 'string', 'max:100'],
             'serviced_by' => ['nullable', 'string', 'max:255'],
             'invoice_number' => ['nullable', 'string', 'max:100'],
+            'receipt' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:' . (int) env('MAINTENANCE_RECEIPT_MAX_KB', 10240)], // 10MB default
             'is_billable' => ['boolean'],
             'billed_to_tenant' => ['boolean'],
             'tenant_share' => ['nullable', 'numeric', 'min:0'],

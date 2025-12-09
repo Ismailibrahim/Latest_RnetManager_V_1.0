@@ -20,7 +20,9 @@ class Unit extends Model
         'unit_type_id',
         'unit_number',
         'rent_amount',
+        'currency',
         'security_deposit',
+        'security_deposit_currency',
         'is_occupied',
     ];
 
@@ -36,7 +38,12 @@ class Unit extends Model
     protected static function booted(): void
     {
         static::addGlobalScope('landlord', function ($query) {
-            $landlordId = Auth::user()?->landlord_id;
+            $user = Auth::user();
+            // Super admins can see all units, so don't apply the scope
+            if ($user && $user->isSuperAdmin()) {
+                return;
+            }
+            $landlordId = $user?->landlord_id;
             if ($landlordId !== null) {
                 $query->where('landlord_id', $landlordId);
             }

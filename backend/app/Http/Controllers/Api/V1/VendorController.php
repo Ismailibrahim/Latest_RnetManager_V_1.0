@@ -15,10 +15,15 @@ class VendorController extends Controller
     public function index(Request $request)
     {
         $perPage = max(1, min(1000, (int) ($request->input('per_page', 25))));
+        $user = $this->getAuthenticatedUser($request);
 
-        $landlordId = $this->getLandlordId($request);
-        $query = Vendor::query()
-            ->where('landlord_id', $landlordId)
+        $query = Vendor::query();
+
+        // Super admins can view all vendors, others only their landlord's
+        if ($this->shouldFilterByLandlord($request)) {
+            $landlordId = $this->getLandlordId($request);
+            $query->where('landlord_id', $landlordId);
+        }
             ->latest();
 
         if ($request->filled('service_category')) {
@@ -32,8 +37,9 @@ class VendorController extends Controller
             );
         }
 
+        // Paginate without withQueryString to avoid potential issues
         return response()->json(
-            $query->paginate($perPage)->withQueryString()
+            $query->paginate($perPage)
         );
     }
 
@@ -49,11 +55,24 @@ class VendorController extends Controller
             'email' => ['nullable', 'email', 'max:255'],
             'is_preferred' => ['sometimes', 'boolean'],
             'notes' => ['nullable', 'string', 'max:500'],
+            'landlord_id' => ['nullable', 'integer', 'exists:landlords,id'],
         ]);
 
+        $user = $request->user();
+
+        // Super admins must specify landlord_id when creating vendors
+        if ($user->isSuperAdmin() && !isset($data['landlord_id'])) {
+            return response()->json([
+                'message' => 'Super admin must specify landlord_id when creating vendors.',
+                'errors' => [
+                    'landlord_id' => ['The landlord_id field is required for super admin users.'],
+                ],
+            ], 422);
+        }
+
         $vendor = Vendor::create([
-            'landlord_id' => $this->getLandlordId($request),
-            ...$data,
+            'landlord_id' => $user->isSuperAdmin() ? $data['landlord_id'] : $this->getLandlordId($request),
+            ...array_diff_key($data, ['landlord_id' => '']),
         ]);
 
         return response()->json($vendor, 201);
@@ -64,7 +83,12 @@ class VendorController extends Controller
      */
     public function update(Request $request, Vendor $vendor): JsonResponse
     {
-        abort_unless($vendor->landlord_id === $request->user()->landlord_id, 403);
+        $user = $request->user();
+
+        // Super admins can update any vendor
+        if (!$user->isSuperAdmin() && $vendor->landlord_id !== $user->landlord_id) {
+            abort(403, 'Unauthorized access to this vendor.');
+        }
 
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
@@ -85,7 +109,13 @@ class VendorController extends Controller
      */
     public function destroy(Request $request, Vendor $vendor): JsonResponse
     {
-        abort_unless($vendor->landlord_id === $request->user()->landlord_id, 403);
+        $user = $request->user();
+
+        // Super admins can delete any vendor
+        if (!$user->isSuperAdmin() && $vendor->landlord_id !== $user->landlord_id) {
+            abort(403, 'Unauthorized access to this vendor.');
+        }
+
         $vendor->delete();
 
         return response()->json([], 204);

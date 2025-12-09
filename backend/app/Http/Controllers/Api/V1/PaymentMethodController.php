@@ -27,7 +27,8 @@ class PaymentMethodController extends Controller
             $query->where('is_active', true);
         }
 
-        $methods = $query->paginate($perPage)->withQueryString();
+        // Paginate without withQueryString to avoid potential issues
+        $methods = $query->paginate($perPage);
 
         return PaymentMethodResource::collection($methods);
     }

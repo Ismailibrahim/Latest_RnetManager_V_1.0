@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 import { usePaymentMethods, formatPaymentMethodLabel } from "@/hooks/usePaymentMethods";
 import { DataDisplay } from "@/components/DataDisplay";
+import { formatCurrency } from "@/lib/currency-formatter";
+import { printDocument } from "@/utils/printDocument";
 
 import { API_BASE_URL } from "@/utils/api-config";
 
@@ -280,7 +282,7 @@ export default function RentInvoicesPage() {
   }, [invoices, search, tenantUnitMap]);
 
   const stats = useMemo(() => {
-    return filteredInvoices.reduce(
+    const result = filteredInvoices.reduce(
       (accumulator, invoice) => {
         accumulator.total += 1;
 
@@ -288,12 +290,31 @@ export default function RentInvoicesPage() {
         const late = toAmount(invoice?.late_fee);
         const invoiceTotal = rent + late;
 
+        // Get currency from tenant_unit
+        const tenantUnit = invoice?.tenant_unit ?? 
+          (invoice?.tenant_unit_id ? tenantUnitMap.get(invoice.tenant_unit_id) : null);
+        const currency = tenantUnit?.currency || "MVR";
+
         if (!["paid", "cancelled"].includes(invoice?.status ?? "")) {
-          accumulator.outstanding += invoiceTotal;
+          if (currency === "MVR") {
+            accumulator.outstandingMVR += invoiceTotal;
+          } else if (currency === "USD") {
+            accumulator.outstandingUSD += invoiceTotal;
+          } else {
+            // Default to MVR if currency not specified
+            accumulator.outstandingMVR += invoiceTotal;
+          }
         }
 
         if (invoice?.status === "paid") {
-          accumulator.collected += invoiceTotal;
+          if (currency === "MVR") {
+            accumulator.collectedMVR += invoiceTotal;
+          } else if (currency === "USD") {
+            accumulator.collectedUSD += invoiceTotal;
+          } else {
+            // Default to MVR if currency not specified
+            accumulator.collectedMVR += invoiceTotal;
+          }
         }
 
         if (invoice?.status === "overdue") {
@@ -302,9 +323,18 @@ export default function RentInvoicesPage() {
 
         return accumulator;
       },
-      { total: 0, outstanding: 0, collected: 0, overdue: 0 },
+      { 
+        total: 0, 
+        outstandingMVR: 0, 
+        outstandingUSD: 0, 
+        collectedMVR: 0, 
+        collectedUSD: 0, 
+        overdue: 0 
+      },
     );
-  }, [filteredInvoices]);
+
+    return result;
+  }, [filteredInvoices, tenantUnitMap]);
 
   const handleRefresh = () => {
     setRefreshKey((value) => value + 1);
@@ -805,6 +835,24 @@ export default function RentInvoicesPage() {
     }, 150);
   };
 
+  const handlePrintInvoice = async (invoice) => {
+    if (!invoice?.id) return;
+
+    try {
+      await printDocument("rent-invoice", invoice.id, {
+        format: "html",
+        onError: (error) => {
+          setFlashMessage(error);
+        },
+        onSuccess: () => {
+          // Optional: Show success message
+        },
+      });
+    } catch (err) {
+      setFlashMessage(err?.message ?? "Unable to print invoice.");
+    }
+  };
+
   const handleExportPdf = async () => {
     if (!previewRef.current || !previewInvoice) {
       return;
@@ -954,13 +1002,15 @@ export default function RentInvoicesPage() {
         />
         <SummaryCard
           title="Outstanding balance"
-          value={formatCurrency(stats.outstanding)}
+          value={formatCurrency(stats.outstandingMVR, "MVR")}
+          valueUSD={formatCurrency(stats.outstandingUSD, "USD")}
           icon={CircleDollarSign}
           tone="warning"
         />
         <SummaryCard
           title="Collected this period"
-          value={formatCurrency(stats.collected)}
+          value={formatCurrency(stats.collectedMVR, "MVR")}
+          valueUSD={formatCurrency(stats.collectedUSD, "USD")}
           icon={TrendingUp}
           tone="success"
         />
@@ -1125,6 +1175,17 @@ export default function RentInvoicesPage() {
                           <Eye size={14} />
                           View
                         </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePrintInvoice(item);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary/40 hover:text-primary"
+                        >
+                          <Printer size={14} />
+                          Print
+                        </button>
                         {isGenerated && (
                           <button
                             type="button"
@@ -1195,6 +1256,7 @@ export default function RentInvoicesPage() {
                   invoice={invoice}
                   tenantUnitMap={tenantUnitMap}
                   onView={() => handleViewInvoice(invoice)}
+                  onPrint={() => handlePrintInvoice(invoice)}
                   onMarkSent={() => handleMarkAsSent(invoice.id)}
                   onMarkPaid={() => handleMarkAsPaid(invoice.id)}
                   updating={updatingInvoiceId === invoice.id}
@@ -1436,6 +1498,7 @@ function InvoiceCard({
   invoice,
   tenantUnitMap,
   onView,
+  onPrint,
   onMarkSent,
   onMarkPaid,
   onDelete,
@@ -1520,6 +1583,14 @@ function InvoiceCard({
         >
           <Eye size={14} />
           View
+        </button>
+        <button
+          type="button"
+          onClick={onPrint}
+          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary/40 hover:text-primary"
+        >
+          <Printer size={14} />
+          Print
         </button>
         {(isGenerated || isOverdue) && (
           <button
@@ -2164,7 +2235,7 @@ function InvoicePreviewDialog({
   );
 }
 
-function SummaryCard({ title, value, icon: Icon, tone = "default" }) {
+function SummaryCard({ title, value, valueUSD, icon: Icon, tone = "default" }) {
   return (
     <div
       className={`rounded-2xl border border-slate-200 p-5 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md ${summaryTone(
@@ -2179,7 +2250,12 @@ function SummaryCard({ title, value, icon: Icon, tone = "default" }) {
           {title}
         </p>
       </div>
-      <p className="mt-4 text-2xl font-semibold text-slate-900">{value}</p>
+      <div className="mt-4">
+        <p className="text-2xl font-semibold text-slate-900">{value}</p>
+        {valueUSD && (
+          <p className="mt-1 text-sm font-medium text-slate-600">{valueUSD}</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -2370,7 +2446,6 @@ function toAmount(value) {
   return Number.isFinite(amount) ? amount : 0;
 }
 
-import { formatMVR as formatCurrency } from "@/lib/currency";
 
 function formatPaymentMethod(method, labelMap) {
   if (!method) {

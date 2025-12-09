@@ -50,7 +50,9 @@ class StoreUnitRequest extends FormRequest
             ],
             'unit_number' => ['required', 'string', 'max:50', $unitNumberRule],
             'rent_amount' => ['required', 'numeric', 'min:0'],
+            'currency' => ['required', 'string', 'size:3', Rule::in(['MVR', 'USD'])],
             'security_deposit' => ['nullable', 'numeric', 'min:0'],
+            'security_deposit_currency' => ['nullable', 'string', 'size:3', Rule::in(['MVR', 'USD'])],
             'is_occupied' => ['sometimes', 'boolean'],
         ];
 

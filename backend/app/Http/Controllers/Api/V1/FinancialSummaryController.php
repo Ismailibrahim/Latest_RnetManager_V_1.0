@@ -19,7 +19,8 @@ class FinancialSummaryController extends Controller
 
     public function __invoke(Request $request): JsonResponse
     {
-        $landlordId = $this->getLandlordId($request);
+        $user = $this->getAuthenticatedUser($request);
+        $landlordId = $user->isSuperAdmin() ? null : $this->getLandlordId($request);
         $now = Carbon::now();
         $startOfMonth = $now->copy()->startOfMonth();
         $endOfMonth = $now->copy()->endOfMonth();
@@ -92,33 +93,45 @@ class FinancialSummaryController extends Controller
         ]);
     }
 
-    private function getCollectedThisMonth(int $landlordId, Carbon $start, Carbon $end): float
+    private function getCollectedThisMonth(?int $landlordId, Carbon $start, Carbon $end): float
     {
         // Get paid rent invoices
-        $rentCollected = RentInvoice::query()
-            ->where('landlord_id', $landlordId)
+        $rentQuery = RentInvoice::query()
             ->where('status', 'paid')
-            ->whereBetween('paid_date', [$start, $end])
-            ->sum(DB::raw('rent_amount + late_fee - COALESCE(advance_rent_applied, 0)'));
+            ->whereBetween('paid_date', [$start, $end]);
+        
+        if ($landlordId !== null) {
+            $rentQuery->where('landlord_id', $landlordId);
+        }
+        
+        $rentCollected = $rentQuery->sum(DB::raw('rent_amount + late_fee - COALESCE(advance_rent_applied, 0)'));
 
         // Get completed financial records (rent type)
-        $financialCollected = FinancialRecord::query()
-            ->where('landlord_id', $landlordId)
+        $financialQuery = FinancialRecord::query()
             ->where('type', 'rent')
             ->where('status', 'completed')
-            ->whereBetween('paid_date', [$start, $end])
-            ->sum('amount');
+            ->whereBetween('paid_date', [$start, $end]);
+        
+        if ($landlordId !== null) {
+            $financialQuery->where('landlord_id', $landlordId);
+        }
+        
+        $financialCollected = $financialQuery->sum('amount');
 
         return (float) ($rentCollected + $financialCollected);
     }
 
-    private function getOutstanding(int $landlordId): array
+    private function getOutstanding(?int $landlordId): array
     {
-        $outstandingInvoices = RentInvoice::query()
-            ->where('landlord_id', $landlordId)
+        $outstandingQuery = RentInvoice::query()
             ->whereIn('status', ['generated', 'sent', 'overdue'])
-            ->with(['tenantUnit.tenant:id,full_name', 'tenantUnit.unit:id,unit_number,property_id'])
-            ->get();
+            ->with(['tenantUnit.tenant:id,full_name', 'tenantUnit.unit:id,unit_number,property_id']);
+        
+        if ($landlordId !== null) {
+            $outstandingQuery->where('landlord_id', $landlordId);
+        }
+        
+        $outstandingInvoices = $outstandingQuery->get();
 
         $total = $outstandingInvoices->sum(function ($invoice) {
             return (float) $invoice->rent_amount + (float) $invoice->late_fee - (float) ($invoice->advance_rent_applied ?? 0);
@@ -136,12 +149,16 @@ class FinancialSummaryController extends Controller
         ];
     }
 
-    private function getMaintenanceCostThisMonth(int $landlordId, Carbon $start, Carbon $end): array
+    private function getMaintenanceCostThisMonth(?int $landlordId, Carbon $start, Carbon $end): array
     {
-        $total = MaintenanceInvoice::query()
-            ->where('landlord_id', $landlordId)
-            ->whereBetween('invoice_date', [$start, $end])
-            ->sum('grand_total');
+        $maintenanceQuery = MaintenanceInvoice::query()
+            ->whereBetween('invoice_date', [$start, $end]);
+        
+        if ($landlordId !== null) {
+            $maintenanceQuery->where('landlord_id', $landlordId);
+        }
+        
+        $total = $maintenanceQuery->sum('grand_total');
 
         // Budget would come from settings or a budget table - for now return 0
         $budget = 0;
@@ -154,18 +171,22 @@ class FinancialSummaryController extends Controller
         ];
     }
 
-    private function getRentInvoicesPipeline(int $landlordId): array
+    private function getRentInvoicesPipeline(?int $landlordId): array
     {
-        $invoices = RentInvoice::query()
-            ->where('landlord_id', $landlordId)
+        $invoicesQuery = RentInvoice::query()
             ->with([
                 'tenantUnit.tenant:id,full_name',
                 'tenantUnit.unit:id,unit_number,property_id',
                 'tenantUnit.unit.property:id,name',
             ])
             ->orderBy('due_date', 'desc')
-            ->limit(20)
-            ->get();
+            ->limit(20);
+        
+        if ($landlordId !== null) {
+            $invoicesQuery->where('landlord_id', $landlordId);
+        }
+        
+        $invoices = $invoicesQuery->get();
 
         return $invoices->map(function ($invoice) {
             $tenant = $invoice->tenantUnit->tenant ?? null;
@@ -208,12 +229,16 @@ class FinancialSummaryController extends Controller
         })->toArray();
     }
 
-    private function getAgeingBuckets(int $landlordId): array
+    private function getAgeingBuckets(?int $landlordId): array
     {
-        $invoices = RentInvoice::query()
-            ->where('landlord_id', $landlordId)
-            ->whereIn('status', ['generated', 'sent', 'overdue'])
-            ->get();
+        $ageingQuery = RentInvoice::query()
+            ->whereIn('status', ['generated', 'sent', 'overdue']);
+        
+        if ($landlordId !== null) {
+            $ageingQuery->where('landlord_id', $landlordId);
+        }
+        
+        $invoices = $ageingQuery->get();
 
         $buckets = [
             ['label' => 'Current (< 5d)', 'days' => [0, 5], 'amount' => 0, 'leases' => 0],
@@ -249,13 +274,12 @@ class FinancialSummaryController extends Controller
         }, $buckets);
     }
 
-    private function getRenewalAlerts(int $landlordId): array
+    private function getRenewalAlerts(?int $landlordId): array
     {
         $now = Carbon::now();
         $next45Days = $now->copy()->addDays(45);
 
-        $tenantUnits = TenantUnit::query()
-            ->where('landlord_id', $landlordId)
+        $renewalQuery = TenantUnit::query()
             ->where('status', 'active')
             ->whereNotNull('lease_end')
             ->whereBetween('lease_end', [$now, $next45Days])
@@ -265,8 +289,13 @@ class FinancialSummaryController extends Controller
                 'unit.property:id,name',
             ])
             ->orderBy('lease_end', 'asc')
-            ->limit(10)
-            ->get();
+            ->limit(10);
+        
+        if ($landlordId !== null) {
+            $renewalQuery->where('landlord_id', $landlordId);
+        }
+        
+        $tenantUnits = $renewalQuery->get();
 
         return $tenantUnits->map(function ($tenantUnit) {
             $tenant = $tenantUnit->tenant ?? null;
@@ -291,14 +320,18 @@ class FinancialSummaryController extends Controller
         })->toArray();
     }
 
-    private function getCashFlowEvents(int $landlordId): array
+    private function getCashFlowEvents(?int $landlordId): array
     {
-        $events = FinancialRecord::query()
-            ->where('landlord_id', $landlordId)
+        $cashFlowQuery = FinancialRecord::query()
             ->where('transaction_date', '>=', Carbon::now()->subDays(30))
             ->orderBy('transaction_date', 'desc')
-            ->limit(10)
-            ->get();
+            ->limit(10);
+        
+        if ($landlordId !== null) {
+            $cashFlowQuery->where('landlord_id', $landlordId);
+        }
+        
+        $events = $cashFlowQuery->get();
 
         return $events->map(function ($record) {
             $isIncome = in_array($record->type, ['rent', 'deposit']);
@@ -317,13 +350,17 @@ class FinancialSummaryController extends Controller
         })->toArray();
     }
 
-    private function getExpensePlan(int $landlordId, Carbon $start, Carbon $end): array
+    private function getExpensePlan(?int $landlordId, Carbon $start, Carbon $end): array
     {
         // Get maintenance invoices by category (simplified)
-        $maintenanceInvoices = MaintenanceInvoice::query()
-            ->where('landlord_id', $landlordId)
-            ->whereBetween('invoice_date', [$start, $end])
-            ->get();
+        $expenseQuery = MaintenanceInvoice::query()
+            ->whereBetween('invoice_date', [$start, $end]);
+        
+        if ($landlordId !== null) {
+            $expenseQuery->where('landlord_id', $landlordId);
+        }
+        
+        $maintenanceInvoices = $expenseQuery->get();
 
         $totalSpent = $maintenanceInvoices->sum('grand_total');
         

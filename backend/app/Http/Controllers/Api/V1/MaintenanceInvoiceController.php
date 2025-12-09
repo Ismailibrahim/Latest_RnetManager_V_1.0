@@ -20,17 +20,23 @@ class MaintenanceInvoiceController extends Controller
         $this->authorize('viewAny', MaintenanceInvoice::class);
 
         $perPage = $this->resolvePerPage($request);
+        $user = $this->getAuthenticatedUser($request);
 
-        $landlordId = $this->getLandlordId($request);
-        $query = MaintenanceInvoice::query()
-            ->where('landlord_id', $landlordId)
-            ->with([
-                'tenantUnit.tenant:id,full_name',
-                'tenantUnit.unit:id,unit_number,property_id',
-                // Align with actual maintenance_requests schema
-                'maintenanceRequest:id,unit_id,description,type,maintenance_date',
-            ])
-            ->latest('invoice_date');
+        $query = MaintenanceInvoice::query();
+
+        // Super admins can view all maintenance invoices, others only their landlord's
+        if ($this->shouldFilterByLandlord($request)) {
+            $landlordId = $this->getLandlordId($request);
+            $query->where('landlord_id', $landlordId);
+        }
+
+        $query->with([
+            'tenantUnit.tenant:id,full_name',
+            'tenantUnit.unit:id,unit_number,property_id',
+            // Align with actual maintenance_requests schema
+            'maintenanceRequest:id,unit_id,description,type,maintenance_date',
+        ])
+        ->latest('invoice_date');
 
         if ($request->filled('status')) {
             $query->where('status', $request->input('status'));
@@ -52,9 +58,8 @@ class MaintenanceInvoiceController extends Controller
             $query->whereDate('invoice_date', '<=', $request->input('to'));
         }
 
-        $invoices = $query
-            ->paginate($perPage)
-            ->withQueryString();
+        // Paginate without withQueryString to avoid potential issues
+        $invoices = $query->paginate($perPage);
 
         return MaintenanceInvoiceResource::collection($invoices);
     }
@@ -62,7 +67,19 @@ class MaintenanceInvoiceController extends Controller
     public function store(StoreMaintenanceInvoiceRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $data['landlord_id'] = $this->getLandlordId($request);
+        $user = $request->user();
+
+        // Super admins must specify landlord_id when creating maintenance invoices
+        if ($user->isSuperAdmin() && !isset($data['landlord_id'])) {
+            return response()->json([
+                'message' => 'Super admin must specify landlord_id when creating maintenance invoices.',
+                'errors' => [
+                    'landlord_id' => ['The landlord_id field is required for super admin users.'],
+                ],
+            ], 422);
+        }
+
+        $data['landlord_id'] = $user->isSuperAdmin() ? $data['landlord_id'] : $this->getLandlordId($request);
         // Ensure status aligns with enum ['sent','paid','overdue','cancelled']
         $data['status'] = $data['status'] ?? 'sent';
 
@@ -92,9 +109,11 @@ class MaintenanceInvoiceController extends Controller
     {
         $this->authorize('view', $maintenanceInvoice);
 
+        $user = $request->user();
+
         // Ensure maintenance invoice belongs to authenticated user's landlord (defense in depth)
-        $landlordId = $this->getLandlordId($request);
-        if ($maintenanceInvoice->landlord_id !== $landlordId) {
+        // Super admins can view any maintenance invoice
+        if (!$user->isSuperAdmin() && $maintenanceInvoice->landlord_id !== $user->landlord_id) {
             abort(403, 'Unauthorized access to this maintenance invoice.');
         }
 
@@ -111,9 +130,11 @@ class MaintenanceInvoiceController extends Controller
     {
         $this->authorize('update', $maintenanceInvoice);
 
+        $user = $request->user();
+
         // Ensure maintenance invoice belongs to authenticated user's landlord (defense in depth)
-        $landlordId = $this->getLandlordId($request);
-        if ($maintenanceInvoice->landlord_id !== $landlordId) {
+        // Super admins can update any maintenance invoice
+        if (!$user->isSuperAdmin() && $maintenanceInvoice->landlord_id !== $user->landlord_id) {
             abort(403, 'Unauthorized access to this maintenance invoice.');
         }
 

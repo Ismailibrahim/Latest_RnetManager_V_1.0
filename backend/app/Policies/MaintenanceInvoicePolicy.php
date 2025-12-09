@@ -9,12 +9,14 @@ class MaintenanceInvoicePolicy extends BaseLandlordPolicy
 {
     protected function canFinance(User $user): bool
     {
-        return $user->isOwner() || $user->isAdmin();
+        return $user->isSuperAdmin() || $user->isOwner() || $user->isAdmin();
     }
 
     public function viewAny(User $user): bool
     {
-        return $user->is_active && $this->canFinance($user);
+        // Super admins can view all maintenance invoices
+        // Regular users need to be active (filtering by landlord happens in controller)
+        return $user->is_active;
     }
 
     public function view(User $user, Model $invoice): bool

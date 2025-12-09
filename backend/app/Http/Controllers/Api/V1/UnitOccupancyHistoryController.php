@@ -20,12 +20,19 @@ class UnitOccupancyHistoryController extends Controller
         $this->authorize('viewAny', UnitOccupancyHistory::class);
 
         $perPage = $this->resolvePerPage($request);
+        $user = $this->getAuthenticatedUser($request);
 
-        $query = UnitOccupancyHistory::query()
-            ->whereHas('unit', function ($q) use ($request): void {
-                $q->where('landlord_id', $request->user()->landlord_id);
-            })
-            ->with(['unit:id,unit_number,property_id', 'tenant:id,full_name', 'tenantUnit:id,tenant_id,unit_id,lease_start,lease_end,status'])
+        $query = UnitOccupancyHistory::query();
+
+        // Super admins can view all unit occupancy history, others only their landlord's (through unit relationship)
+        if ($this->shouldFilterByLandlord($request)) {
+            $landlordId = $this->getLandlordId($request);
+            $query->whereHas('unit', function ($q) use ($landlordId): void {
+                $q->where('landlord_id', $landlordId);
+            });
+        }
+
+        $query->with(['unit:id,unit_number,property_id', 'tenant:id,full_name', 'tenantUnit:id,tenant_id,unit_id,lease_start,lease_end,status'])
             ->latest('action_date');
 
         if ($request->filled('unit_id')) {
@@ -48,9 +55,8 @@ class UnitOccupancyHistoryController extends Controller
             $query->whereBetween('action_date', [$request->input('from'), $request->input('to')]);
         }
 
-        $history = $query
-            ->paginate($perPage)
-            ->withQueryString();
+        // Paginate without withQueryString to avoid potential issues
+        $history = $query->paginate($perPage);
 
         return UnitOccupancyHistoryResource::collection($history);
     }
@@ -72,11 +78,15 @@ class UnitOccupancyHistoryController extends Controller
     {
         $this->authorize('view', $unitOccupancyHistory);
 
+        $user = $request->user();
+
         // Ensure unit occupancy history's unit belongs to authenticated user's landlord (defense in depth)
-        $unitOccupancyHistory->load('unit');
-        $landlordId = $this->getLandlordId($request);
-        if (! $unitOccupancyHistory->unit || $unitOccupancyHistory->unit->landlord_id !== $landlordId) {
-            abort(403, 'Unauthorized access to this unit occupancy history.');
+        // Super admins can view any unit occupancy history
+        if (!$user->isSuperAdmin()) {
+            $unitOccupancyHistory->load('unit');
+            if (! $unitOccupancyHistory->unit || $unitOccupancyHistory->unit->landlord_id !== $user->landlord_id) {
+                abort(403, 'Unauthorized access to this unit occupancy history.');
+            }
         }
 
         $unitOccupancyHistory->load(['unit:id,unit_number,property_id', 'tenant:id,full_name', 'tenantUnit:id,tenant_id,unit_id,lease_start,lease_end,status']);

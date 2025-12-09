@@ -22,6 +22,7 @@ class TenantUnit extends Model
         'lease_start',
         'lease_end',
         'monthly_rent',
+        'currency',
         'security_deposit_paid',
         'advance_rent_months',
         'advance_rent_amount',
@@ -49,7 +50,13 @@ class TenantUnit extends Model
     protected static function booted(): void
     {
         static::addGlobalScope('landlord', function ($query) {
-            $landlordId = Auth::user()?->landlord_id;
+            $user = Auth::user();
+            // Super admins can see all tenant units
+            if ($user && method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+                return; // Don't filter for super admins
+            }
+            
+            $landlordId = $user?->landlord_id;
             if ($landlordId !== null) {
                 $query->where('landlord_id', $landlordId);
             }

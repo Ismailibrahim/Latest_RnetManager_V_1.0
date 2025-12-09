@@ -24,6 +24,7 @@ class TenantUnitResource extends JsonResource
             'lease_start' => $this->lease_start?->toDateString(),
             'lease_end' => $this->lease_end?->toDateString(),
             'monthly_rent' => (float) $this->monthly_rent,
+            'currency' => $this->getCurrency(),
             'security_deposit_paid' => (float) $this->security_deposit_paid,
             'advance_rent_months' => $this->advance_rent_months,
             'advance_rent_amount' => (float) $this->advance_rent_amount,
@@ -63,16 +64,84 @@ class TenantUnitResource extends JsonResource
                 'id' => $this->unit->id,
                 'unit_number' => $this->unit->unit_number,
                 'property_id' => $this->unit->property_id,
+                'currency' => $this->unit->currency ?? 'MVR',
+                'security_deposit' => $this->unit->security_deposit !== null ? (float) $this->unit->security_deposit : null,
+                'security_deposit_currency' => $this->unit->security_deposit_currency ?? $this->unit->currency ?? 'MVR',
                 'property' => $this->when($this->unit->relationLoaded('property') && $this->unit->property, fn () => [
                     'id' => $this->unit->property->id,
                     'name' => $this->unit->property->name,
                 ]),
             ]),
+            'security_deposit_currency' => $this->getSecurityDepositCurrency(),
             'tenant' => $this->whenLoaded('tenant', fn () => [
                 'id' => $this->tenant->id,
                 'full_name' => $this->tenant->full_name,
             ]),
         ];
+    }
+
+    /**
+     * Get the currency for this tenant unit, preferring unit currency if tenant-unit currency is default MVR
+     */
+    private function getCurrency(): string
+    {
+        $tenantUnitCurrency = $this->currency;
+        
+        // Get unit currency - unit should be loaded by the controller
+        $unitCurrency = null;
+        if ($this->relationLoaded('unit') && $this->unit) {
+            $unitCurrency = $this->unit->currency;
+        }
+        
+        // If tenant-unit has a currency set and it's not the default MVR, use it
+        if ($tenantUnitCurrency && strtoupper(trim($tenantUnitCurrency)) !== 'MVR') {
+            return strtoupper(trim($tenantUnitCurrency));
+        }
+        
+        // Otherwise, prefer unit currency, then tenant-unit currency, then default to MVR
+        if ($unitCurrency) {
+            return strtoupper(trim($unitCurrency));
+        }
+        
+        if ($tenantUnitCurrency) {
+            return strtoupper(trim($tenantUnitCurrency));
+        }
+        
+        return 'MVR';
+    }
+
+    /**
+     * Get the security deposit currency for this tenant unit, preferring unit security_deposit_currency
+     */
+    private function getSecurityDepositCurrency(): string
+    {
+        // Get unit security deposit currency - unit should be loaded by the controller
+        $unitSecurityDepositCurrency = null;
+        if ($this->relationLoaded('unit') && $this->unit) {
+            $unitSecurityDepositCurrency = $this->unit->security_deposit_currency;
+        }
+        
+        // If unit has security_deposit_currency, use it
+        if ($unitSecurityDepositCurrency) {
+            return strtoupper(trim($unitSecurityDepositCurrency));
+        }
+        
+        // Otherwise, fall back to unit's regular currency, then tenant-unit currency, then default to MVR
+        $unitCurrency = null;
+        if ($this->relationLoaded('unit') && $this->unit) {
+            $unitCurrency = $this->unit->currency;
+        }
+        
+        if ($unitCurrency) {
+            return strtoupper(trim($unitCurrency));
+        }
+        
+        $tenantUnitCurrency = $this->currency;
+        if ($tenantUnitCurrency) {
+            return strtoupper(trim($tenantUnitCurrency));
+        }
+        
+        return 'MVR';
     }
 }
 

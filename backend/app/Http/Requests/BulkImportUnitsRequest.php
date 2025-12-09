@@ -61,7 +61,9 @@ class BulkImportUnitsRequest extends FormRequest
                 },
             ],
             'units.*.rent_amount' => ['required', 'numeric', 'min:0'],
+            'units.*.currency' => ['nullable', 'string', 'size:3', Rule::in(['MVR', 'USD'])],
             'units.*.security_deposit' => ['nullable', 'numeric', 'min:0'],
+            'units.*.security_deposit_currency' => ['nullable', 'string', 'size:3', Rule::in(['MVR', 'USD'])],
             'units.*.is_occupied' => ['sometimes', 'boolean'],
         ];
     }
@@ -100,8 +102,22 @@ class BulkImportUnitsRequest extends FormRequest
             if (isset($unit['rent_amount'])) {
                 $units[$index]['rent_amount'] = (float) $unit['rent_amount'];
             }
+            // Normalize currency to MVR or USD, default to MVR
+            if (isset($unit['currency'])) {
+                $currency = strtoupper(trim($unit['currency']));
+                $units[$index]['currency'] = ($currency === 'MVR' || $currency === 'USD') ? $currency : 'MVR';
+            } else {
+                $units[$index]['currency'] = 'MVR'; // Default to MVR
+            }
             if (isset($unit['security_deposit']) && $unit['security_deposit'] !== null && $unit['security_deposit'] !== '') {
                 $units[$index]['security_deposit'] = (float) $unit['security_deposit'];
+            }
+            // Normalize security deposit currency to MVR or USD, default to rent currency or MVR
+            if (isset($unit['security_deposit_currency'])) {
+                $currency = strtoupper(trim($unit['security_deposit_currency']));
+                $units[$index]['security_deposit_currency'] = ($currency === 'MVR' || $currency === 'USD') ? $currency : ($units[$index]['currency'] ?? 'MVR');
+            } else {
+                $units[$index]['security_deposit_currency'] = $units[$index]['currency'] ?? 'MVR'; // Default to rent currency
             }
         }
 

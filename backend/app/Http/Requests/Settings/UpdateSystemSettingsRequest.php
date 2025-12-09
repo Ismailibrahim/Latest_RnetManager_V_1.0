@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Settings;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateSystemSettingsRequest extends FormRequest
 {
@@ -35,8 +36,8 @@ class UpdateSystemSettingsRequest extends FormRequest
             'company.logo_url' => ['sometimes', 'nullable', 'url', 'max:500'],
 
             'currency' => ['sometimes', 'array'],
-            'currency.primary' => ['sometimes', 'nullable', 'string', 'max:3'],
-            'currency.secondary' => ['sometimes', 'nullable', 'string', 'max:3'],
+            'currency.primary' => ['sometimes', 'nullable', 'string', 'size:3', Rule::in(['MVR', 'USD'])],
+            'currency.secondary' => ['sometimes', 'nullable', 'string', 'size:3', Rule::in(['MVR', 'USD'])],
             'currency.exchange_rate' => ['sometimes', 'nullable', 'numeric', 'min:0'],
 
             'invoice_numbering' => ['sometimes', 'array'],

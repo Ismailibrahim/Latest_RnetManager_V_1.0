@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   UserRound,
   Upload,
+  FileText,
 } from "lucide-react";
 
 const sections = [
@@ -68,6 +69,14 @@ const sections = [
       "Import units, tenants, and other data in bulk using CSV files. Download templates to get started.",
     icon: Upload,
     badge: "Data",
+  },
+  {
+    href: "/settings/templates",
+    title: "Document Templates",
+    description:
+      "Customize HTML templates for invoices, receipts, and vouchers. Use placeholders for dynamic content.",
+    icon: FileText,
+    badge: "Templates",
   },
 ];
 

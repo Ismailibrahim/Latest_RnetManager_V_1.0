@@ -20,11 +20,17 @@ class SecurityDepositRefundController extends Controller
         $this->authorize('viewAny', SecurityDepositRefund::class);
 
         $perPage = $this->resolvePerPage($request);
+        $user = $this->getAuthenticatedUser($request);
 
-        $landlordId = $this->getLandlordId($request);
-        $query = SecurityDepositRefund::query()
-            ->where('landlord_id', $landlordId)
-            ->with([
+        $query = SecurityDepositRefund::query();
+
+        // Super admins can view all security deposit refunds, others only their landlord's
+        if ($this->shouldFilterByLandlord($request)) {
+            $landlordId = $this->getLandlordId($request);
+            $query->where('landlord_id', $landlordId);
+        }
+
+        $query->with([
                 'tenantUnit.tenant:id,full_name',
                 'tenantUnit.unit:id,unit_number,property_id',
                 'tenantUnit.unit.property:id,name',
@@ -47,9 +53,8 @@ class SecurityDepositRefundController extends Controller
             $query->whereBetween('refund_date', [$request->input('from'), $request->input('to')]);
         }
 
-        $refunds = $query
-            ->paginate($perPage)
-            ->withQueryString();
+        // Paginate without withQueryString to avoid potential issues
+        $refunds = $query->paginate($perPage);
 
         return SecurityDepositRefundResource::collection($refunds);
     }
@@ -57,7 +62,19 @@ class SecurityDepositRefundController extends Controller
     public function store(StoreSecurityDepositRefundRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $data['landlord_id'] = $this->getLandlordId($request);
+        $user = $request->user();
+
+        // Super admins must specify landlord_id when creating security deposit refunds
+        if ($user->isSuperAdmin() && !isset($data['landlord_id'])) {
+            return response()->json([
+                'message' => 'Super admin must specify landlord_id when creating security deposit refunds.',
+                'errors' => [
+                    'landlord_id' => ['The landlord_id field is required for super admin users.'],
+                ],
+            ], 422);
+        }
+
+        $data['landlord_id'] = $user->isSuperAdmin() ? $data['landlord_id'] : $this->getLandlordId($request);
 
         $refund = SecurityDepositRefund::create($data);
         $refund->load([

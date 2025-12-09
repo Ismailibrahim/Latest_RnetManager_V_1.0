@@ -57,6 +57,7 @@ class StoreAdvanceRentRequest extends FormRequest
         return [
             'advance_rent_months' => ['required', 'integer', 'min:1', 'max:12'],
             'advance_rent_amount' => ['required', 'numeric', 'min:0'],
+            'currency' => ['nullable', 'string', Rule::in(['MVR', 'USD'])],
             'payment_method' => ['nullable', Rule::exists('payment_methods', 'name')->where('is_active', true)],
             'transaction_date' => ['required', 'date'],
             'reference_number' => ['nullable', 'string', 'max:100'],
@@ -94,6 +95,18 @@ class StoreAdvanceRentRequest extends FormRequest
                 $months = (int) $this->input('advance_rent_months');
                 $calculatedAmount = (float) $tenantUnit->monthly_rent * $months;
                 $this->merge(['advance_rent_amount' => $calculatedAmount]);
+            }
+        }
+        
+        // If currency is not provided, default to unit's currency or MVR
+        if (!$this->has('currency')) {
+            $tenantUnit = $this->route('tenant_unit');
+            if ($tenantUnit instanceof TenantUnit) {
+                $tenantUnit->loadMissing('unit:id,currency');
+                $currency = $tenantUnit->unit->currency ?? 'MVR';
+                $this->merge(['currency' => $currency]);
+            } else {
+                $this->merge(['currency' => 'MVR']);
             }
         }
     }

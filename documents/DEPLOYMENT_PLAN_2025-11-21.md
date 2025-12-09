@@ -1,4 +1,4 @@
-# GitHub-Based Deployment Plan for RentApplication
+#git add .github/workflows/deploy.yml
 **Date:** November 21, 2025  
 **Status:** Implementation Ready
 

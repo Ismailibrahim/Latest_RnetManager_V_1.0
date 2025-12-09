@@ -24,15 +24,36 @@ class TenantUnitController extends Controller
 
     public function index(Request $request)
     {
+        // Check database connection
+        try {
+            DB::connection()->getPdo();
+        } catch (\Exception $e) {
+            Log::error('Database connection failed in TenantUnitController', ['error' => $e->getMessage()]);
+            return response()->json([
+                'message' => 'Database connection failed. Please check your database configuration.',
+                'error' => 'Database connection error',
+            ], 500);
+        }
+
         $this->authorize('viewAny', TenantUnit::class);
 
         $perPage = $this->resolvePerPage($request);
+        $user = $this->getAuthenticatedUser($request);
 
-        $landlordId = $this->getLandlordId($request);
-        $query = TenantUnit::query()
-            ->where('landlord_id', $landlordId)
-            ->with(['unit:id,unit_number,property_id', 'unit.property:id,name', 'tenant:id,full_name'])
-            ->latest();
+        $query = TenantUnit::query();
+
+        // Super admins can view all tenant units, others only their landlord's
+        if ($this->shouldFilterByLandlord($request)) {
+            $landlordId = $this->getLandlordId($request);
+            $query->where('landlord_id', $landlordId);
+        }
+
+        $query->with([
+            'unit:id,unit_number,property_id,currency,security_deposit,security_deposit_currency,rent_amount,is_occupied',
+            'unit.property:id,name',
+            'tenant:id,full_name,email,phone'
+        ])
+        ->latest();
 
         if ($request->filled('tenant_id')) {
             $query->where('tenant_id', $request->integer('tenant_id'));
@@ -46,9 +67,8 @@ class TenantUnitController extends Controller
             $query->where('status', $request->input('status'));
         }
 
-        $leases = $query
-            ->paginate($perPage)
-            ->withQueryString();
+        // Paginate without withQueryString to avoid potential issues
+        $leases = $query->paginate($perPage);
 
         return TenantUnitResource::collection($leases);
     }
@@ -56,8 +76,38 @@ class TenantUnitController extends Controller
     public function store(StoreTenantUnitRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $data['landlord_id'] = $this->getLandlordId($request);
+        $user = $request->user();
+
+        // Super admins must specify landlord_id when creating tenant units
+        if ($user->isSuperAdmin() && !isset($data['landlord_id'])) {
+            return response()->json([
+                'message' => 'Super admin must specify landlord_id when creating tenant units.',
+                'errors' => [
+                    'landlord_id' => ['The landlord_id field is required for super admin users.'],
+                ],
+            ], 422);
+        }
+
+        $data['landlord_id'] = $user->isSuperAdmin() ? $data['landlord_id'] : $this->getLandlordId($request);
         $data['status'] = $data['status'] ?? 'active';
+
+        // Set currency from unit if not provided
+        if (!isset($data['currency']) && isset($data['unit_id'])) {
+            $unit = Unit::find($data['unit_id']);
+            if ($unit && $unit->currency) {
+                $data['currency'] = $unit->currency;
+            } else {
+                $data['currency'] = 'MVR'; // Default fallback
+            }
+        } elseif (!isset($data['currency'])) {
+            $data['currency'] = 'MVR'; // Default fallback
+        }
+
+        // Default security_deposit_paid to 0 if not provided
+        // This field should only be updated when actual payments are collected
+        if (!isset($data['security_deposit_paid']) || $data['security_deposit_paid'] === null || $data['security_deposit_paid'] === '') {
+            $data['security_deposit_paid'] = 0;
+        }
 
         if (array_key_exists('lease_document_path', $data)) {
             $data['lease_document_path'] = $data['lease_document_path']
@@ -77,7 +127,7 @@ class TenantUnitController extends Controller
         unset($data['lease_document']);
 
         $tenantUnit = TenantUnit::create($data);
-        $tenantUnit->load(['unit:id,unit_number,property_id', 'unit.property:id,name', 'tenant:id,full_name']);
+        $tenantUnit->load(['unit:id,unit_number,property_id,currency,security_deposit,security_deposit_currency', 'unit.property:id,name', 'tenant:id,full_name']);
 
         $this->syncUnitOccupancy($tenantUnit->unit);
 
@@ -90,12 +140,15 @@ class TenantUnitController extends Controller
     {
         $this->authorize('view', $tenantUnit);
 
+        $user = $request->user();
+
         // Ensure tenant unit belongs to authenticated user's landlord (defense in depth)
-        if ($tenantUnit->landlord_id !== $request->user()->landlord_id) {
+        // Super admins can view any tenant unit
+        if (!$user->isSuperAdmin() && $tenantUnit->landlord_id !== $user->landlord_id) {
             abort(403, 'Unauthorized access to this tenant unit.');
         }
 
-        $tenantUnit->load(['unit:id,unit_number,property_id', 'unit.property:id,name', 'tenant:id,full_name']);
+        $tenantUnit->load(['unit:id,unit_number,property_id,currency,security_deposit,security_deposit_currency', 'unit.property:id,name', 'tenant:id,full_name']);
 
         return TenantUnitResource::make($tenantUnit);
     }
@@ -104,36 +157,42 @@ class TenantUnitController extends Controller
     {
         $this->authorize('update', $tenantUnit);
 
+        $user = $request->user();
+
         // Ensure tenant unit belongs to authenticated user's landlord (defense in depth)
-        if ($tenantUnit->landlord_id !== $request->user()->landlord_id) {
+        // Super admins can update any tenant unit
+        if (!$user->isSuperAdmin() && $tenantUnit->landlord_id !== $user->landlord_id) {
             abort(403, 'Unauthorized access to this tenant unit.');
         }
 
         $validated = $request->validated();
 
         // If tenant_id or unit_id is being updated, verify they belong to the same landlord
-        $landlordId = $request->user()->landlord_id;
-        if (isset($validated['tenant_id']) && $validated['tenant_id'] !== $tenantUnit->tenant_id) {
-            $tenant = \App\Models\Tenant::where('id', $validated['tenant_id'])
-                ->where('landlord_id', $landlordId)
-                ->first();
-            if (! $tenant) {
-                return response()->json([
-                    'message' => 'The selected tenant does not belong to your landlord account.',
-                    'errors' => ['tenant_id' => ['Invalid tenant selected.']],
-                ], 422);
+        // Super admins can update to any tenant/unit
+        if (!$user->isSuperAdmin()) {
+            $landlordId = $user->landlord_id;
+            if (isset($validated['tenant_id']) && $validated['tenant_id'] !== $tenantUnit->tenant_id) {
+                $tenant = \App\Models\Tenant::where('id', $validated['tenant_id'])
+                    ->where('landlord_id', $landlordId)
+                    ->first();
+                if (! $tenant) {
+                    return response()->json([
+                        'message' => 'The selected tenant does not belong to your landlord account.',
+                        'errors' => ['tenant_id' => ['Invalid tenant selected.']],
+                    ], 422);
+                }
             }
-        }
 
-        if (isset($validated['unit_id']) && $validated['unit_id'] !== $tenantUnit->unit_id) {
-            $unit = \App\Models\Unit::where('id', $validated['unit_id'])
-                ->where('landlord_id', $landlordId)
-                ->first();
-            if (! $unit) {
-                return response()->json([
-                    'message' => 'The selected unit does not belong to your landlord account.',
-                    'errors' => ['unit_id' => ['Invalid unit selected.']],
-                ], 422);
+            if (isset($validated['unit_id']) && $validated['unit_id'] !== $tenantUnit->unit_id) {
+                $unit = \App\Models\Unit::where('id', $validated['unit_id'])
+                    ->where('landlord_id', $landlordId)
+                    ->first();
+                if (! $unit) {
+                    return response()->json([
+                        'message' => 'The selected unit does not belong to your landlord account.',
+                        'errors' => ['unit_id' => ['Invalid unit selected.']],
+                    ], 422);
+                }
             }
         }
 
@@ -158,7 +217,7 @@ class TenantUnitController extends Controller
             $tenantUnit->update($validated);
         }
 
-        $tenantUnit->load(['unit:id,unit_number,property_id', 'unit.property:id,name', 'tenant:id,full_name']);
+        $tenantUnit->load(['unit:id,unit_number,property_id,currency,security_deposit,security_deposit_currency', 'unit.property:id,name', 'tenant:id,full_name']);
 
         $this->syncUnitOccupancy($tenantUnit->unit);
 
@@ -222,7 +281,7 @@ class TenantUnitController extends Controller
                 $tenant->update(['status' => 'former']);
             }
 
-            $tenantUnit->load(['unit:id,unit_number,property_id', 'unit.property:id,name', 'tenant:id,full_name']);
+            $tenantUnit->load(['unit:id,unit_number,property_id,currency,security_deposit,security_deposit_currency', 'unit.property:id,name', 'tenant:id,full_name']);
 
             return TenantUnitResource::make($tenantUnit);
         });
@@ -232,6 +291,9 @@ class TenantUnitController extends Controller
     {
         $validated = $request->validated();
 
+        // Load unit with currency before collecting advance rent
+        $tenantUnit->loadMissing(['unit:id,unit_number,property_id,currency,security_deposit,security_deposit_currency']);
+
         $advanceRentService = app(AdvanceRentService::class);
 
         $result = $advanceRentService->collectAdvanceRent(
@@ -239,13 +301,14 @@ class TenantUnitController extends Controller
             months: $validated['advance_rent_months'],
             amount: (float) $validated['advance_rent_amount'],
             transactionDate: $validated['transaction_date'],
+            currency: $validated['currency'] ?? $tenantUnit->unit->currency ?? 'MVR',
             paymentMethod: $validated['payment_method'] ?? null,
             referenceNumber: $validated['reference_number'] ?? null,
             notes: $validated['notes'] ?? null
         );
 
         $tenantUnit = $result['tenant_unit'];
-        $tenantUnit->load(['unit:id,unit_number,property_id', 'unit.property:id,name', 'tenant:id,full_name']);
+        $tenantUnit->load(['unit:id,unit_number,property_id,currency,security_deposit,security_deposit_currency', 'unit.property:id,name', 'tenant:id,full_name']);
 
         return TenantUnitResource::make($tenantUnit)
             ->response()
@@ -256,8 +319,11 @@ class TenantUnitController extends Controller
     {
         $this->authorize('update', $tenantUnit);
 
+        $user = $request->user();
+
         // Ensure tenant unit belongs to authenticated user's landlord
-        if ($tenantUnit->landlord_id !== $request->user()->landlord_id) {
+        // Super admins can access any tenant unit
+        if (!$user->isSuperAdmin() && $tenantUnit->landlord_id !== $user->landlord_id) {
             abort(403, 'Unauthorized access to this tenant unit.');
         }
 
@@ -274,7 +340,7 @@ class TenantUnitController extends Controller
         $advanceRentService = app(AdvanceRentService::class);
         $result = $advanceRentService->retroactivelyApplyAdvanceRent($tenantUnit);
 
-        $tenantUnit->load(['unit:id,unit_number,property_id', 'unit.property:id,name', 'tenant:id,full_name']);
+        $tenantUnit->load(['unit:id,unit_number,property_id,currency,security_deposit,security_deposit_currency', 'unit.property:id,name', 'tenant:id,full_name']);
 
         return response()->json([
             'message' => sprintf(

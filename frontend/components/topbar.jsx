@@ -7,6 +7,7 @@ import { Bell, Menu, Settings, UserRound, LogOut } from "lucide-react";
 import clsx from "clsx";
 import { Sidebar } from "./sidebar";
 import { logger } from "@/utils/logger";
+import { useAuth } from "@/contexts/AuthContext";
 import { API_BASE_URL } from "@/utils/api-config";
 
 const FALLBACK_PROFILE = {
@@ -65,51 +66,33 @@ function buildProfile(user) {
 
 export function Topbar() {
   const router = useRouter();
+  const { user, logout, refreshAuth } = useAuth();
   const [open, setOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [profile, setProfile] = useState(FALLBACK_PROFILE);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const userMenuRef = useRef(null);
 
-  const fetchProfile = useCallback(async () => {
-    try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-      if (!token) {
-        return;
-      }
-
-      const response = await fetch(`${API_BASE_URL}/account`, {
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        return;
-      }
-
-      setProfile(buildProfile(payload?.user));
-    } catch {
-      // ignore; keep fallback profile
-    }
-  }, []);
+  // Build profile from auth context user
+  const profile = useMemo(() => {
+    return buildProfile(user);
+  }, [user]);
 
   useEffect(() => {
-    fetchProfile();
-  }, [fetchProfile]);
-
-  useEffect(() => {
-    const handleAccountUpdated = (event) => {
+    const handleAccountUpdated = async (event) => {
+      // Refresh auth to get updated user data from server
       if (event?.detail?.user) {
-        setProfile(buildProfile(event.detail.user));
+        // If user data is provided in event, we can update directly
+        // Otherwise, refresh from server
+        await refreshAuth();
+      } else {
+        // No user data in event, refresh from server
+        await refreshAuth();
       }
     };
 
     window.addEventListener("account:updated", handleAccountUpdated);
     return () => window.removeEventListener("account:updated", handleAccountUpdated);
-  }, []);
+  }, [refreshAuth]);
 
   useEffect(() => {
     if (!userMenuOpen) {
@@ -167,16 +150,12 @@ export function Topbar() {
         }
       }
 
-      // Clear local storage
-      localStorage.removeItem("auth_token");
-
-      // Redirect to login page
-      router.push("/login");
+      // Use logout from auth context (handles all cleanup and redirect)
+      logout();
     } catch (error) {
       logger.error("Logout error:", error);
-      // Still clear token and redirect even if there's an error
-      localStorage.removeItem("auth_token");
-      router.push("/login");
+      // Fallback: still call logout
+      logout();
     } finally {
       setIsLoggingOut(false);
     }

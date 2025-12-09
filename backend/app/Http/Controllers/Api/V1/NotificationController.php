@@ -20,10 +20,15 @@ class NotificationController extends Controller
         $this->authorize('viewAny', Notification::class);
 
         $perPage = $this->resolvePerPage($request);
+        $user = $this->getAuthenticatedUser($request);
 
-        $landlordId = $this->getLandlordId($request);
-        $query = Notification::query()
-            ->where('landlord_id', $landlordId)
+        $query = Notification::query();
+
+        // Super admins can view all notifications, others only their landlord's
+        if ($this->shouldFilterByLandlord($request)) {
+            $landlordId = $this->getLandlordId($request);
+            $query->where('landlord_id', $landlordId);
+        }
             ->latest();
 
         if ($request->filled('is_read')) {
@@ -42,9 +47,8 @@ class NotificationController extends Controller
             $query->whereBetween('created_at', [$request->input('from'), $request->input('to')]);
         }
 
-        $notifications = $query
-            ->paginate($perPage)
-            ->withQueryString();
+        // Paginate without withQueryString to avoid potential issues
+        $notifications = $query->paginate($perPage);
 
         return NotificationResource::collection($notifications);
     }

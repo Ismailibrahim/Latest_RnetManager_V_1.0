@@ -19,6 +19,7 @@ import {
   RefreshCcw,
 } from "lucide-react";
 import { formatMVR } from "@/lib/currency";
+import { formatCurrency as formatCurrencyUtil } from "@/lib/currency-formatter";
 import { API_BASE_URL } from "@/utils/api-config";
 import { EndLeaseSection } from "@/components/tenant-unit/EndLeaseSection";
 
@@ -89,7 +90,8 @@ export default function TenantUnitDetailsPage({ params }) {
         }
 
         const payload = await response.json();
-        setTenantUnit(payload?.data ?? null);
+        const data = payload?.data ?? null;
+        setTenantUnit(data);
       } catch (err) {
         if (err.name === "AbortError") {
           return;
@@ -610,12 +612,30 @@ export default function TenantUnitDetailsPage({ params }) {
           />
           <InfoCard
             label="Monthly Rent"
-            value={formatCurrency(tenantUnit.monthly_rent || 0)}
+            value={(() => {
+              // Use unit currency if tenant-unit currency is not set or is default MVR
+              const tenantUnitCurrency = tenantUnit?.currency;
+              const unitCurrency = tenantUnit?.unit?.currency;
+              const currency = (tenantUnitCurrency && tenantUnitCurrency.toUpperCase() !== 'MVR') 
+                ? tenantUnitCurrency 
+                : (unitCurrency ?? tenantUnitCurrency ?? 'MVR');
+              
+              return formatCurrencyUtil(tenantUnit.monthly_rent || 0, currency);
+            })()}
             icon={<Wallet size={20} />}
           />
           <InfoCard
             label="Security Deposit"
-            value={formatCurrency(tenantUnit.security_deposit_paid || 0)}
+            value={(() => {
+              // Use security_deposit_currency from API response, or fall back to unit's security_deposit_currency
+              const securityDepositCurrency = tenantUnit?.security_deposit_currency 
+                ?? tenantUnit?.unit?.security_deposit_currency
+                ?? tenantUnit?.unit?.currency
+                ?? tenantUnit?.currency
+                ?? 'MVR';
+              
+              return formatCurrencyUtil(tenantUnit.security_deposit_paid || 0, securityDepositCurrency);
+            })()}
             icon={<Shield size={20} />}
           />
           <InfoCard
@@ -648,7 +668,14 @@ export default function TenantUnitDetailsPage({ params }) {
               <div>
                 <p className="text-xs text-blue-700">Collected</p>
                 <p className="mt-1 text-lg font-semibold text-blue-900">
-                  {formatCurrency(tenantUnit.advance_rent_amount)}
+                  {(() => {
+                    const tenantUnitCurrency = tenantUnit?.currency;
+                    const unitCurrency = tenantUnit?.unit?.currency;
+                    const currency = (tenantUnitCurrency && tenantUnitCurrency.toUpperCase() !== 'MVR') 
+                      ? tenantUnitCurrency 
+                      : (unitCurrency ?? tenantUnitCurrency ?? 'MVR');
+                    return formatCurrencyUtil(tenantUnit.advance_rent_amount, currency);
+                  })()}
                 </p>
                 <p className="mt-1 text-xs text-blue-600">
                   {tenantUnit.advance_rent_months} month
@@ -658,13 +685,27 @@ export default function TenantUnitDetailsPage({ params }) {
               <div>
                 <p className="text-xs text-blue-700">Used</p>
                 <p className="mt-1 text-lg font-semibold text-blue-900">
-                  {formatCurrency(tenantUnit.advance_rent_used || 0)}
+                  {(() => {
+                    const tenantUnitCurrency = tenantUnit?.currency;
+                    const unitCurrency = tenantUnit?.unit?.currency;
+                    const currency = (tenantUnitCurrency && tenantUnitCurrency.toUpperCase() !== 'MVR') 
+                      ? tenantUnitCurrency 
+                      : (unitCurrency ?? tenantUnitCurrency ?? 'MVR');
+                    return formatCurrencyUtil(tenantUnit.advance_rent_used || 0, currency);
+                  })()}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-blue-700">Remaining</p>
                 <p className="mt-1 text-lg font-semibold text-emerald-600">
-                  {formatCurrency(tenantUnit.advance_rent_remaining || 0)}
+                  {(() => {
+                    const tenantUnitCurrency = tenantUnit?.currency;
+                    const unitCurrency = tenantUnit?.unit?.currency;
+                    const currency = (tenantUnitCurrency && tenantUnitCurrency.toUpperCase() !== 'MVR') 
+                      ? tenantUnitCurrency 
+                      : (unitCurrency ?? tenantUnitCurrency ?? 'MVR');
+                    return formatCurrencyUtil(tenantUnit.advance_rent_remaining || 0, currency);
+                  })()}
                 </p>
               </div>
             </div>
@@ -705,10 +746,21 @@ export default function TenantUnitDetailsPage({ params }) {
                 </div>
                 <div className="text-right">
                   <p className="font-semibold text-slate-900">
-                    {formatCurrency(
-                      (Number(invoice.rent_amount) || 0) +
-                        (Number(invoice.late_fee) || 0)
-                    )}
+                    {(() => {
+                      // Use invoice currency if available, otherwise fall back to tenant-unit currency
+                      const invoiceCurrency = invoice?.currency;
+                      const tenantUnitCurrency = tenantUnit?.currency;
+                      const unitCurrency = tenantUnit?.unit?.currency;
+                      const currency = invoiceCurrency 
+                        ? invoiceCurrency 
+                        : ((tenantUnitCurrency && tenantUnitCurrency.toUpperCase() !== 'MVR') 
+                          ? tenantUnitCurrency 
+                          : (unitCurrency ?? tenantUnitCurrency ?? 'MVR'));
+                      return formatCurrencyUtil(
+                        (Number(invoice.rent_amount) || 0) + (Number(invoice.late_fee) || 0),
+                        currency
+                      );
+                    })()}
                   </p>
                   <p
                     className={`mt-1 text-xs ${

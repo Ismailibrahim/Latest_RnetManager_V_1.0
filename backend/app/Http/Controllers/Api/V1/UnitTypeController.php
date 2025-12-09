@@ -19,8 +19,9 @@ class UnitTypeController extends Controller
             )
             ->orderBy('name');
 
+        // Paginate without withQueryString to avoid potential issues
         $types = $request->has('per_page')
-            ? $query->paginate($this->resolvePerPage($request, 50))->withQueryString()
+            ? $query->paginate($this->resolvePerPage($request, 50))
             : $query->get();
 
         return UnitTypeResource::collection($types);

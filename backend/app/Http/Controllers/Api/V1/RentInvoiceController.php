@@ -14,6 +14,7 @@ use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\Str;
@@ -25,14 +26,35 @@ class RentInvoiceController extends Controller
 
     public function index(Request $request)
     {
+        // Check database connection
+        try {
+            DB::connection()->getPdo();
+        } catch (\Exception $e) {
+            Log::error('Database connection failed in RentInvoiceController', ['error' => $e->getMessage()]);
+            return response()->json([
+                'message' => 'Database connection failed. Please check your database configuration.',
+                'error' => 'Database connection error',
+            ], 500);
+        }
+
         $this->authorize('viewAny', RentInvoice::class);
 
         $perPage = $this->resolvePerPage($request);
+        $user = $this->getAuthenticatedUser($request);
 
-        $landlordId = $this->getLandlordId($request);
-        $query = RentInvoice::query()
-            ->where('landlord_id', $landlordId)
-            ->with('tenantUnit.tenant:id,full_name')
+        $query = RentInvoice::query();
+
+        // Super admins can view all rent invoices, others only their landlord's
+        if ($this->shouldFilterByLandlord($request)) {
+            $landlordId = $this->getLandlordId($request);
+            $query->where('landlord_id', $landlordId);
+        }
+
+        $query->with([
+                'tenantUnit.tenant:id,full_name,email,phone',
+                'tenantUnit.unit:id,unit_number,property_id,rent_amount',
+                'tenantUnit.unit.property:id,name'
+            ])
             ->latest('invoice_date');
 
         if ($request->filled('status')) {
@@ -43,9 +65,8 @@ class RentInvoiceController extends Controller
             $query->where('tenant_unit_id', $request->integer('tenant_unit_id'));
         }
 
-        $invoices = $query
-            ->paginate($perPage)
-            ->withQueryString();
+        // Paginate without withQueryString to avoid potential issues
+        $invoices = $query->paginate($perPage);
 
         return RentInvoiceResource::collection($invoices);
     }
@@ -53,7 +74,19 @@ class RentInvoiceController extends Controller
     public function store(StoreRentInvoiceRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $data['landlord_id'] = $this->getLandlordId($request);
+        $user = $request->user();
+
+        // Super admins must specify landlord_id when creating rent invoices
+        if ($user->isSuperAdmin() && !isset($data['landlord_id'])) {
+            return response()->json([
+                'message' => 'Super admin must specify landlord_id when creating rent invoices.',
+                'errors' => [
+                    'landlord_id' => ['The landlord_id field is required for super admin users.'],
+                ],
+            ], 422);
+        }
+
+        $data['landlord_id'] = $user->isSuperAdmin() ? $data['landlord_id'] : $this->getLandlordId($request);
         $data['status'] = $data['status'] ?? 'generated';
         
         // Initialize advance rent fields
@@ -81,8 +114,11 @@ class RentInvoiceController extends Controller
     {
         $this->authorize('view', $rentInvoice);
 
+        $user = $request->user();
+
         // Ensure rent invoice belongs to authenticated user's landlord (defense in depth)
-        if ($rentInvoice->landlord_id !== $request->user()->landlord_id) {
+        // Super admins can view any rent invoice
+        if (!$user->isSuperAdmin() && $rentInvoice->landlord_id !== $user->landlord_id) {
             abort(403, 'Unauthorized access to this rent invoice.');
         }
 
@@ -95,8 +131,11 @@ class RentInvoiceController extends Controller
     {
         $this->authorize('view', $rentInvoice);
 
+        $user = $request->user();
+
         // Ensure rent invoice belongs to authenticated user's landlord (defense in depth)
-        if ($rentInvoice->landlord_id !== $request->user()->landlord_id) {
+        // Super admins can export any rent invoice
+        if (!$user->isSuperAdmin() && $rentInvoice->landlord_id !== $user->landlord_id) {
             abort(403, 'Unauthorized access to this rent invoice.');
         }
 
@@ -137,8 +176,11 @@ class RentInvoiceController extends Controller
     {
         $this->authorize('update', $rentInvoice);
 
+        $user = $request->user();
+
         // Ensure rent invoice belongs to authenticated user's landlord (defense in depth)
-        if ($rentInvoice->landlord_id !== $request->user()->landlord_id) {
+        // Super admins can update any rent invoice
+        if (!$user->isSuperAdmin() && $rentInvoice->landlord_id !== $user->landlord_id) {
             abort(403, 'Unauthorized access to this rent invoice.');
         }
 
@@ -167,7 +209,23 @@ class RentInvoiceController extends Controller
         $this->authorize('create', RentInvoice::class);
 
         $data = $request->validated();
-        $landlordId = $request->user()->landlord_id;
+        $user = $request->user();
+
+        // Super admins must specify landlord_id for bulk generation
+        if ($user->isSuperAdmin()) {
+            $landlordId = $data['landlord_id'] ?? null;
+            if (!$landlordId) {
+                return response()->json([
+                    'message' => 'Super admin must specify landlord_id for bulk invoice generation.',
+                    'errors' => [
+                        'landlord_id' => ['The landlord_id field is required for super admin users.'],
+                    ],
+                ], 422);
+            }
+        } else {
+            $landlordId = $user->landlord_id;
+        }
+
         $skipExisting = $data['skip_existing'] ?? false;
 
         // Get all active tenant units for this landlord

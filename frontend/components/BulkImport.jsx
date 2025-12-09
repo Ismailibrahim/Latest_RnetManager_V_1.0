@@ -35,6 +35,7 @@ export function BulkImport({
   const [nationalities, setNationalities] = useState([]);
   const fileInputRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [error, setError] = useState(null);
 
   // Fetch relationship data
   const fetchRelationships = useCallback(async () => {
@@ -93,7 +94,7 @@ export function BulkImport({
     try {
       const token = localStorage.getItem("auth_token");
       if (!token) {
-        alert("Please log in to download the template.");
+        setError("Please log in to download the template.");
         return;
       }
 
@@ -116,8 +117,9 @@ export function BulkImport({
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      setError(null);
     } catch (error) {
-      alert(`Error downloading template: ${error.message}`);
+      setError(`Error downloading template: ${error.message}`);
     }
   }, [templateEndpoint, entityName]);
 
@@ -150,7 +152,7 @@ export function BulkImport({
       if (!selectedFile) return;
 
       if (!selectedFile.name.endsWith(".csv")) {
-        alert("Please select a CSV file");
+        setError("Please select a CSV file");
         return;
       }
 
@@ -486,9 +488,11 @@ export function BulkImport({
   // Handle import
   const handleImport = useCallback(async () => {
     if (validationErrors.length > 0) {
-      alert("Please fix validation errors before importing");
+      setError("Please fix validation errors before importing");
       return;
     }
+    
+    setError(null);
 
     setIsImporting(true);
     setImportResults(null);
@@ -522,8 +526,9 @@ export function BulkImport({
       if (onImportComplete) {
         onImportComplete(result);
       }
+      setError(null);
     } catch (error) {
-      alert(`Import failed: ${error.message}`);
+      setError(`Import failed: ${error.message}`);
     } finally {
       setIsImporting(false);
     }
@@ -534,6 +539,26 @@ export function BulkImport({
 
   return (
     <div className="space-y-6">
+      {/* Error Display */}
+      {error && (
+        <div className="rounded-2xl border border-red-200 bg-red-50/80 p-4 text-sm text-red-800">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={18} className="mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold">Error</p>
+              <p className="mt-1 text-xs text-red-700">{error}</p>
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="flex-shrink-0 rounded p-1 text-red-600 hover:bg-red-100 transition"
+              aria-label="Dismiss error"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Import Mode Toggle */}
       {supportsUpsert && (
         <div className="rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm">

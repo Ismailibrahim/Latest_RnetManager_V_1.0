@@ -7,6 +7,7 @@ use App\Http\Requests\BulkImportUnitsRequest;
 use App\Http\Requests\StoreUnitRequest;
 use App\Http\Requests\UpdateUnitRequest;
 use App\Http\Resources\UnitResource;
+use App\Models\Landlord;
 use App\Models\Property;
 use App\Models\Unit;
 use App\Models\UnitType;
@@ -15,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class UnitController extends Controller
 {
@@ -24,6 +26,17 @@ class UnitController extends Controller
      */
     public function index(Request $request)
     {
+        // Check database connection
+        try {
+            DB::connection()->getPdo();
+        } catch (\Exception $e) {
+            Log::error('Database connection failed in UnitController', ['error' => $e->getMessage()]);
+            return response()->json([
+                'message' => 'Database connection failed. Please check your database configuration.',
+                'error' => 'Database connection error',
+            ], 500);
+        }
+
         $this->authorize('viewAny', Unit::class);
 
         $perPage = $this->resolvePerPage($request);
@@ -51,9 +64,15 @@ class UnitController extends Controller
             $query->where('is_occupied', filter_var($request->input('is_occupied'), FILTER_VALIDATE_BOOLEAN));
         }
 
+        // Optimize: Select only required columns to reduce memory usage
+        // Paginate without withQueryString to avoid potential issues
         $units = $query
-            ->paginate($perPage)
-            ->withQueryString();
+            ->select([
+                'id', 'property_id', 'landlord_id', 'unit_type_id', 'unit_number',
+                'rent_amount', 'currency', 'security_deposit', 'security_deposit_currency',
+                'is_occupied', 'created_at', 'updated_at'
+            ])
+            ->paginate($perPage);
 
         return UnitResource::collection($units);
     }
@@ -82,6 +101,22 @@ class UnitController extends Controller
 
         $data['landlord_id'] = $user->isSuperAdmin() ? $data['landlord_id'] : $user->landlord_id;
         $data['is_occupied'] = $data['is_occupied'] ?? false;
+        
+        // Ensure currency defaults to MVR if not provided or invalid
+        if (!isset($data['currency']) || !in_array(strtoupper($data['currency'] ?? ''), ['MVR', 'USD'], true)) {
+            $data['currency'] = 'MVR';
+        } else {
+            $data['currency'] = strtoupper($data['currency']);
+        }
+        
+        // Ensure security_deposit_currency defaults to rent currency if not provided or invalid
+        if (isset($data['security_deposit']) && $data['security_deposit'] !== null) {
+            if (!isset($data['security_deposit_currency']) || !in_array(strtoupper($data['security_deposit_currency'] ?? ''), ['MVR', 'USD'], true)) {
+                $data['security_deposit_currency'] = $data['currency'] ?? 'MVR';
+            } else {
+                $data['security_deposit_currency'] = strtoupper($data['security_deposit_currency']);
+            }
+        }
 
         $unit = Unit::create($data);
         $unit->load(['unitType:id,name', 'property:id,name']);
@@ -129,6 +164,26 @@ class UnitController extends Controller
         }
 
         $validated = $request->validated();
+        
+        // Normalize currency to MVR or USD only, default to MVR
+        if (isset($validated['currency'])) {
+            $currency = strtoupper($validated['currency']);
+            if ($currency !== 'MVR' && $currency !== 'USD') {
+                $validated['currency'] = 'MVR';
+            } else {
+                $validated['currency'] = $currency;
+            }
+        }
+        
+        // Normalize security_deposit_currency
+        if (isset($validated['security_deposit_currency'])) {
+            $securityDepositCurrency = strtoupper($validated['security_deposit_currency']);
+            if ($securityDepositCurrency !== 'MVR' && $securityDepositCurrency !== 'USD') {
+                $validated['security_deposit_currency'] = $validated['currency'] ?? $unit->currency ?? 'MVR';
+            } else {
+                $validated['security_deposit_currency'] = $securityDepositCurrency;
+            }
+        }
 
         // If property_id is being updated, verify it belongs to the same landlord
         // Super admins can update to any property
@@ -275,15 +330,32 @@ class UnitController extends Controller
                     $unitNumber = $unitData['unit_number'];
                     $isOccupied = $unitData['is_occupied'] ?? false;
 
+                    // Normalize currency to MVR or USD only, default to MVR
+                    $currency = strtoupper($unitData['currency'] ?? 'MVR');
+                    if ($currency !== 'MVR' && $currency !== 'USD') {
+                        $currency = 'MVR';
+                    }
+                    
+                    // Normalize security deposit currency
+                    $securityDepositCurrency = null;
+                    if (isset($unitData['security_deposit']) && $unitData['security_deposit'] !== '') {
+                        $securityDepositCurrency = strtoupper($unitData['security_deposit_currency'] ?? $currency);
+                        if ($securityDepositCurrency !== 'MVR' && $securityDepositCurrency !== 'USD') {
+                            $securityDepositCurrency = $currency; // Default to rent currency
+                        }
+                    }
+
                     $unitDataToSave = [
                         'property_id' => $propertyId,
                         'landlord_id' => $landlordId,
                         'unit_type_id' => $unitTypeId,
                         'unit_number' => $unitNumber,
                         'rent_amount' => (float) $unitData['rent_amount'],
+                        'currency' => $currency,
                         'security_deposit' => isset($unitData['security_deposit']) && $unitData['security_deposit'] !== '' 
                             ? (float) $unitData['security_deposit'] 
                             : null,
+                        'security_deposit_currency' => $securityDepositCurrency,
                         'is_occupied' => is_bool($isOccupied) ? $isOccupied : filter_var($isOccupied, FILTER_VALIDATE_BOOLEAN),
                     ];
 
@@ -337,11 +409,11 @@ class UnitController extends Controller
     {
         $this->authorize('viewAny', Unit::class);
 
-        $csv = "property_name,property_id,unit_type_name,unit_type_id,unit_number,rent_amount,security_deposit,is_occupied\n";
-        $csv .= "Sunset Apartments,,Studio,,101,5000.00,10000.00,false\n";
-        $csv .= ",1,1BHK,,102,7500.00,15000.00,true\n";
-        $csv .= "Ocean View,,2BHK,,201,12000.00,24000.00,0\n";
-        $csv .= "Beach House,,Studio,,301,8000.00,,1\n";
+        $csv = "property_name,property_id,unit_type_name,unit_type_id,unit_number,rent_amount,currency,security_deposit,security_deposit_currency,is_occupied\n";
+        $csv .= "Sunset Apartments,,Studio,,101,5000.00,MVR,10000.00,MVR,false\n";
+        $csv .= ",1,1BHK,,102,7500.00,MVR,15000.00,MVR,true\n";
+        $csv .= "Ocean View,,2BHK,,201,12000.00,USD,24000.00,USD,0\n";
+        $csv .= "Beach House,,Studio,,301,8000.00,MVR,,,1\n";
 
         return response($csv, 200, [
             'Content-Type' => 'text/csv',
@@ -407,8 +479,21 @@ class UnitController extends Controller
             ], 401);
         }
 
-        $user->loadMissing('landlord.subscriptionLimit');
-        $landlord = $user->landlord;
+        // For super admins, get landlord_id from request data
+        // For regular users, use their own landlord_id
+        if ($user->isSuperAdmin()) {
+            $landlordId = $request->input('landlord_id');
+            
+            if (! $landlordId) {
+                // Skip limit check if landlord_id not provided yet (validation will catch this)
+                return null;
+            }
+
+            $landlord = Landlord::with('subscriptionLimit')->find($landlordId);
+        } else {
+            $user->loadMissing('landlord.subscriptionLimit');
+            $landlord = $user->landlord;
+        }
 
         if (! $landlord) {
             return response()->json([

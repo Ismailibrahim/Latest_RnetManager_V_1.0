@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { FileText, Calculator, Wallet, Shield, Banknote } from "lucide-react";
 import { formatMVR } from "@/lib/currency";
+import { formatCurrency as formatCurrencyUtil } from "@/lib/currency-formatter";
 
 export function FinalStatement({
   tenantUnit,
@@ -131,21 +132,45 @@ export function FinalStatement({
               <div className="flex justify-between">
                 <span className="text-slate-600">Original Deposit:</span>
                 <span className="font-semibold text-slate-900">
-                  {formatMVR(statement.securityDeposit)}
+                  {(() => {
+                    // Use security_deposit_currency from API response, or fall back to unit's security_deposit_currency
+                    const securityDepositCurrency = tenantUnit?.security_deposit_currency 
+                      ?? tenantUnit?.unit?.security_deposit_currency
+                      ?? tenantUnit?.unit?.currency
+                      ?? tenantUnit?.currency
+                      ?? 'MVR';
+                    return formatCurrencyUtil(statement.securityDeposit, securityDepositCurrency);
+                  })()}
                 </span>
               </div>
               {statement.totalRefundsProcessed > 0 && (
                 <div className="flex justify-between">
                   <span className="text-slate-600">Refunds Processed:</span>
                   <span className="font-semibold text-slate-600">
-                    {formatMVR(statement.totalRefundsProcessed)}
+                    {(() => {
+                      // Use security_deposit_currency from API response, or fall back to unit's security_deposit_currency
+                      const securityDepositCurrency = tenantUnit?.security_deposit_currency 
+                        ?? tenantUnit?.unit?.security_deposit_currency
+                        ?? tenantUnit?.unit?.currency
+                        ?? tenantUnit?.currency
+                        ?? 'MVR';
+                      return formatCurrencyUtil(statement.totalRefundsProcessed, securityDepositCurrency);
+                    })()}
                   </span>
                 </div>
               )}
               <div className="flex justify-between">
                 <span className="text-slate-600">Available for Refund:</span>
                 <span className="font-semibold text-primary">
-                  {formatMVR(statement.securityDepositRefund)}
+                  {(() => {
+                    // Use security_deposit_currency from API response, or fall back to unit's security_deposit_currency
+                    const securityDepositCurrency = tenantUnit?.security_deposit_currency 
+                      ?? tenantUnit?.unit?.security_deposit_currency
+                      ?? tenantUnit?.unit?.currency
+                      ?? tenantUnit?.currency
+                      ?? 'MVR';
+                    return formatCurrencyUtil(statement.securityDepositRefund, securityDepositCurrency);
+                  })()}
                 </span>
               </div>
             </div>

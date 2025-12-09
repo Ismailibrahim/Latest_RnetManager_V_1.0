@@ -20,7 +20,10 @@ trait BelongsToLandlord
         $landlordId = $landlordId ?? $this->getAuthenticatedLandlordId();
 
         if ($landlordId === null) {
-            return $query->whereRaw('1 = 0'); // Return empty result if no landlord context
+            // Security: Return empty result if no landlord context
+            // This prevents data leakage when user has no landlord_id
+            // Note: Super admins should use withoutGlobalScopes() explicitly
+            return $query->whereRaw('1 = 0');
         }
 
         return $query->where('landlord_id', $landlordId);
@@ -51,8 +54,19 @@ trait BelongsToLandlord
      */
     public function resolveRouteBinding($value, $field = null)
     {
+        $user = Auth::user();
         $landlordId = $this->getAuthenticatedLandlordId();
+        $isSuperAdmin = $user && method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin();
 
+        // Super admins can access any resource regardless of landlord_id
+        if ($isSuperAdmin) {
+            $field = $field ?: $this->getRouteKeyName();
+            return $this->withoutGlobalScopes()
+                ->where($field, $value)
+                ->first();
+        }
+
+        // For non-super admins, require landlord_id
         if ($landlordId === null) {
             return null;
         }

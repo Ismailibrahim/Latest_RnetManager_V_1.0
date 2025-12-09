@@ -23,6 +23,7 @@ class MaintenanceRequestResource extends JsonResource
             'location' => $this->location,
             'serviced_by' => $this->serviced_by,
             'invoice_number' => $this->invoice_number,
+            'receipt_path' => $this->receipt_path,
             'is_billable' => (bool) $this->is_billable,
             'billed_to_tenant' => (bool) $this->billed_to_tenant,
             'tenant_share' => (float) $this->tenant_share,

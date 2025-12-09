@@ -16,6 +16,7 @@ const initialFormState = {
   name: "",
   address: "",
   type: "residential",
+  landlord_id: "",
 };
 
 export default function NewPropertyPage() {
@@ -28,6 +29,82 @@ export default function NewPropertyPage() {
   const [unitsLimit, setUnitsLimit] = useState(null);
   const [unitsUsed, setUnitsUsed] = useState(null);
   const [billingError, setBillingError] = useState(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [landlords, setLandlords] = useState([]);
+  const [landlordsLoading, setLandlordsLoading] = useState(false);
+
+  // Check if user is super admin and fetch landlords if needed
+  useEffect(() => {
+    let isMounted = true;
+
+    async function checkUserRole() {
+      try {
+        const token = localStorage.getItem("auth_token");
+        if (!token) {
+          return;
+        }
+
+        const response = await fetch(`${API_BASE_URL}/account`, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const payload = await response.json();
+          const userRole = payload?.user?.role;
+          const superAdmin = userRole === "super_admin";
+          
+          if (!isMounted) return;
+          setIsSuperAdmin(superAdmin);
+
+          // If super admin, fetch landlords
+          if (superAdmin) {
+            fetchLandlords();
+          }
+        }
+      } catch {
+        // Ignore errors
+      }
+    }
+
+    async function fetchLandlords() {
+      setLandlordsLoading(true);
+      try {
+        const token = localStorage.getItem("auth_token");
+        if (!token) {
+          return;
+        }
+
+        const response = await fetch(`${API_BASE_URL}/admin/landlords?per_page=1000`, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const payload = await response.json();
+          const data = Array.isArray(payload?.data) ? payload.data : [];
+          if (isMounted) {
+            setLandlords(data);
+          }
+        }
+      } catch {
+        // Ignore errors
+      } finally {
+        if (isMounted) {
+          setLandlordsLoading(false);
+        }
+      }
+    }
+
+    checkUserRole();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Fetch billing settings to show units remaining
   useEffect(() => {
@@ -95,6 +172,14 @@ export default function NewPropertyPage() {
         throw new Error("You must be logged in before creating a property.");
       }
 
+      // Prepare form data - only include landlord_id if super admin
+      const formData = { ...form };
+      if (!isSuperAdmin) {
+        delete formData.landlord_id;
+      } else if (formData.landlord_id === "") {
+        delete formData.landlord_id;
+      }
+
       const response = await fetch(`${API_BASE_URL}/properties`, {
         method: "POST",
         headers: {
@@ -102,7 +187,7 @@ export default function NewPropertyPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify(formData),
       });
 
       if (response.status === 422) {
@@ -240,6 +325,34 @@ export default function NewPropertyPage() {
               <FieldError id="type-error">{validationErrors.type[0]}</FieldError>
             )}
           </Fieldset>
+
+          {isSuperAdmin && (
+            <Fieldset>
+              <Label htmlFor="landlord_id">Landlord</Label>
+              <select
+                id="landlord_id"
+                name="landlord_id"
+                value={form.landlord_id}
+                onChange={handleChange}
+                disabled={submitting || landlordsLoading}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                aria-describedby={validationErrors.landlord_id ? "landlord_id-error" : undefined}
+                required
+              >
+                <option value="">Select a landlord</option>
+                {landlords.map((landlord) => (
+                  <option key={landlord.id} value={landlord.id}>
+                    {landlord.company_name || `Landlord #${landlord.id}`}
+                  </option>
+                ))}
+              </select>
+              {validationErrors.landlord_id && (
+                <FieldError id="landlord_id-error">
+                  {validationErrors.landlord_id[0]}
+                </FieldError>
+              )}
+            </Fieldset>
+          )}
 
           <div className="flex items-center justify-end gap-3 pt-2">
             <Link
