@@ -82,34 +82,6 @@ export default function SystemSettingsPage() {
     );
   }
 
-  // Super admin landlord selector
-  const LandlordSelector = () => {
-    if (!isSuperAdmin || availableLandlords.length === 0) return null;
-    
-    return (
-      <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Select Landlord (Super Admin)
-        </label>
-        <select
-          value={selectedLandlordId || ''}
-          onChange={(e) => setSelectedLandlordId(e.target.value ? parseInt(e.target.value) : null)}
-          className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-        >
-          <option value="">-- Select a Landlord --</option>
-          {availableLandlords.map((landlord) => (
-            <option key={landlord.id} value={landlord.id}>
-              {landlord.name} ({landlord.email})
-            </option>
-          ))}
-        </select>
-        {settings?.message && (
-          <p className="mt-2 text-xs text-gray-600">{settings.message}</p>
-        )}
-      </div>
-    );
-  };
-
   if (error) {
     return (
       <div className="space-y-6">
@@ -197,9 +169,30 @@ export default function SystemSettingsPage() {
         </div>
       )}
 
-      <section className="card">
-        <LandlordSelector />
-      </section>
+      {isSuperAdmin && availableLandlords.length > 0 && (
+        <section className="card">
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Select Landlord (Super Admin)
+            </label>
+            <select
+              value={selectedLandlordId || ''}
+              onChange={(e) => setSelectedLandlordId(e.target.value ? parseInt(e.target.value) : null)}
+              className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">-- Select a Landlord --</option>
+              {availableLandlords.map((landlord) => (
+                <option key={landlord.id} value={landlord.id}>
+                  {landlord.name} ({landlord.email})
+                </option>
+              ))}
+            </select>
+            {settings?.message && (
+              <p className="mt-2 text-xs text-gray-600">{settings.message}</p>
+            )}
+          </div>
+        </section>
+      )}
 
       <section className="card flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-2">

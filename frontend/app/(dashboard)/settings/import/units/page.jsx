@@ -10,7 +10,7 @@ export default function UnitsImportPage() {
 
   const handleImportComplete = (results) => {
     // Optionally redirect or show success message
-    console.log("Import completed:", results);
+    // Import completed
   };
 
   return (

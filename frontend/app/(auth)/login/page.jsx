@@ -88,7 +88,9 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="space-y-6 rounded-3xl border border-slate-200 bg-white p-8 shadow-xl">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-white px-4 py-12">
+      <div className="mx-auto w-full max-w-md">
+        <div className="space-y-6 rounded-3xl border border-slate-200 bg-white p-8 shadow-xl">
       <header className="space-y-3 text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary shadow-lg">
           <Building2 size={22} className="text-white" />
@@ -108,7 +110,7 @@ export default function LoginPage() {
 
       <div className="text-center">
         <p className="text-sm text-slate-600">
-          Don't have an account?{" "}
+          Don&apos;t have an account?{" "}
           <Link
             href="/signup"
             className="font-medium text-primary transition hover:text-primary/80 hover:underline"
@@ -226,6 +228,8 @@ export default function LoginPage() {
           )}
         </button>
       </form>
+        </div>
+      </div>
     </div>
   );
 }

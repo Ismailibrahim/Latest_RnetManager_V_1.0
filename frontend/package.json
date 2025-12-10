@@ -12,6 +12,7 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
+    "@next/third-parties": "^16.0.8",
     "clsx": "^2.1.1",
     "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.10.2",
@@ -36,7 +37,7 @@
     "tailwindcss": "^4"
   },
   "optionalDependencies": {
-    "lightningcss-linux-x64-gnu": "^1.30.2",
-    "@tailwindcss/oxide-linux-x64-gnu": "^4.0.0"
+    "@tailwindcss/oxide-linux-x64-gnu": "^4.0.0",
+    "lightningcss-linux-x64-gnu": "^1.30.2"
   }
 }

@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { API_BASE_URL } from "@/utils/api-config";
 import { useAuth } from "@/contexts/AuthContext";
+import { formatCurrency } from "@/lib/currency-formatter";
+import { getPrimaryCurrency } from "@/utils/currency-config";
 
 const TIERS = ["basic", "pro", "enterprise"];
 
@@ -34,7 +36,6 @@ export default function SubscriptionSettingsPage() {
       }
 
       const url = `${API_BASE_URL}/admin/subscription-limits`;
-      console.log("Fetching subscription limits from:", url);
 
       let response;
       try {
@@ -366,7 +367,7 @@ export default function SubscriptionSettingsPage() {
 
                 <div>
                   <label className="block text-xs font-medium text-slate-700">
-                    Monthly Price ($)
+                    Monthly Price ({getPrimaryCurrency()})
                   </label>
                   <input
                     type="number"
@@ -404,7 +405,7 @@ export default function SubscriptionSettingsPage() {
                     <div className="flex justify-between">
                       <span>Price:</span>
                       <span className="font-medium">
-                        ${parseFloat(tierData.monthly_price).toFixed(2)}
+                        {formatCurrency(tierData.monthly_price, getPrimaryCurrency())}
                       </span>
                     </div>
                   </div>

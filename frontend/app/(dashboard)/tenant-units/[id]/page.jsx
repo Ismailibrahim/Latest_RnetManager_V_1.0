@@ -492,7 +492,7 @@ export default function TenantUnitDetailsPage({ params }) {
         </div>
         <div className="text-center">
           <p className="text-sm font-semibold text-slate-800">
-            We couldn't load the lease details
+            We couldn&apos;t load the lease details
           </p>
           <p className="mt-2 text-sm text-slate-500">{error}</p>
         </div>

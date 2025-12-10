@@ -62,16 +62,8 @@ export default function OwnersPage() {
         const isAdmin = userRole === "super_admin";
         setIsSuperAdmin(isAdmin);
         
-        // Debug logging
-        console.log('Owners page - User role check:', {
-          role: userRole,
-          isSuperAdmin: isAdmin,
-          currentUserFromContext: currentUser,
-        });
-
         if (isAdmin) {
           // For super admins, fetch all owners from admin endpoint
-          console.log('Fetching all owners from admin endpoint...');
           try {
             const ownersResponse = await fetch(`${API_BASE_URL}/admin/owners?per_page=1000`, {
               signal: controller.signal,
@@ -99,14 +91,6 @@ export default function OwnersPage() {
                 ? ownersData.data 
                 : [];
 
-              // Log for debugging
-              console.log('Fetched owners:', {
-                count: ownersList.length,
-                total: ownersData?.meta?.total || ownersList.length,
-                currentPage: ownersData?.meta?.current_page || 1,
-                lastPage: ownersData?.meta?.last_page || 1,
-              });
-
               setDelegates(ownersList);
               setAccount(null); // No account info for super admin view
               return; // Success, exit early
@@ -125,7 +109,6 @@ export default function OwnersPage() {
         
         // Regular users (or fallback from super admin endpoint failure)
         {
-          console.log('Fetching owners from regular account endpoint...');
           // For regular users, fetch account info (includes landlord info)
           const accountResponse = await fetch(`${API_BASE_URL}/account`, {
             signal: controller.signal,

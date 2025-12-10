@@ -39,7 +39,7 @@ export default function TenantsImportPage() {
 
   const handleImportComplete = (results) => {
     // Optionally redirect or show success message
-    console.log("Import completed:", results);
+    // Import completed
   };
 
   return (

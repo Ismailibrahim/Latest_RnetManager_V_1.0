@@ -181,7 +181,7 @@ export default function EditMaintenanceExpensePage({ params }) {
 
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
           <p className="font-semibold">Expense not found</p>
-          <p className="mt-1">The expense you're looking for doesn't exist or has been deleted.</p>
+          <p className="mt-1">The expense you&apos;re looking for doesn&apos;t exist or has been deleted.</p>
         </div>
       </div>
     );
@@ -199,7 +199,7 @@ export default function EditMaintenanceExpensePage({ params }) {
             Edit Expense
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-600">
-            Update maintenance expense details. After saving, you'll be taken back to the expenses list.
+            Update maintenance expense details. After saving, you&apos;ll be taken back to the expenses list.
           </p>
         </div>
         <div className="flex items-center gap-3">

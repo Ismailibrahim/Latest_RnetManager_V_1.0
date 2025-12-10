@@ -228,16 +228,6 @@ export default function CollectPaymentPage() {
     if (!updated) {
       // Don't clear linkedCharge if it's not in pendingCharges - it might have been paid
       // or filtered out, but we still need it for the payment submission
-      if (process.env.NODE_ENV === "development") {
-        console.log(
-          "[Payment Collection] Charge not found in pendingCharges, but preserving it:",
-          {
-            charge_id: linkedCharge.id,
-            charge_source_type: linkedCharge.source_type,
-            charge_source_id: linkedCharge.source_id,
-          }
-        );
-      }
       // Keep the linkedCharge - don't clear it
       return;
     }
@@ -266,13 +256,6 @@ export default function CollectPaymentPage() {
     };
     
     // Debug: Log when pendingPayments is computed (development only)
-    if (process.env.NODE_ENV === 'development' && linkedCharge) {
-      console.log('[Payment Collection] pendingPayments computed with charge:', {
-        charge_id: linkedCharge.id,
-        charge_source_type: linkedCharge.source_type,
-        charge_source_id: linkedCharge.source_id,
-      });
-    }
     
     return [payment];
   }, [batch, formData, selectedTenantUnit, linkedCharge]);
@@ -349,14 +332,6 @@ export default function CollectPaymentPage() {
       return;
     }
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[Payment Collection] Charge selected:', {
-        id: charge.id,
-        source_type: charge.source_type,
-        source_id: charge.source_id,
-        suggested_payment_type: charge.suggested_payment_type,
-      });
-    }
     
     setLinkedCharge(charge);
 
@@ -626,16 +601,6 @@ export default function CollectPaymentPage() {
   const handleSubmit = async () => {
     const queue = pendingPayments;
     
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[Payment Collection] Submitting payments:', {
-        queue_length: queue.length,
-        queue_items: queue.map(item => ({
-          id: item.id,
-          payment_type: item.form?.payment_type,
-          has_charge: !!item.charge,
-        })),
-      });
-    }
 
     if (queue.length === 0) {
       if (!validateStep(2)) {
@@ -659,25 +624,6 @@ export default function CollectPaymentPage() {
         // This handles the case where linkedCharge exists but wasn't included in pendingPayments
         const charge = item.charge || linkedCharge;
         
-        console.log('[Payment Collection] Processing item:', {
-          item_id: item.id,
-          has_item_charge: !!item.charge,
-          has_linkedCharge: !!linkedCharge,
-          item_charge_source_type: item.charge?.source_type,
-          item_charge_source_id: item.charge?.source_id,
-          linkedCharge_source_type: linkedCharge?.source_type,
-          linkedCharge_source_id: linkedCharge?.source_id,
-          final_charge_source_type: charge?.source_type,
-          final_charge_source_id: charge?.source_id,
-        });
-        
-        if (!item.charge && linkedCharge) {
-          console.log('[Payment Collection] Using linkedCharge for item:', {
-            item_id: item.id,
-            linkedCharge_source_type: linkedCharge.source_type,
-            linkedCharge_source_id: linkedCharge.source_id,
-          });
-        }
         
         // Handle advance rent separately
         if (item.form.payment_type === "advance_rent") {
@@ -746,13 +692,6 @@ export default function CollectPaymentPage() {
           const payload = buildPayload(item.form, charge);
           // Debug: Log payload to verify source_type and source_id are set
           if (item.charge) {
-            if (process.env.NODE_ENV === 'development') {
-              console.log('Payment payload with charge:', {
-                charge_id: item.charge.id,
-                charge_source_type: item.charge.source_type,
-                payload_source_type: payload.source_type,
-              });
-            }
           } else if (process.env.NODE_ENV === 'development') {
             console.warn('Payment payload WITHOUT charge');
           }
@@ -778,9 +717,6 @@ export default function CollectPaymentPage() {
           const isMaintenanceInvoice = item.charge?.source_type === 'maintenance_invoice' || 
                                       item.form.payment_type === 'maintenance_expense' ||
                                       item.response?.data?.source_type === 'maintenance_invoice';
-          if (isMaintenanceInvoice && process.env.NODE_ENV === 'development') {
-            console.log('[Payment Collection] Maintenance invoice payment detected');
-          }
           return isMaintenanceInvoice;
         }
       );
@@ -788,9 +724,6 @@ export default function CollectPaymentPage() {
       if (hasMaintenanceInvoicePayment) {
         // Signal that maintenance invoice payment was created
         const timestamp = Date.now().toString();
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[Payment Collection] Setting maintenance invoice payment flag:', timestamp);
-        }
         localStorage.setItem('maintenance_invoice_payment_created', timestamp);
       }
       
@@ -2286,7 +2219,7 @@ function ModeSelection({ selectedMode, onSelectMode, onSelectType, selectedType,
         <div className="space-y-4">
           <p className="text-sm font-semibold text-slate-900">Select Payment Type</p>
           <p className="text-sm text-slate-600">
-            Pick the type of payment you want to process. We'll tailor the rest of
+            Pick the type of payment you want to process. We&apos;ll tailor the rest of
             the form based on this choice.
           </p>
 
@@ -2363,6 +2296,8 @@ function BulkPaymentView({
 
   const currencyGroups = useMemo(() => {
     const groups = new Map();
+    if (!Array.isArray(selectedCharges)) return groups;
+    
     selectedCharges.forEach((charge) => {
       const currency = normalizeCurrency(charge.currency || getDefaultCurrency());
       if (!groups.has(currency)) {

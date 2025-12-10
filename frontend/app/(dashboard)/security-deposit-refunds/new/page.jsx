@@ -20,7 +20,7 @@ export default function NewSecurityDepositRefundPage() {
             Record a refund
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-600">
-            Create a new security deposit refund. After saving you'll be taken back to the list.
+            Create a new security deposit refund. After saving you&apos;ll be taken back to the list.
           </p>
         </div>
         <div className="flex items-center gap-3">

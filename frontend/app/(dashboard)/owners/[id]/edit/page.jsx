@@ -196,14 +196,7 @@ export default function EditOwnerPage({ params }) {
           ? accountData.delegates
           : [];
 
-        // Debug logging
-        console.log("Edit owner - Looking for owner:", {
-          ownerId,
-          ownerIdNum,
-          currentUserId: currentUserData?.id,
-          delegatesCount: delegatesList.length,
-          delegateIds: delegatesList.map((d) => d.id),
-        });
+        // Find owner from delegates list
 
         // Check if editing primary owner (current user) or delegate
         const isPrimary =
@@ -461,14 +454,6 @@ export default function EditOwnerPage({ params }) {
         ? `${API_BASE_URL}/admin/owners/${ownerId}/password`
         : `${API_BASE_URL}/account/delegates/${ownerId}/password`;
 
-      console.log("Resetting password:", { 
-        endpoint, 
-        ownerId, 
-        isSuperAdmin,
-        passwordLength: passwordForm.password.length,
-        hasConfirmation: !!passwordForm.password_confirmation,
-      });
-
       const response = await fetch(endpoint, {
         method: "PATCH",
         headers: {
@@ -482,21 +467,12 @@ export default function EditOwnerPage({ params }) {
         }),
       });
 
-      console.log("Password reset response:", {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-        headers: Object.fromEntries(response.headers.entries()),
-      });
-
       // Try to get response body
       let responseData;
       const contentType = response.headers.get("content-type");
-      console.log("Response content-type:", contentType);
       
       try {
         const text = await response.text();
-        console.log("Response text (raw):", text);
         
         if (contentType && contentType.includes("application/json")) {
           responseData = JSON.parse(text);
@@ -504,7 +480,6 @@ export default function EditOwnerPage({ params }) {
           responseData = { message: text || `HTTP ${response.status} ${response.statusText}` };
         }
         
-        console.log("Response data (parsed):", responseData);
       } catch (e) {
         console.error("Failed to parse response:", e);
         throw new Error(

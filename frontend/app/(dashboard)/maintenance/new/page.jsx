@@ -141,7 +141,7 @@ export default function NewMaintenanceExpensePage() {
             Record Expense
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-600">
-            Record a new maintenance expense. After saving, you'll be taken back to the expenses list.
+            Record a new maintenance expense. After saving, you&apos;ll be taken back to the expenses list.
           </p>
         </div>
         <div className="flex items-center gap-3">

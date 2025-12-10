@@ -225,7 +225,7 @@ export function SecurityDepositCalculator({ tenantUnit, onRefundCreated }) {
 
         {deductionReasons.length === 0 ? (
           <p className="text-sm text-slate-500">
-            No deductions added. Click "Add Deduction" to add any deductions.
+            No deductions added. Click &quot;Add Deduction&quot; to add any deductions.
           </p>
         ) : (
           <div className="space-y-2">

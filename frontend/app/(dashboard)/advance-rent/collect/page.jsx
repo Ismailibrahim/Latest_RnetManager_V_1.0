@@ -544,7 +544,7 @@ function CollectAdvanceRentPageContent() {
               ))}
             </select>
             <Hint icon={<Wallet size={14} className="text-slate-400" />}>
-              Currency for advance rent collection. Defaults to unit's currency but can be changed.
+              Currency for advance rent collection. Defaults to unit&apos;s currency but can be changed.
             </Hint>
             {validationErrors.currency ? (
               <FieldError id="currency-error">

@@ -163,7 +163,7 @@ export default function TelegramSettingsPage() {
           </h1>
           <p className="max-w-2xl text-sm text-slate-500">
             Configure Telegram Bot API settings to send notifications to your Telegram chat.
-            You'll need to create a bot via BotFather and get your chat ID.
+            You&apos;ll need to create a bot via BotFather and get your chat ID.
           </p>
         </div>
       </section>

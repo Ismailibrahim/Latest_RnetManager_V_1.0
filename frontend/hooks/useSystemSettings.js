@@ -32,11 +32,6 @@ export function useSystemSettings() {
       if (landlordId) {
         url += `?landlord_id=${landlordId}`;
       }
-      console.log('Fetching system settings from:', url);
-      console.log('API_BASE_URL:', API_BASE_URL);
-      console.log('Full URL:', url);
-      console.log('Token present:', !!token);
-      console.log('Token preview:', token ? `${token.substring(0, 20)}...` : 'none');
       
       let response;
       try {
@@ -71,13 +66,6 @@ export function useSystemSettings() {
         });
         
         const requestDuration = Date.now() - requestStartTime;
-        console.log('Request completed:', {
-          status: response.status,
-          statusText: response.statusText,
-          ok: response.ok,
-          duration: `${requestDuration}ms`,
-          headers: Object.fromEntries(response.headers.entries()),
-        });
         
         clearTimeout(timeoutId);
       } catch (fetchError) {
@@ -128,20 +116,10 @@ export function useSystemSettings() {
         throw fetchError;
       }
       
-      console.log('Response status:', response.status, response.statusText);
-      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
 
       let data;
       try {
         const responseText = await response.text();
-        console.log('📥 Response received:', {
-          status: response.status,
-          statusText: response.statusText,
-          contentType: response.headers.get('Content-Type'),
-          body_length: responseText.length,
-          body_first_500: responseText.substring(0, 500),
-          body_last_200: responseText.substring(Math.max(0, responseText.length - 200)),
-        });
         
         if (!responseText) {
           throw new Error('Empty response body');
@@ -155,46 +133,16 @@ export function useSystemSettings() {
         const firstBrace = jsonText.indexOf('{');
         const lastBrace = jsonText.lastIndexOf('}');
         
-        console.group('🔍 JSON Extraction Process');
-        console.log('Original Response Length:', responseText.length);
-        console.log('Trimmed Length:', jsonText.length);
-        console.log('First Brace Position:', firstBrace);
-        console.log('Last Brace Position:', lastBrace);
-        console.log('Has Valid Boundaries:', firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace);
-        console.groupEnd();
-        
         if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
           // Extract only the JSON portion
           const extractedJson = jsonText.substring(firstBrace, lastBrace + 1);
           
-          // Log if we had to clean it
-          if (extractedJson.length !== jsonText.length) {
-            const removedContent = jsonText.substring(lastBrace + 1);
-            console.group('⚠️ STRAY OUTPUT AFTER JSON - REMOVED');
-            console.error('Original Length:', responseText.length);
-            console.error('Trimmed Length:', jsonText.length);
-            console.error('Extracted Length:', extractedJson.length);
-            console.error('Removed Length:', removedContent.length);
-            console.error('Removed Content:', removedContent);
-            console.error('Removed Preview (first 200):', removedContent.substring(0, 200));
-            console.groupEnd();
-          }
-          
           jsonText = extractedJson;
-          console.log('✅ JSON extracted successfully, length:', jsonText.length);
         } else {
-          console.group('❌ Could not find valid JSON boundaries');
-          console.error('First Brace:', firstBrace);
-          console.error('Last Brace:', lastBrace);
-          console.error('Response Preview:', responseText.substring(0, 500));
-          console.error('Full Response:', responseText);
-          console.groupEnd();
-          
           // Try to find JSON using regex as fallback
           const jsonMatch = responseText.match(/(\{[\s\S]*\})/);
           if (jsonMatch) {
             jsonText = jsonMatch[1];
-            console.log('✅ Found JSON using regex fallback, length:', jsonText.length);
           } else {
             throw new Error('Could not find valid JSON in response. Response starts with: ' + responseText.substring(0, 100));
           }
@@ -213,15 +161,10 @@ export function useSystemSettings() {
           throw new Error(`Invalid JSON response: Response does not start with { or [. First 100 chars: ${jsonText?.substring(0, 100) || 'EMPTY'}`);
         }
         
-        console.log('✅ JSON validation passed, attempting parse...', {
-          json_length: jsonText.length,
-          starts_with: jsonText.substring(0, 10),
-        });
         
         // Parse JSON with detailed error handling
         try {
           data = JSON.parse(jsonText);
-          console.log('✅ JSON parsed successfully');
         } catch (parseError) {
           // Extract error position from message (format: "Unexpected token X in JSON at position Y")
           const positionMatch = parseError.message.match(/position (\d+)/);
@@ -256,43 +199,11 @@ export function useSystemSettings() {
             full_response_last_200: responseText.substring(Math.max(0, responseText.length - 200)),
           };
           
-          // Log error details - log each piece separately for better visibility
-          console.group('❌ JSON PARSE ERROR - DETAILED INFO');
-          console.error('Error Message:', parseError?.message || 'No message');
-          console.error('Error Name:', parseError?.name || 'No name');
-          console.error('Error Type:', typeof parseError);
-          console.error('Error Object:', parseError);
-          
-          console.group('JSON Information');
-          console.error('JSON Length:', jsonText?.length || 0);
-          console.error('JSON Starts With:', jsonText?.substring(0, 50) || 'EMPTY');
-          console.error('JSON Ends With:', jsonText?.substring(Math.max(0, (jsonText?.length || 0) - 50)) || 'EMPTY');
-          console.error('Error Position:', errorPos);
-          
+          // Log error details for debugging
+          console.error('JSON Parse Error:', parseError?.message || 'Unknown error');
           if (errorPos !== null && errorPos >= 0 && errorPos < jsonText.length) {
-            console.error('Char at Position:', jsonText[errorPos]);
-            console.error('Char Code at Position:', jsonText.charCodeAt(errorPos));
-            console.error('Surrounding (50 chars before/after):', jsonText.substring(
-              Math.max(0, errorPos - 50),
-              Math.min(jsonText.length, errorPos + 50)
-            ));
+            console.error('Error at position:', errorPos);
           }
-          console.groupEnd();
-          
-          console.group('Response Information');
-          console.error('Response Length:', responseText?.length || 0);
-          console.error('Response First 1000 chars:', responseText?.substring(0, 1000) || 'EMPTY');
-          console.error('Response Last 200 chars:', responseText?.substring(Math.max(0, (responseText?.length || 0) - 200)) || 'EMPTY');
-          console.groupEnd();
-          
-          console.group('Full Text Dumps');
-          console.error('=== FULL JSON TEXT ===');
-          console.error(jsonText);
-          console.error('=== FULL RESPONSE TEXT ===');
-          console.error(responseText);
-          console.groupEnd();
-          
-          console.groupEnd();
           
           // Create a more informative error
           const errorMsg = parseError?.message || 'Unknown JSON parse error';

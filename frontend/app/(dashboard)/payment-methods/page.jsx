@@ -583,11 +583,11 @@ function ErrorState({ message, onRetry }) {
       </div>
       <div>
         <p className="text-sm font-semibold text-slate-800">
-          We couldn't load payment methods
+          We couldn&apos;t load payment methods
         </p>
         <p className="mt-2 text-sm text-slate-500">{message}</p>
         <p className="mt-2 text-xs text-slate-400">
-          Ensure you're logged in and the API server is reachable at{" "}
+          Ensure you&apos;re logged in and the API server is reachable at{" "}
           <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">{API_BASE_URL}</code>
         </p>
       </div>

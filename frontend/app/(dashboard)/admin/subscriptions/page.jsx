@@ -152,7 +152,7 @@ export default function AdminSubscriptionsPage() {
   };
 
   const handleSuspend = async (landlord) => {
-    if (!confirm(`Are you sure you want to suspend ${landlord.company_name}'s subscription?`)) {
+    if (!confirm(`Are you sure you want to suspend ${landlord.company_name}&apos;s subscription?`)) {
       return;
     }
 
@@ -246,9 +246,9 @@ export default function AdminSubscriptionsPage() {
               <p className="font-semibold mb-2">Quick Browser Test:</p>
               <p className="mb-2">Open browser console (F12) and check:</p>
               <ol className="list-decimal list-inside space-y-1 text-xs">
-                <li>Is backend running? Test: <code className="bg-red-200 px-1 rounded">fetch('http://localhost:8000/api/v1')</code></li>
-                <li>Are you logged in? Check: <code className="bg-red-200 px-1 rounded">localStorage.getItem('auth_token')</code></li>
-                <li>What's your role? Test: <code className="bg-red-200 px-1 rounded">fetch('http://localhost:8000/api/v1/account', {`{headers: {Authorization: 'Bearer ' + localStorage.getItem('auth_token')}}`})</code></li>
+                <li>Is backend running? Test: <code className="bg-red-200 px-1 rounded">fetch(&apos;http://localhost:8000/api/v1&apos;)</code></li>
+                <li>Are you logged in? Check: <code className="bg-red-200 px-1 rounded">localStorage.getItem(&apos;auth_token&apos;)</code></li>
+                <li>What&apos;s your role? Test: <code className="bg-red-200 px-1 rounded">fetch(&apos;http://localhost:8000/api/v1/account&apos;, {`{headers: {Authorization: &apos;Bearer &apos; + localStorage.getItem(&apos;auth_token&apos;)}}`})</code></li>
               </ol>
             </div>
           </div>

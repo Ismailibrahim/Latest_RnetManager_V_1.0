@@ -168,7 +168,6 @@ export default function MaintenanceInvoicesPage() {
     if (pathname === '/maintenance-invoices') {
       // Always refresh when navigating to this page (with a small delay to avoid duplicate calls)
       const timeoutId = setTimeout(() => {
-        console.log('[Maintenance Invoices] Pathname changed to maintenance-invoices, refreshing...');
         setRefreshKey((prev) => prev + 1);
       }, 2000);
       
@@ -190,16 +189,10 @@ export default function MaintenanceInvoicesPage() {
         const now = Date.now();
         // Only refresh if payment was created in the last 30 seconds
         if (now - paymentTime < 30000) {
-          console.log('[Maintenance Invoices] Payment detected, refreshing in 1.5s...', {
-            paymentTime,
-            now,
-            age: now - paymentTime,
-          });
           // Clear the flag
           localStorage.removeItem('maintenance_invoice_payment_created');
           // Delay to ensure backend has finished updating status
           setTimeout(() => {
-            console.log('[Maintenance Invoices] Refreshing invoice list...');
             setRefreshKey((prev) => prev + 1);
           }, 1500);
         } else {
@@ -302,7 +295,6 @@ export default function MaintenanceInvoicesPage() {
           console.warn('Request URL:', `${API_BASE_URL}/tenant-units?per_page=200&status=active`);
         } else {
           // Log first tenant unit to verify structure
-          console.log('Sample tenant unit data:', tenantUnitsData[0]);
         }
 
         setTenantUnits(tenantUnitsData);
@@ -885,7 +877,6 @@ export default function MaintenanceInvoicesPage() {
         if (linkResponse.ok) {
           const linkResult = await linkResponse.json();
           if (linkResult.linked_count > 0) {
-            console.log('Linked payments:', linkResult);
           }
         }
       } catch (linkErr) {
@@ -2649,11 +2640,11 @@ function ErrorState({ message, onRetry }) {
       </div>
       <div>
         <p className="text-sm font-semibold text-slate-800">
-          We couldn't load maintenance invoices
+          We couldn&apos;t load maintenance invoices
         </p>
         <p className="mt-2 text-sm text-slate-500">{message}</p>
         <p className="mt-2 text-xs text-slate-400">
-          Ensure you're logged in and the API server is reachable at{" "}
+          Ensure you&apos;re logged in and the API server is reachable at{" "}
           <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">{API_BASE_URL}</code>
         </p>
       </div>
