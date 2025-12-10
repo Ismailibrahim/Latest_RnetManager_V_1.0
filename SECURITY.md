@@ -161,10 +161,30 @@ If you suspect a breach:
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
 - [Docker Security Best Practices](https://docs.docker.com/engine/security/)
 
+## 🚨 If Server is Compromised
+
+**See `INCIDENT_RESPONSE_GUIDE.md` for detailed step-by-step instructions.**
+
+**Quick Answer:** YES - Format and reinstall is the **SAFEST** approach. Once compromised, you cannot trust the system.
+
+**Immediate Actions:**
+1. Disconnect from internet
+2. Document evidence
+3. Format and reinstall OS
+4. Restore clean data from Git (NOT from backups)
+5. Change ALL passwords and keys
+6. Review SECURITY.md hardening checklist
+
+**Never:**
+- Keep running compromised server
+- Restore old binaries or executables
+- Reuse old Docker images
+- Copy files from compromised system
+
 ## 🔔 Security Updates
 
-**Last Security Audit**: $(date)
-**Next Scheduled Audit**: Weekly (recommended)
+**Last Security Audit**: Weekly (recommended)
+**Next Scheduled Audit**: Weekly
 
 To receive security alerts:
 - Monitor GitHub security advisories
