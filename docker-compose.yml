@@ -13,8 +13,11 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD:-rentapp_password}
     volumes:
       - mysql_data:/var/lib/mysql
-    ports:
-      - "${DB_PORT:-3306}:3306"
+    # SECURITY: Database port should NOT be exposed to host in production
+    # Only expose if you need direct database access from host (development only)
+    # In production, remove this ports section entirely
+    # ports:
+    #   - "${DB_PORT:-3306}:3306"
     networks:
       - rentapp_network
     healthcheck:
