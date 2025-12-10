@@ -1,31 +1,43 @@
-# Root ignores
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
 .DS_Store
-Thumbs.db
+*.pem
 
-# Node / frontend artifacts
-**/node_modules/
-**/.next/
-**/npm-debug.log*
-**/yarn-error.log
-**/pnpm-debug.log
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# PHP / backend artifacts
-**/vendor/
-**/storage/*.key
-
-# Environment & local overrides
+# local env files
+.env*.local
 .env
-**/.env
-**/.env.local
-**/.env.*.local
-env/*.local
 
-# Logs
-**/storage/logs/*.log
-**/logs/
+# vercel
+.vercel
 
-# IDE & tooling
-.idea/
-.vscode/
-*.code-workspace
+# typescript
+*.tsbuildinfo
+next-env.d.ts
 
+# Security: Never commit sensitive files
+*.pem
+*.key
+*.crt
+secrets/
+*.secret

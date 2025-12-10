@@ -423,7 +423,7 @@ export default function SignupPage() {
                               <div className={`flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${tier.gradientClasses} shadow-md text-lg`}>
                                 {tier.icon}
                               </div>
-                              <div>
+                        <div>
                                 <h3 className={`text-lg font-bold ${isSelected ? tier.textColorSelected : 'text-slate-900'} mb-0.5`}>
                                   {tier.label}
                                 </h3>
@@ -431,13 +431,13 @@ export default function SignupPage() {
                                   {tier.description}
                                 </p>
                               </div>
-                            </div>
-                            {isSelected && (
+                        </div>
+                        {isSelected && (
                               <div className={`flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br ${tier.gradientClasses} text-white shadow-md ring-2 ring-white`}>
                                 <Check size={12} />
-                              </div>
-                            )}
                           </div>
+                        )}
+                      </div>
 
                           {/* Price Section */}
                           {tierLimits && (
@@ -456,7 +456,7 @@ export default function SignupPage() {
                           )}
 
                           {/* Features Section */}
-                          {tierLimits && (
+                      {tierLimits && (
                             <div className="space-y-2.5">
                               <div className="flex items-center justify-between py-1">
                                 <div className="flex items-center gap-2">
@@ -464,27 +464,27 @@ export default function SignupPage() {
                                   <span className="text-xs font-medium text-slate-700">Properties</span>
                                 </div>
                                 <span className={`text-sm font-bold ${isSelected ? tier.textColorSelected : 'text-slate-900'}`}>
-                                  {tierLimits.max_properties}
-                                </span>
-                              </div>
+                              {tierLimits.max_properties}
+                            </span>
+                          </div>
                               <div className="flex items-center justify-between py-1">
                                 <div className="flex items-center gap-2">
                                   <div className={`h-1 w-1 rounded-full bg-gradient-to-r ${tier.gradientClasses}`} />
                                   <span className="text-xs font-medium text-slate-700">Units</span>
                                 </div>
                                 <span className={`text-sm font-bold ${isSelected ? tier.textColorSelected : 'text-slate-900'}`}>
-                                  {tierLimits.max_units}
-                                </span>
-                              </div>
+                              {tierLimits.max_units}
+                            </span>
+                          </div>
                               <div className="flex items-center justify-between py-1">
                                 <div className="flex items-center gap-2">
                                   <div className={`h-1 w-1 rounded-full bg-gradient-to-r ${tier.gradientClasses}`} />
                                   <span className="text-xs font-medium text-slate-700">Users</span>
                                 </div>
                                 <span className={`text-sm font-bold ${isSelected ? tier.textColorSelected : 'text-slate-900'}`}>
-                                  {tierLimits.max_users}
-                                </span>
-                              </div>
+                              {tierLimits.max_users}
+                            </span>
+                          </div>
                             </div>
                           )}
 
@@ -494,11 +494,11 @@ export default function SignupPage() {
                               <div className={`flex items-center gap-1.5 text-xs font-bold ${tier.textColorSelected}`}>
                                 <CheckCircle2 size={14} />
                                 Selected
-                              </div>
-                            </div>
-                          )}
+                          </div>
                         </div>
-                      </button>
+                      )}
+                        </div>
+                    </button>
                     </div>
                   );
                 })}
