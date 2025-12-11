@@ -19,6 +19,7 @@ import {
   Calendar,
   Shield,
   Settings,
+  LogIn,
 } from "lucide-react";
 import { DataDisplay } from "@/components/DataDisplay";
 import { API_BASE_URL } from "@/utils/api-config";
@@ -30,6 +31,7 @@ const typeOptions = [
   { value: "maintenance_request", label: "Maintenance request" },
   { value: "lease_expiry", label: "Lease expiry" },
   { value: "security_deposit", label: "Security deposit" },
+  { value: "user_login", label: "User login" },
   { value: "system", label: "System" },
 ];
 
@@ -59,6 +61,8 @@ function getTypeIcon(type) {
       return <Calendar size={16} />;
     case "security_deposit":
       return <Shield size={16} />;
+    case "user_login":
+      return <LogIn size={16} />;
     case "system":
       return <Settings size={16} />;
     default:

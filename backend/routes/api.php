@@ -38,6 +38,7 @@ use App\Http\Controllers\Api\V1\Mobile\MobileUnitController;
 use App\Http\Controllers\Api\V1\Mobile\MobilePaymentController;
 use App\Http\Controllers\Api\V1\Admin\AdminLandlordController;
 use App\Http\Controllers\Api\V1\Admin\AdminSignupController;
+use App\Http\Controllers\Api\V1\Admin\UserManagementController;
 use App\Http\Controllers\Api\V1\Admin\SubscriptionLimitsController;
 use App\Http\Middleware\EnsureCorsHeaders;
 use Illuminate\Support\Facades\Route;
@@ -686,6 +687,23 @@ Route::prefix('v1')->group(function (): void {
             Route::put('subscription-limits/{tier}', [SubscriptionLimitsController::class, 'update'])
                 ->middleware('throttle:20,1') // Very low limit for critical configuration changes
                 ->name('api.v1.admin.subscription-limits.update');
+            
+            // User management and permissions
+            Route::get('users', [UserManagementController::class, 'index'])
+                ->middleware('throttle:120,1')
+                ->name('api.v1.admin.users.index');
+            Route::get('users/{user}/permissions', [UserManagementController::class, 'getUserPermissions'])
+                ->middleware('throttle:60,1')
+                ->name('api.v1.admin.users.permissions');
+            Route::put('users/{user}/role', [UserManagementController::class, 'updateRole'])
+                ->middleware('throttle:30,1')
+                ->name('api.v1.admin.users.role.update');
+            Route::get('permissions/matrix', [UserManagementController::class, 'getPermissionMatrix'])
+                ->middleware('throttle:60,1')
+                ->name('api.v1.admin.permissions.matrix');
+            Route::get('permissions/resources', [UserManagementController::class, 'getResources'])
+                ->middleware('throttle:60,1')
+                ->name('api.v1.admin.permissions.resources');
         });
     });
 });

@@ -144,7 +144,18 @@ export default function NewUnitPage() {
           return;
         }
 
-        const url = new URL(`${API_BASE_URL}/properties`);
+        if (!API_BASE_URL || API_BASE_URL.trim() === '') {
+          setPropertyOptionsError("API configuration error. Please check your environment settings.");
+          return;
+        }
+
+        let url;
+        try {
+          url = new URL(`${API_BASE_URL}/properties`);
+        } catch (urlError) {
+          setPropertyOptionsError(`Invalid API URL configuration: ${API_BASE_URL}`);
+          return;
+        }
         url.searchParams.set("per_page", "100");
 
         const response = await fetch(url.toString(), {
@@ -207,7 +218,18 @@ export default function NewUnitPage() {
           return;
         }
 
-        const url = new URL(`${API_BASE_URL}/unit-types`);
+        if (!API_BASE_URL || API_BASE_URL.trim() === '') {
+          setUnitTypeOptionsError("API configuration error. Please check your environment settings.");
+          return;
+        }
+
+        let url;
+        try {
+          url = new URL(`${API_BASE_URL}/unit-types`);
+        } catch (urlError) {
+          setUnitTypeOptionsError(`Invalid API URL configuration: ${API_BASE_URL}`);
+          return;
+        }
         url.searchParams.set("per_page", "100");
 
         const response = await fetch(url.toString(), {

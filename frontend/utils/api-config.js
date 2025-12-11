@@ -14,7 +14,7 @@ const isDevelopment = process.env.NODE_ENV === 'development';
  * @throws {Error} If API URL is not set in production
  */
 export function getApiBaseUrl() {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
   
   // In development, allow localhost fallback for convenience
   if (isDevelopment) {
@@ -22,11 +22,11 @@ export function getApiBaseUrl() {
   }
   
   // In production, require the environment variable
-  if (!apiUrl) {
-    throw new Error(
-      'NEXT_PUBLIC_API_URL environment variable is required in production. ' +
-      'Please set it in your environment configuration.'
-    );
+  if (!apiUrl || apiUrl === '') {
+    console.error('NEXT_PUBLIC_API_URL is not set or is empty');
+    // Return empty string instead of throwing to prevent module load failure
+    // Components will handle the validation
+    return '';
   }
   
   return apiUrl;

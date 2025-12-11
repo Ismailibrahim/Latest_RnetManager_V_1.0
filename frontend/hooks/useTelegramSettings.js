@@ -82,7 +82,29 @@ export function useTelegramSettings() {
     });
 
     if (!response.ok) {
-      throw await handleApiError(response, { logError: false });
+      const error = await handleApiError(response, { logError: false });
+      
+      // Enhance error message for authorization errors
+      if (response.status === 403 || response.status === 500) {
+        // Try to get more details from the error response
+        try {
+          const text = await response.text();
+          if (text) {
+            try {
+              const errorData = JSON.parse(text);
+              if (errorData.message) {
+                error.message = errorData.message;
+              }
+            } catch (e) {
+              // Not JSON, keep original error
+            }
+          }
+        } catch (e) {
+          // Failed to read response, keep original error
+        }
+      }
+      
+      throw error;
     }
 
     const data = await response.json();
@@ -110,16 +132,58 @@ export function useTelegramSettings() {
     if (!response.ok) {
       // Get error message from response
       let errorMessage = "Failed to send test Telegram message.";
+      let errorDetails = null;
+      
       try {
-        const errorData = await response.json();
-        errorMessage = errorData.message || errorData.error || errorMessage;
-        logger.error("Telegram test error:", errorData);
+        const text = await response.text();
+        if (text) {
+          try {
+            const errorData = JSON.parse(text);
+            errorDetails = errorData;
+            // Extract error message from various possible fields
+            errorMessage = errorData.message 
+              || errorData.error 
+              || errorData.errors?.message
+              || (typeof errorData.errors === 'string' ? errorData.errors : null)
+              || errorMessage;
+            
+            // Log detailed error information
+            logger.error("Telegram test error:", {
+              status: response.status,
+              statusText: response.statusText,
+              error: errorMessage,
+              details: errorData,
+            });
+          } catch (parseError) {
+            // Response is text but not JSON
+            errorMessage = text || response.statusText || errorMessage;
+            logger.error("Telegram test error (non-JSON response):", {
+              status: response.status,
+              statusText: response.statusText,
+              responseText: text,
+            });
+          }
+        } else {
+          // Empty response body
+          errorMessage = response.statusText || errorMessage;
+          logger.error("Telegram test error (empty response):", {
+            status: response.status,
+            statusText: response.statusText,
+          });
+        }
       } catch (e) {
-        logger.error("Telegram test error (non-JSON):", response.status, response.statusText);
+        // Failed to read response
+        logger.error("Telegram test error (failed to read response):", {
+          status: response.status,
+          statusText: response.statusText,
+          error: e.message,
+        });
         errorMessage = response.statusText || errorMessage;
       }
+      
       const error = new Error(errorMessage);
       error.status = response.status;
+      error.details = errorDetails;
       throw error;
     }
 

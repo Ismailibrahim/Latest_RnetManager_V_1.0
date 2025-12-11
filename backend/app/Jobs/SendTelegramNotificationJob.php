@@ -45,17 +45,15 @@ class SendTelegramNotificationJob implements ShouldQueue
     public function handle(TelegramNotificationService $telegramService): void
     {
         try {
-            $success = $telegramService->sendCustomMessage(
+            // sendCustomMessage will throw an exception if it fails, otherwise returns true
+            $telegramService->sendCustomMessage(
                 $this->landlordId,
                 $this->chatId,
                 $this->message,
                 array_merge($this->options, ['sync' => true])
             );
 
-            if (! $success) {
-                throw new \Exception('Telegram service returned false');
-            }
-
+            // If we get here, the message was sent successfully
             Log::info("Telegram message sent successfully via queue", [
                 'landlord_id' => $this->landlordId,
                 'chat_id' => $this->chatId,

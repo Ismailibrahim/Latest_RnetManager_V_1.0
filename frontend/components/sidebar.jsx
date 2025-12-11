@@ -93,6 +93,7 @@ export function Sidebar({ onNavigate }) {
   };
 
   const isSuperAdmin = userRole === "super_admin";
+  const isAdmin = userRole === "admin" || isSuperAdmin;
 
   return (
     <aside className="flex min-h-screen flex-col border-r border-slate-200 bg-white px-5 py-6 text-slate-700 shadow-sm lg:overflow-y-auto">
@@ -142,8 +143,8 @@ export function Sidebar({ onNavigate }) {
           );
         })}
 
-        {/* Admin Section - Only visible to super_admin */}
-        {isSuperAdmin && (
+        {/* Admin Section - Only visible to super_admin and admin */}
+        {isAdmin && (
           <>
             <div className="my-4 border-t border-slate-200"></div>
             <div className="px-3 py-2">
@@ -151,6 +152,27 @@ export function Sidebar({ onNavigate }) {
                 Admin
               </p>
             </div>
+            <Link
+              href="/admin/users-rights"
+              onClick={handleLinkClick}
+              className={clsx(
+                "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                pathname === "/admin/users-rights" || pathname.startsWith("/admin/users-rights")
+                  ? "bg-primary/15 text-primary"
+                  : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+              )}
+            >
+              <Shield
+                size={18}
+                className={clsx(
+                  "transition-colors",
+                  pathname === "/admin/users-rights" || pathname.startsWith("/admin/users-rights")
+                    ? "text-primary"
+                    : "text-slate-400 group-hover:text-slate-900"
+                )}
+              />
+              User Rights
+            </Link>
             <Link
               href="/admin/signups"
               onClick={handleLinkClick}

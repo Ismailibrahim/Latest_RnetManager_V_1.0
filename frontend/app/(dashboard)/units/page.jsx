@@ -61,7 +61,16 @@ export default function UnitsPage() {
           );
         }
 
-        const url = new URL(`${API_BASE_URL}/units`);
+        if (!API_BASE_URL || API_BASE_URL.trim() === '') {
+          throw new Error("API configuration error. Please check your environment settings.");
+        }
+
+        let url;
+        try {
+          url = new URL(`${API_BASE_URL}/units`);
+        } catch (urlError) {
+          throw new Error(`Invalid API URL configuration: ${API_BASE_URL}`);
+        }
         url.searchParams.set("per_page", "50");
 
         if (propertyFilter !== "all") {
@@ -144,7 +153,18 @@ export default function UnitsPage() {
           return;
         }
 
-        const url = new URL(`${API_BASE_URL}/properties`);
+        if (!API_BASE_URL || API_BASE_URL.trim() === '') {
+          setPropertiesError("API configuration error. Please check your environment settings.");
+          return;
+        }
+
+        let url;
+        try {
+          url = new URL(`${API_BASE_URL}/properties`);
+        } catch (urlError) {
+          setPropertiesError(`Invalid API URL configuration: ${API_BASE_URL}`);
+          return;
+        }
         url.searchParams.set("per_page", "100");
 
         const response = await fetch(url.toString(), {

@@ -35,12 +35,17 @@ class SystemSettingsPolicy
 
     /**
      * Determine if the user can update settings.
-     * Only owners and admins can edit settings.
+     * Only owners, admins, and super admins can edit settings.
      */
     public function update(User $user, ?LandlordSetting $setting = null): bool
     {
         if (! $user->is_active) {
             return false;
+        }
+
+        // Super admins can edit any settings
+        if ($user->isSuperAdmin()) {
+            return true;
         }
 
         // Only owners and admins can edit settings

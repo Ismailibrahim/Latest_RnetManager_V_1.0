@@ -103,10 +103,37 @@ class SystemSettingsController extends Controller
                     return null;
                 }
                 
-                // For POST/PATCH, require landlord_id
-                // CRITICAL: Use response()->json() to return JsonResponse
+                // For POST/PATCH in settings, allow using default (first) landlord
+                // This makes it easier for super admins to configure default settings
+                try {
+                    $startTime = microtime(true);
+                    $firstLandlord = \App\Models\Landlord::orderBy('id')->limit(1)->first();
+                    
+                    $duration = microtime(true) - $startTime;
+                    if ($duration > 2) {
+                        Log::warning('SystemSettingsController: Default landlord query took longer than 2 seconds', [
+                            'duration' => $duration,
+                        ]);
+                    }
+                    
+                    if ($firstLandlord) {
+                        Log::info('SystemSettingsController: Super admin using default landlord for PATCH', [
+                            'landlord_id' => $firstLandlord->id,
+                            'duration' => round($duration, 3),
+                        ]);
+                        return $firstLandlord->id;
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('SystemSettingsController: Could not get default landlord for PATCH', [
+                        'error' => $e->getMessage(),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                    ]);
+                }
+                
+                // If no landlords exist, require landlord_id
                 $response = response()->json([
-                    'message' => 'Super admin must specify landlord_id.',
+                    'message' => 'Super admin must specify landlord_id. No default landlord found.',
                     'errors' => [
                         'landlord_id' => ['The landlord_id parameter is required for super admin users.'],
                     ],
@@ -1373,8 +1400,24 @@ class SystemSettingsController extends Controller
         $this->settingsService->updateTelegramSettings($landlordId, $validated);
         $telegramSettings = $this->settingsService->getTelegramSettings($landlordId);
 
+        // Check if bot token is set in settings or environment
+        $hasSettingsToken = ! empty($telegramSettings['bot_token']);
+        $hasEnvToken = ! empty(env('TELEGRAM_BOT_TOKEN'));
+
         // Prepare for response (remove bot token)
         $telegramSettings = TelegramConfigHelper::prepareForResponse($telegramSettings, false);
+
+        // Add indicator if using environment variable
+        if (! $hasSettingsToken && $hasEnvToken) {
+            $telegramSettings['bot_token_source'] = 'environment';
+            $telegramSettings['bot_token_configured'] = true;
+        } elseif ($hasSettingsToken) {
+            $telegramSettings['bot_token_source'] = 'settings';
+            $telegramSettings['bot_token_configured'] = true;
+        } else {
+            $telegramSettings['bot_token_source'] = 'none';
+            $telegramSettings['bot_token_configured'] = false;
+        }
 
         return response()->json([
             'message' => 'Telegram settings updated successfully.',
@@ -1430,27 +1473,37 @@ class SystemSettingsController extends Controller
             // Send test Telegram message
             $testChatId = $request->validated()['chat_id'];
             $telegramNotificationService = app(TelegramNotificationService::class);
-            $success = $telegramNotificationService->testTelegram($landlordId, $testChatId);
+            
+            // testTelegram will throw an exception if it fails, so we don't need to check the return value
+            $telegramNotificationService->testTelegram($landlordId, $testChatId);
 
-            if ($success) {
-                return response()->json([
-                    'message' => 'Test Telegram message sent successfully.',
-                    'success' => true,
-                ]);
-            } else {
-                return response()->json([
-                    'message' => 'Failed to send test Telegram message. Please check your configuration and try again.',
-                    'success' => false,
-                ], 500);
-            }
+            // If we get here, the message was sent successfully
+            return response()->json([
+                'message' => 'Test Telegram message sent successfully.',
+                'success' => true,
+            ]);
         } catch (\Exception $e) {
             Log::error('Exception in Telegram test', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
+                'landlord_id' => $landlordId,
+                'chat_id' => $request->validated()['chat_id'] ?? null,
             ]);
 
+            // Extract meaningful error message
+            $errorMessage = $e->getMessage();
+            
+            // Common Telegram API errors - provide user-friendly messages
+            if (str_contains($errorMessage, 'chat not found') || str_contains($errorMessage, 'Bad Request: chat not found')) {
+                $errorMessage = 'Chat ID not found. Please make sure you have started a conversation with your bot first.';
+            } elseif (str_contains($errorMessage, 'Unauthorized') || str_contains($errorMessage, 'invalid token')) {
+                $errorMessage = 'Invalid bot token. Please check your Telegram bot token.';
+            } elseif (str_contains($errorMessage, 'bot was blocked')) {
+                $errorMessage = 'The bot was blocked by the user. Please unblock the bot and try again.';
+            }
+
             return response()->json([
-                'message' => 'Error sending test Telegram message: ' . $e->getMessage(),
+                'message' => $errorMessage,
                 'success' => false,
                 'error' => config('app.debug') ? $e->getMessage() : null,
             ], 500);

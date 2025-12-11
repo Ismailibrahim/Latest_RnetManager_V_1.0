@@ -26,6 +26,8 @@ export default function TelegramSettingsPage() {
       maintenance_request: { enabled: false, template_id: null },
       lease_expiry: { enabled: false, template_id: null },
       security_deposit: { enabled: false, template_id: null },
+      signup_pending: { enabled: false, template_id: null },
+      user_login: { enabled: false, template_id: null },
       system: { enabled: false, template_id: null },
     },
   });
@@ -48,6 +50,8 @@ export default function TelegramSettingsPage() {
           maintenance_request: { enabled: false, template_id: null },
           lease_expiry: { enabled: false, template_id: null },
           security_deposit: { enabled: false, template_id: null },
+          signup_pending: { enabled: false, template_id: null },
+          user_login: { enabled: false, template_id: null },
           system: { enabled: false, template_id: null },
         },
       });
@@ -112,7 +116,20 @@ export default function TelegramSettingsPage() {
       setSuccessMessage("Telegram settings updated successfully.");
       await refetch();
     } catch (err) {
-      setErrorMessage(err.message || "Failed to update Telegram settings.");
+      // Extract error message with better handling
+      let errorMsg = err.message || "Failed to update Telegram settings.";
+      
+      // Handle authorization errors specifically
+      if (err.status === 403 || err.status === 500) {
+        if (err.message && err.message.includes("unauthorized")) {
+          errorMsg = "You don't have permission to update Telegram settings. Please contact your administrator.";
+        } else if (err.data?.message) {
+          errorMsg = err.data.message;
+        }
+      }
+      
+      setErrorMessage(errorMsg);
+      console.error("Telegram settings update error:", err);
     } finally {
       setSaving(false);
     }
@@ -133,7 +150,22 @@ export default function TelegramSettingsPage() {
       setSuccessMessage(`Test Telegram message sent successfully to chat ID ${testChatId}`);
       setTestChatId("");
     } catch (err) {
-      setErrorMessage(err.message || "Failed to send test Telegram message.");
+      // Extract error message, handling both Error objects and plain objects
+      let errorMsg = err.message || err.error || "Failed to send test Telegram message.";
+      
+      // If error has details, try to extract more specific message
+      if (err.details) {
+        if (err.details.message) {
+          errorMsg = err.details.message;
+        } else if (err.details.error) {
+          errorMsg = err.details.error;
+        } else if (typeof err.details === 'string') {
+          errorMsg = err.details;
+        }
+      }
+      
+      setErrorMessage(errorMsg);
+      console.error("Telegram test error details:", err);
     } finally {
       setTesting(false);
     }
@@ -361,6 +393,31 @@ export default function TelegramSettingsPage() {
             </h2>
           </header>
 
+          {!formData.enabled && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-700">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <p>
+                  Please enable Telegram notifications above to test your configuration.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {formData.enabled && !settings?.bot_token_configured && !formData.bot_token && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-700">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold">Bot token not configured</p>
+                  <p className="mt-1 text-xs">
+                    Enter a bot token above or set TELEGRAM_BOT_TOKEN in your environment variables.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-4">
             <div className="flex-1">
               <label
@@ -377,18 +434,21 @@ export default function TelegramSettingsPage() {
                 placeholder="123456789"
                 className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
               />
+              <p className="mt-1 text-xs text-slate-500">
+                Start a conversation with your bot on Telegram, then enter your chat ID here.
+              </p>
             </div>
             <div className="flex items-end">
               <button
                 type="button"
                 onClick={handleTestTelegram}
-                disabled={testing || !formData.enabled || !settings?.bot_token_configured}
+                disabled={testing || !formData.enabled || (!settings?.bot_token_configured && !formData.bot_token)}
                 className="flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
                 title={
                   !formData.enabled
                     ? "Enable Telegram notifications first"
-                    : !settings?.bot_token_configured
-                    ? "Bot token not configured"
+                    : !settings?.bot_token_configured && !formData.bot_token
+                    ? "Bot token not configured. Please enter a bot token in settings or set TELEGRAM_BOT_TOKEN in environment."
                     : ""
                 }
               >

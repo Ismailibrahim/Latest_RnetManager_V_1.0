@@ -107,7 +107,7 @@ class TelegramNotificationService
 
             // Check if Telegram is enabled
             if (! ($telegramSettings['enabled'] ?? false)) {
-                return false;
+                throw new \Exception('Telegram notifications are not enabled. Please enable Telegram notifications first.');
             }
 
             // Get bot token (per-landlord or global)
@@ -123,7 +123,7 @@ class TelegramNotificationService
             
             if (empty($botToken)) {
                 Log::error("No bot token configured for landlord {$landlordId}");
-                return false;
+                throw new \Exception('Telegram bot token is not configured. Please set TELEGRAM_BOT_TOKEN in your .env file or enter a bot token in settings.');
             }
 
             // Use parse_mode from options or settings default
@@ -152,10 +152,15 @@ class TelegramNotificationService
                     'landlord_id' => $landlordId,
                     'chat_id' => $chatId,
                     'error' => $result['error'],
+                    'error_code' => $result['error_code'] ?? null,
                 ]);
+                
+                // Throw exception with error details for better error handling
+                throw new \Exception($result['error']);
             }
 
-            return false;
+            // If result is false but no error details, throw generic exception
+            throw new \Exception('Failed to send Telegram message. Please check your configuration.');
         } catch (\Exception $e) {
             Log::error("Failed to send custom Telegram message: {$e->getMessage()}", [
                 'landlord_id' => $landlordId,
@@ -163,7 +168,8 @@ class TelegramNotificationService
                 'error' => $e->getMessage(),
             ]);
 
-            return false;
+            // Re-throw exception so caller can handle it properly
+            throw $e;
         }
     }
 
@@ -174,10 +180,20 @@ class TelegramNotificationService
      * @param  string  $chatId  Recipient chat ID
      * @return bool True if message was sent successfully
      */
+    /**
+     * Send a test Telegram message.
+     *
+     * @param  int  $landlordId  Landlord ID
+     * @param  string  $chatId  Recipient chat ID
+     * @return bool True if message was sent successfully
+     * @throws \Exception If message sending fails
+     */
     public function testTelegram(int $landlordId, string $chatId): bool
     {
         $message = 'Test Telegram - ' . config('app.name') . '. This is a test message to verify your Telegram configuration is working correctly.';
 
+        // sendCustomMessage now throws exceptions, so we just need to call it
+        // If it succeeds, it returns true, otherwise it throws
         return $this->sendCustomMessage($landlordId, $chatId, $message, ['sync' => true]);
     }
 
@@ -218,6 +234,8 @@ class TelegramNotificationService
             'maintenance_request' => 'Maintenance Request Update',
             'lease_expiry' => 'Lease Expiration Reminder',
             'security_deposit' => 'Security Deposit Update',
+            'signup_pending' => 'Pending Signup Notification',
+            'user_login' => 'User Login Notification',
             default => 'Notification from ' . config('app.name'),
         };
 
@@ -226,6 +244,42 @@ class TelegramNotificationService
         }
 
         return "{$prefix}: {$message}";
+    }
+
+    /**
+     * Send notification to all super admins (for system-level notifications like signups).
+     *
+     * @param  string  $type  Notification type (e.g., 'signup_pending')
+     * @param  array  $data  Data for the Telegram template
+     * @return int Number of super admins notified
+     */
+    public function notifySuperAdmins(string $type, array $data): int
+    {
+        try {
+            // Get all super admin users
+            $superAdmins = \App\Models\User::where('role', \App\Models\User::ROLE_SUPER_ADMIN)
+                ->where('is_active', true)
+                ->whereNotNull('landlord_id')
+                ->get();
+
+            $notifiedCount = 0;
+
+            foreach ($superAdmins as $superAdmin) {
+                // Send notification using the super admin's landlord settings
+                if ($this->sendNotification($superAdmin->landlord_id, $type, $data)) {
+                    $notifiedCount++;
+                }
+            }
+
+            return $notifiedCount;
+        } catch (\Exception $e) {
+            Log::error("Failed to notify super admins: {$e->getMessage()}", [
+                'type' => $type,
+                'error' => $e->getMessage(),
+            ]);
+
+            return 0;
+        }
     }
 }
 

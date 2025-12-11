@@ -5,8 +5,11 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\SignupRequest;
 use App\Models\Landlord;
+use App\Models\Notification;
 use App\Models\User;
+use App\Models\UserLoginLog;
 use App\Services\SubscriptionExpiryService;
+use App\Services\TelegramNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +20,8 @@ use Illuminate\Validation\ValidationException;
 class AuthController extends Controller
 {
     public function __construct(
-        private SubscriptionExpiryService $expiryService
+        private SubscriptionExpiryService $expiryService,
+        private TelegramNotificationService $telegramService
     ) {
     }
 
@@ -89,6 +93,31 @@ class AuthController extends Controller
         $user->forceFill([
             'last_login_at' => now(),
         ])->saveQuietly();
+
+        // Log user login (non-blocking)
+        try {
+            // Check if this is user's first login today (before creating log entry)
+            $isFirstLoginToday = !UserLoginLog::hasLoggedInToday($user->id);
+
+            // Create login log entry
+            UserLoginLog::create([
+                'user_id' => $user->id,
+                'logged_in_at' => now(),
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+            ]);
+
+            // Send notifications to super admins only on first login of day
+            if ($isFirstLoginToday) {
+                $this->notifySuperAdminsOfLogin($user);
+            }
+        } catch (\Exception $e) {
+            // Log error but don't fail login
+            Log::warning('Failed to log user login or send notifications', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         // Load landlord with minimal fields
         $user->load('landlord:id,company_name,subscription_tier');
@@ -174,6 +203,32 @@ class AuthController extends Controller
                 'subscription_tier' => $landlord->subscription_tier,
             ]);
 
+            // Send Telegram notification to super admins about pending signup
+            try {
+                $this->telegramService->notifySuperAdmins('signup_pending', [
+                    'title' => 'New Pending Signup',
+                    'message' => "A new signup is pending approval:\n\n"
+                        . "Name: {$user->first_name} {$user->last_name}\n"
+                        . "Email: {$user->email}\n"
+                        . "Mobile: {$user->mobile}\n"
+                        . "Company: {$landlord->company_name}\n"
+                        . "Subscription Tier: " . ucfirst($landlord->subscription_tier) . "\n"
+                        . "Signup Date: " . $user->created_at->format('Y-m-d H:i:s'),
+                    'user_id' => $user->id,
+                    'user_email' => $user->email,
+                    'user_name' => "{$user->first_name} {$user->last_name}",
+                    'company_name' => $landlord->company_name,
+                    'subscription_tier' => $landlord->subscription_tier,
+                    'signup_date' => $user->created_at->format('Y-m-d H:i:s'),
+                ]);
+            } catch (\Exception $e) {
+                // Log error but don't fail the signup if Telegram notification fails
+                Log::warning('Failed to send Telegram notification for new signup', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             return response()->json([
                 'message' => 'Signup successful. Your account is pending approval by an administrator.',
                 'data' => [
@@ -218,6 +273,77 @@ class AuthController extends Controller
         return response()->json([
             'data' => $limits,
         ]);
+    }
+
+    /**
+     * Notify super admins about user login.
+     *
+     * @param  User  $user
+     * @return void
+     */
+    private function notifySuperAdminsOfLogin(User $user): void
+    {
+        try {
+            // Get all super admin users
+            $superAdmins = User::where('role', User::ROLE_SUPER_ADMIN)
+                ->where('is_active', true)
+                ->whereNotNull('landlord_id')
+                ->get();
+
+            $userName = trim("{$user->first_name} {$user->last_name}") ?: $user->email;
+            $loginTime = now()->format('Y-m-d H:i:s');
+            $companyName = $user->landlord?->company_name ?? 'N/A';
+
+            foreach ($superAdmins as $superAdmin) {
+                // Create web notification for each super admin
+                try {
+                    Notification::create([
+                        'landlord_id' => $superAdmin->landlord_id,
+                        'type' => 'user_login',
+                        'title' => 'User Logged In',
+                        'message' => "{$userName} logged in at {$loginTime}",
+                        'priority' => 'low',
+                        'sent_via' => 'in_app',
+                        'metadata' => [
+                            'user_id' => $user->id,
+                            'user_name' => $userName,
+                            'user_email' => $user->email,
+                            'company_name' => $companyName,
+                            'login_time' => $loginTime,
+                        ],
+                    ]);
+                } catch (\Exception $e) {
+                    Log::warning('Failed to create login notification', [
+                        'super_admin_id' => $superAdmin->id,
+                        'user_id' => $user->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            // Send Telegram notifications (async via queue)
+            try {
+                $this->telegramService->notifySuperAdmins('user_login', [
+                    'title' => 'User Logged In',
+                    'message' => "{$userName} logged in at {$loginTime}",
+                    'user_id' => $user->id,
+                    'user_name' => $userName,
+                    'user_email' => $user->email,
+                    'company_name' => $companyName,
+                    'login_time' => $loginTime,
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('Failed to send Telegram notification for login', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to notify super admins of login', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }
 
