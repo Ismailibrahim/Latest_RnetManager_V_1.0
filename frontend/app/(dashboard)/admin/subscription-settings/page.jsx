@@ -16,6 +16,15 @@ import { getPrimaryCurrency } from "@/utils/currency-config";
 
 const TIERS = ["basic", "pro", "enterprise"];
 
+// Helper function to safely get a number value for input fields
+// Returns empty string if value is null, undefined, or NaN
+const getInputValue = (value) => {
+  if (value === null || value === undefined || (typeof value === 'number' && isNaN(value))) {
+    return '';
+  }
+  return value;
+};
+
 export default function SubscriptionSettingsPage() {
   const { user, isLoading: authLoading } = useAuth();
   const [limits, setLimits] = useState({});
@@ -327,9 +336,9 @@ export default function SubscriptionSettingsPage() {
                   <input
                     type="number"
                     min="0"
-                    value={formTierData.max_properties ?? tierData.max_properties}
+                    value={getInputValue(formTierData.max_properties ?? tierData.max_properties)}
                     onChange={(e) =>
-                      handleChange(tier, "max_properties", parseInt(e.target.value))
+                      handleChange(tier, "max_properties", parseInt(e.target.value) || 0)
                     }
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
@@ -342,9 +351,9 @@ export default function SubscriptionSettingsPage() {
                   <input
                     type="number"
                     min="0"
-                    value={formTierData.max_units ?? tierData.max_units}
+                    value={getInputValue(formTierData.max_units ?? tierData.max_units)}
                     onChange={(e) =>
-                      handleChange(tier, "max_units", parseInt(e.target.value))
+                      handleChange(tier, "max_units", parseInt(e.target.value) || 0)
                     }
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
@@ -357,9 +366,9 @@ export default function SubscriptionSettingsPage() {
                   <input
                     type="number"
                     min="1"
-                    value={formTierData.max_users ?? tierData.max_users}
+                    value={getInputValue(formTierData.max_users ?? tierData.max_users)}
                     onChange={(e) =>
-                      handleChange(tier, "max_users", parseInt(e.target.value))
+                      handleChange(tier, "max_users", parseInt(e.target.value) || 1)
                     }
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
@@ -373,12 +382,12 @@ export default function SubscriptionSettingsPage() {
                     type="number"
                     min="0"
                     step="0.01"
-                    value={formTierData.monthly_price ?? tierData.monthly_price}
+                    value={getInputValue(formTierData.monthly_price ?? tierData.monthly_price)}
                     onChange={(e) =>
                       handleChange(
                         tier,
                         "monthly_price",
-                        parseFloat(e.target.value)
+                        parseFloat(e.target.value) || 0
                       )
                     }
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
