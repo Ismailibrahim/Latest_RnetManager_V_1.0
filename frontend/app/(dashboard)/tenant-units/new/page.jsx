@@ -38,6 +38,7 @@ const initialFormState = {
   leaseDocumentFile: null,
   status: "active",
   currency: "",
+  securityDepositCurrency: "",
 };
 
 function NewTenantUnitPageContent() {
@@ -477,11 +478,26 @@ function NewTenantUnitPageContent() {
         updated.currency = currencyCode;
       }
 
-      // Don't auto-fill securityDepositPaid - it should only be set when payment is actually collected
-      // The depositValue (from unit.security_deposit) is just the expected amount, not what's been paid
-      // Security deposit should default to 0 or empty, and only be updated via payment collection
-      // We'll keep the field empty/0 so users can manually enter if they've already collected it
-      // Otherwise, they should use the payment collection page to record the payment
+      // Auto-fill security deposit amount when unit is selected (similar to monthly rent)
+      if (!securityDepositManuallyEdited && depositValue !== null) {
+        const depositString = depositValue.toString();
+        if (previous.securityDepositPaid !== depositString) {
+          if (!changed) {
+            updated = { ...previous };
+            changed = true;
+          }
+          updated.securityDepositPaid = depositString;
+        }
+      }
+
+      // Set security deposit currency from unit if not manually set
+      if (previous.securityDepositCurrency !== securityDepositCurrencyCode) {
+        if (!changed) {
+          updated = { ...previous };
+          changed = true;
+        }
+        updated.securityDepositCurrency = securityDepositCurrencyCode;
+      }
 
       if (!changed) {
         return previous;
@@ -1255,6 +1271,13 @@ function buildFormData(form) {
   if (currency) {
     formData.append("currency", currency);
   }
+  
+  // Add security deposit currency from form (set from unit when unit is selected)
+  const securityDepositCurrency = form.securityDepositCurrency || form.currency || 'MVR';
+  if (securityDepositCurrency) {
+    formData.append("security_deposit_currency", securityDepositCurrency);
+  }
+  
   appendOptionalNumeric(formData, "notice_period_days", form.noticePeriodDays);
   appendOptionalNumeric(
     formData,
