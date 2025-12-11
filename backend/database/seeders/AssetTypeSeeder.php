@@ -15,7 +15,16 @@ class AssetTypeSeeder extends Seeder
             ['name' => 'Washing Machine', 'category' => 'appliance'],
             ['name' => 'Water Heater', 'category' => 'appliance'],
             ['name' => 'Microwave', 'category' => 'appliance'],
-            ['name' => 'Television', 'category' => 'electronic'],  
+            ['name' => 'Television', 'category' => 'electronic'],
+            ['name' => 'Dishwasher', 'category' => 'appliance'],
+            ['name' => 'Oven', 'category' => 'appliance'],
+            ['name' => 'Stove', 'category' => 'appliance'],
+            ['name' => 'Dryer', 'category' => 'appliance'],
+            ['name' => 'Table', 'category' => 'furniture'],
+            ['name' => 'Chair', 'category' => 'furniture'],
+            ['name' => 'Sofa', 'category' => 'furniture'],
+            ['name' => 'Bed', 'category' => 'furniture'],
+            ['name' => 'Cabinet', 'category' => 'furniture'],
         ];
 
         foreach ($types as $type) {
@@ -24,26 +33,5 @@ class AssetTypeSeeder extends Seeder
                 ['category' => $type['category'], 'is_active' => true],
             );
         }
-
-        $existingNames = AssetType::query()->pluck('name')->map('strtolower')->all();
-
-        AssetType::factory()
-            ->count(5)
-            ->sequence(fn () => [
-                'name' => $this->uniqueName($existingNames),
-            ])
-            ->create();
-    }
-
-    protected function uniqueName(array &$existing): string
-    {
-        do {
-            $candidate = strtolower(fake()->unique()->word());
-        } while (in_array($candidate, $existing, true));
-
-        $existing[] = $candidate;
-
-        return ucfirst($candidate);
     }
 }
-

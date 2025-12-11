@@ -29,7 +29,6 @@ class NotificationController extends Controller
             $landlordId = $this->getLandlordId($request);
             $query->where('landlord_id', $landlordId);
         }
-            ->latest();
 
         if ($request->filled('is_read')) {
             $query->where('is_read', filter_var($request->input('is_read'), FILTER_VALIDATE_BOOLEAN));

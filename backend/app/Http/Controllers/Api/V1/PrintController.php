@@ -73,7 +73,7 @@ class PrintController extends Controller
         }
 
         // Get landlord ID
-        $landlordId = $this->getLandlordId($document, $type);
+        $landlordId = $this->getDocumentLandlordId($document, $type);
         if (!$landlordId) {
             return response()->json(['message' => 'Unable to determine landlord for this document.'], 500);
         }
@@ -151,7 +151,7 @@ class PrintController extends Controller
             return true;
         }
 
-        $landlordId = $this->getLandlordId($document, $type);
+        $landlordId = $this->getDocumentLandlordId($document, $type);
         if (!$landlordId) {
             return false;
         }
@@ -163,7 +163,7 @@ class PrintController extends Controller
     /**
      * Get landlord ID from document.
      */
-    private function getLandlordId($document, string $type): ?int
+    public function getDocumentLandlordId($document, string $type): ?int
     {
         if (!$document) {
             return null;

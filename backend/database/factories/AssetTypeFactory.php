@@ -14,11 +14,14 @@ class AssetTypeFactory extends Factory
 
     public function definition(): array
     {
+        static $categories = ['appliance', 'furniture', 'electronic', 'fixture', 'other'];
+        static $counter = 0;
+        $names = ['Refrigerator', 'Washing Machine', 'Air Conditioner', 'Television', 'Microwave', 'Dishwasher'];
+        
         return [
-            'name' => ucfirst(fake()->unique()->word()),
-            'category' => fake()->randomElement(['appliance', 'furniture', 'electronic', 'fixture', 'other']),
+            'name' => $names[$counter++ % count($names)],
+            'category' => $categories[$counter % count($categories)],
             'is_active' => true,
         ];
     }
 }
-

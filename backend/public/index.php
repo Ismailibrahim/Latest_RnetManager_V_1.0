@@ -5,53 +5,6 @@ use Illuminate\Http\Request;
 
 define('LARAVEL_START', microtime(true));
 
-// Set error handler to catch fatal errors
-register_shutdown_function(function () {
-    $error = error_get_last();
-    if ($error !== null && in_array($error['type'], [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_PARSE])) {
-        // Log fatal error
-        $logFile = __DIR__.'/../storage/logs/laravel.log';
-        $message = sprintf(
-            "[%s] FATAL ERROR: %s in %s on line %d\nStack trace:\n%s\n",
-            date('Y-m-d H:i:s'),
-            $error['message'],
-            $error['file'],
-            $error['line'],
-            (new \Exception())->getTraceAsString()
-        );
-        @file_put_contents($logFile, $message, FILE_APPEND);
-        
-        // Generate crash report if possible
-        try {
-            if (class_exists(\App\Support\CrashReporter::class)) {
-                \App\Support\CrashReporter::report(
-                    'FATAL_ERROR',
-                    $error['message'],
-                    [
-                        'file' => $error['file'],
-                        'line' => $error['line'],
-                        'type' => $error['type'],
-                    ]
-                );
-            }
-        } catch (\Exception $e) {
-            // If crash reporter fails, just log it
-            @file_put_contents($logFile, "Failed to generate crash report: " . $e->getMessage() . "\n", FILE_APPEND);
-        }
-        
-        // Return a proper error response if possible
-        if (!headers_sent()) {
-            http_response_code(500);
-            header('Content-Type: application/json');
-            echo json_encode([
-                'message' => 'Internal server error',
-                'error' => 'A fatal error occurred. Please check the logs.',
-                'timestamp' => date('Y-m-d H:i:s'),
-            ]);
-        }
-    }
-});
-
 // Determine if the application is in maintenance mode...
 if (file_exists($maintenance = __DIR__.'/../storage/framework/maintenance.php')) {
     require $maintenance;
@@ -62,132 +15,22 @@ require __DIR__.'/../vendor/autoload.php';
 
 // Bootstrap Laravel and handle the request...
 try {
-    // CRITICAL: Start output buffering to catch ANY stray output
-    ob_start();
-    
     /** @var Application $app */
     $app = require_once __DIR__.'/../bootstrap/app.php';
     
     // Capture request
     $request = Request::capture();
     
-    // Let Laravel handle everything - including CORS via ForceCors middleware
-    $response = $app->handleRequest($request);
+    // Use Kernel to handle request
+    $kernel = $app->make(Illuminate\Contracts\Http\Kernel::class);
+    $response = $kernel->handle($request);
+    $kernel->terminate($request, $response);
     
-    // CRITICAL: Get any output that was accidentally sent
-    $obContent = ob_get_clean();
-    if (!empty($obContent)) {
-        \Log::error('STRAY OUTPUT DETECTED - This will corrupt JSON!', [
-            'output_length' => strlen($obContent),
-            'output_preview' => substr($obContent, 0, 500),
-            'output_full' => $obContent,
-        ]);
-        // DO NOT append this to response - it will corrupt JSON
-    }
-    
-    // CRITICAL: Check if response is null BEFORE processing
-    // If null, Laravel's exception handler should have created a response
-    // Don't create duplicate responses
-    if ($response === null) {
-        \Log::error('Application returned null response - checking if exception handler created response');
-        
-        // Check if headers were sent (indicates response was already sent)
-        if (headers_sent()) {
-            \Log::warning('Headers already sent - response may have been sent by exception handler');
-            // Exit to prevent duplicate output
-            exit(0);
-        }
-        
-        // Only create fallback if truly no response exists
-        $response = response()->json([
-            'error' => 'Internal server error',
-            'message' => 'Application returned null response'
-        ], 500, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        
-        // Add CORS headers to error response
-        $origin = $request->headers->get('Origin', '*');
-        $response->header('Access-Control-Allow-Origin', $origin);
-        $response->header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-        $response->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
-        $response->header('Access-Control-Allow-Credentials', 'true');
-        $response->header('Content-Type', 'application/json; charset=utf-8');
-    }
-    
-    // CRITICAL: Ensure response content is clean JSON for JSON responses
-    $contentType = $response->headers->get('Content-Type', '');
-    if (str_contains($contentType, 'application/json')) {
-        $content = $response->getContent();
-        
-        // Remove any whitespace before/after JSON
-        $content = trim($content);
-        
-        // CRITICAL: Find where JSON ends and remove everything after
-        // This handles cases where extra content is appended
-        $jsonStart = strpos($content, '{');
-        $jsonEnd = strrpos($content, '}');
-        
-        if ($jsonStart !== false && $jsonEnd !== false && $jsonEnd > $jsonStart) {
-            // Extract only the JSON portion
-            $jsonOnly = substr($content, $jsonStart, $jsonEnd - $jsonStart + 1);
-            
-            // Try to parse and re-encode to ensure clean JSON
-            try {
-                $decoded = json_decode($jsonOnly, true);
-                if (json_last_error() === JSON_ERROR_NONE && $decoded !== null) {
-                    // Content is valid JSON, re-encode to ensure it's clean
-                    $cleanJson = json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-                    $response->setContent($cleanJson);
-                    
-                    // Log if we had to clean it - this helps identify the source
-                    if ($jsonOnly !== $content) {
-                        $removedContent = substr($content, $jsonEnd + 1);
-                        \Log::error('STRAY OUTPUT AFTER JSON - REMOVED', [
-                            'original_length' => strlen($content),
-                            'cleaned_length' => strlen($cleanJson),
-                            'removed_length' => strlen($removedContent),
-                            'removed_content' => $removedContent,
-                            'removed_preview' => substr($removedContent, 0, 200),
-                        ]);
-                    }
-                } else {
-                    \Log::error('Invalid JSON in response after cleaning', [
-                        'json_error' => json_last_error_msg(),
-                        'content_preview' => substr($content, 0, 500),
-                        'content_length' => strlen($content),
-                        'json_start' => $jsonStart,
-                        'json_end' => $jsonEnd,
-                    ]);
-                }
-            } catch (\Exception $e) {
-                \Log::error('Failed to clean JSON response', [
-                    'error' => $e->getMessage(),
-                    'content_preview' => substr($content, 0, 500),
-                ]);
-            }
-        } else {
-            \Log::error('Could not find JSON boundaries in response', [
-                'content_preview' => substr($content, 0, 500),
-                'content_length' => strlen($content),
-                'has_open_brace' => $jsonStart !== false,
-                'has_close_brace' => $jsonEnd !== false,
-                'json_start_pos' => $jsonStart,
-                'json_end_pos' => $jsonEnd,
-            ]);
-        }
-    }
-    
-    // CRITICAL: Send response and ensure no output after
+    // Send response
     $response->send();
     
-    // CRITICAL: Clean all output buffers to prevent any stray output
-    while (ob_get_level() > 0) {
-        ob_end_clean();
-    }
-    
-    // CRITICAL: Exit immediately after sending response to prevent any further output
-    exit(0);
 } catch (Throwable $e) {
-    // Log the exception
+    // Log to both Laravel log and error_log
     $logFile = __DIR__.'/../storage/logs/laravel.log';
     $message = sprintf(
         "[%s] UNCAUGHT EXCEPTION: %s in %s on line %d\nStack trace:\n%s\n",
@@ -198,25 +41,7 @@ try {
         $e->getTraceAsString()
     );
     @file_put_contents($logFile, $message, FILE_APPEND);
-    
-    // Generate crash report if possible
-    try {
-        if (class_exists(\App\Support\CrashReporter::class)) {
-            \App\Support\CrashReporter::report(
-                'UNCAUGHT_EXCEPTION',
-                $e->getMessage(),
-                [
-                    'exception' => get_class($e),
-                    'file' => $e->getFile(),
-                    'line' => $e->getLine(),
-                    'trace' => $e->getTraceAsString(),
-                ]
-            );
-        }
-    } catch (\Exception $reportError) {
-        // If crash reporter fails, just log it
-        @file_put_contents($logFile, "Failed to generate crash report: " . $reportError->getMessage() . "\n", FILE_APPEND);
-    }
+    error_log("CAUGHT EXCEPTION: " . get_class($e) . ": " . $e->getMessage());
     
     // Return error response with CORS headers
     if (!headers_sent()) {
@@ -230,7 +55,11 @@ try {
         echo json_encode([
             'message' => 'Internal server error',
             'error' => 'An uncaught exception occurred. Please check the logs.',
+            'exception' => config('app.debug') ? $e->getMessage() : null,
             'timestamp' => date('Y-m-d H:i:s'),
         ]);
+    } else {
+        // Headers already sent - log this
+        error_log("Headers already sent when exception occurred!");
     }
 }

@@ -24,7 +24,6 @@ class VendorController extends Controller
             $landlordId = $this->getLandlordId($request);
             $query->where('landlord_id', $landlordId);
         }
-            ->latest();
 
         if ($request->filled('service_category')) {
             $query->where('service_category', $request->string('service_category'));
