@@ -28,6 +28,7 @@ import {
   Shield,
   UserPlus,
   Settings2,
+  LogIn,
 } from "lucide-react";
 import clsx from "clsx";
 import { API_BASE_URL } from "@/utils/api-config";
@@ -173,6 +174,29 @@ export function Sidebar({ onNavigate }) {
               />
               User Rights
             </Link>
+            {isSuperAdmin && (
+              <Link
+                href="/admin/user-login-logs"
+                onClick={handleLinkClick}
+                className={clsx(
+                  "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                  pathname === "/admin/user-login-logs" || pathname.startsWith("/admin/user-login-logs")
+                    ? "bg-primary/15 text-primary"
+                    : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                )}
+              >
+                <LogIn
+                  size={18}
+                  className={clsx(
+                    "transition-colors",
+                    pathname === "/admin/user-login-logs" || pathname.startsWith("/admin/user-login-logs")
+                      ? "text-primary"
+                      : "text-slate-400 group-hover:text-slate-900"
+                  )}
+                />
+                Login Logs
+              </Link>
+            )}
             <Link
               href="/admin/signups"
               onClick={handleLinkClick}

@@ -39,6 +39,7 @@ use App\Http\Controllers\Api\V1\Mobile\MobilePaymentController;
 use App\Http\Controllers\Api\V1\Admin\AdminLandlordController;
 use App\Http\Controllers\Api\V1\Admin\AdminSignupController;
 use App\Http\Controllers\Api\V1\Admin\UserManagementController;
+use App\Http\Controllers\Api\V1\Admin\UserLoginLogController;
 use App\Http\Controllers\Api\V1\Admin\SubscriptionLimitsController;
 use App\Http\Middleware\EnsureCorsHeaders;
 use Illuminate\Support\Facades\Route;
@@ -704,6 +705,14 @@ Route::prefix('v1')->group(function (): void {
             Route::get('permissions/resources', [UserManagementController::class, 'getResources'])
                 ->middleware('throttle:60,1')
                 ->name('api.v1.admin.permissions.resources');
+            
+            // User login logs
+            Route::get('user-login-logs', [UserLoginLogController::class, 'index'])
+                ->middleware('throttle:120,1')
+                ->name('api.v1.admin.user-login-logs.index');
+            Route::get('user-login-logs/statistics', [UserLoginLogController::class, 'statistics'])
+                ->middleware('throttle:60,1')
+                ->name('api.v1.admin.user-login-logs.statistics');
         });
     });
 });
