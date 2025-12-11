@@ -1,0 +1,36 @@
+{
+    "timestamp": "2025-12-11T11:07:10+00:00",
+    "error_type": "CRITICAL_EXCEPTION",
+    "message": "syntax error, unexpected token \"->\"",
+    "context": {
+        "exception": "ParseError",
+        "file": "\/var\/www\/rentapplicaiton\/backend\/app\/Http\/Controllers\/Api\/V1\/NotificationController.php",
+        "line": 32,
+        "trace": "#0 \/var\/www\/rentapplicaiton\/backend\/vendor\/composer\/ClassLoader.php(427): Composer\\Autoload\\{closure}()\n#1 [internal function]: Composer\\Autoload\\ClassLoader->loadClass()\n#2 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Routing\/Route.php(1125): is_a()\n#3 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Routing\/Route.php(1062): Illuminate\\Routing\\Route->controllerMiddleware()\n#4 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Routing\/Router.php(834): Illuminate\\Routing\\Route->gatherMiddleware()\n#5 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Foundation\/Console\/RouteListCommand.php(211): Illuminate\\Routing\\Router->gatherRouteMiddleware()\n#6 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Foundation\/Console\/RouteListCommand.php(148): Illuminate\\Foundation\\Console\\RouteListCommand->getMiddleware()\n#7 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Foundation\/Console\/RouteListCommand.php(117): Illuminate\\Foundation\\Console\\RouteListCommand->getRouteInformation()\n#8 [internal function]: Illuminate\\Foundation\\Console\\RouteListCommand->Illuminate\\Foundation\\Console\\{closure}()\n#9 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Collections\/Arr.php(786): array_map()\n#10 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Collections\/Collection.php(814): Illuminate\\Support\\Arr::map()\n#11 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Foundation\/Console\/RouteListCommand.php(117): Illuminate\\Support\\Collection->map()\n#12 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Foundation\/Console\/RouteListCommand.php(102): Illuminate\\Foundation\\Console\\RouteListCommand->getRoutes()\n#13 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/BoundMethod.php(36): Illuminate\\Foundation\\Console\\RouteListCommand->handle()\n#14 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/Util.php(43): Illuminate\\Container\\BoundMethod::Illuminate\\Container\\{closure}()\n#15 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/BoundMethod.php(96): Illuminate\\Container\\Util::unwrapIfClosure()\n#16 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/BoundMethod.php(35): Illuminate\\Container\\BoundMethod::callBoundMethod()\n#17 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/Container.php(836): Illuminate\\Container\\BoundMethod::call()\n#18 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Console\/Command.php(211): Illuminate\\Container\\Container->call()\n#19 \/var\/www\/rentapplicaiton\/backend\/vendor\/symfony\/console\/Command\/Command.php(318): Illuminate\\Console\\Command->execute()\n#20 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Console\/Command.php(180): Symfony\\Component\\Console\\Command\\Command->run()\n#21 \/var\/www\/rentapplicaiton\/backend\/vendor\/symfony\/console\/Application.php(1073): Illuminate\\Console\\Command->run()\n#22 \/var\/www\/rentapplicaiton\/backend\/vendor\/symfony\/console\/Application.php(356): Symfony\\Component\\Console\\Application->doRunCommand()\n#23 \/var\/www\/rentapplicaiton\/backend\/vendor\/symfony\/console\/Application.php(195): Symfony\\Component\\Console\\Application->doRun()\n#24 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Foundation\/Console\/Kernel.php(197): Symfony\\Component\\Console\\Application->run()\n#25 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Foundation\/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()\n#26 \/var\/www\/rentapplicaiton\/backend\/artisan(16): Illuminate\\Foundation\\Application->handleCommand()\n#27 {main}"
+    },
+    "server": {
+        "hostname": "racknerd-6e3833a",
+        "server_software": "Unknown",
+        "php_sapi": "cli",
+        "os": "Linux"
+    },
+    "php": {
+        "version": "8.3.28",
+        "sapi": "cli",
+        "memory_limit": "-1",
+        "max_execution_time": "0"
+    },
+    "memory": {
+        "usage": 27262976,
+        "peak": 27262976,
+        "limit": "-1"
+    },
+    "request": {
+        "note": "No active request"
+    },
+    "database": {
+        "connected": true,
+        "driver": "mysql"
+    },
+    "recent_logs": []
+}

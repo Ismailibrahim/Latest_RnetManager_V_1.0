@@ -1,0 +1,10 @@
+2025-12-11T10:31:28:  ⚠ "next start" does not work with "output: standalone" configuration. Use "node .next/standalone/server.js" instead.
+2025-12-11T10:32:42:  ⚠ "next start" does not work with "output: standalone" configuration. Use "node .next/standalone/server.js" instead.
+2025-12-11T10:50:41:  ⚠ "next start" does not work with "output: standalone" configuration. Use "node .next/standalone/server.js" instead.
+2025-12-11T10:50:48: Error: Failed to find Server Action "x". This request might be from an older or newer deployment.
+2025-12-11T10:50:48: Read more: https://nextjs.org/docs/messages/failed-to-find-server-action
+2025-12-11T10:50:48:     at async m (.next/server/chunks/ssr/_bfab0e88._.js:1:7248)
+2025-12-11T10:50:48:     at async p (.next/server/chunks/ssr/_bfab0e88._.js:2:2713)
+2025-12-11T10:50:48:     at async L (.next/server/chunks/ssr/_bfab0e88._.js:2:7928)
+2025-12-11T11:45:24:  ⚠ "next start" does not work with "output: standalone" configuration. Use "node .next/standalone/server.js" instead.
+2025-12-11T11:45:42:  ⚠ "next start" does not work with "output: standalone" configuration. Use "node .next/standalone/server.js" instead.

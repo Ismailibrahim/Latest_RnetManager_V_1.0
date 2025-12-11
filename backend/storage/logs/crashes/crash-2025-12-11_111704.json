@@ -1,0 +1,36 @@
+{
+    "timestamp": "2025-12-11T11:17:04+00:00",
+    "error_type": "CRITICAL_EXCEPTION",
+    "message": "syntax error, unexpected token \"->\", expecting identifier or variable or \"{\" or \"$\"",
+    "context": {
+        "exception": "ParseError",
+        "file": "\/var\/www\/rentapplicaiton\/backend\/database\/seeders\/AssetTypeSeeder.php",
+        "line": 41,
+        "trace": "#0 \/var\/www\/rentapplicaiton\/backend\/vendor\/composer\/ClassLoader.php(427): Composer\\Autoload\\{closure}()\n#1 [internal function]: Composer\\Autoload\\ClassLoader->loadClass()\n#2 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/Container.php(1039): ReflectionClass->__construct()\n#3 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/Container.php(1025): Illuminate\\Container\\Container->getConcreteBindingFromAttributes()\n#4 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/Container.php(965): Illuminate\\Container\\Container->getConcrete()\n#5 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Foundation\/Application.php(1078): Illuminate\\Container\\Container->resolve()\n#6 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/Container.php(903): Illuminate\\Foundation\\Application->resolve()\n#7 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Foundation\/Application.php(1058): Illuminate\\Container\\Container->make()\n#8 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Database\/Seeder.php(129): Illuminate\\Foundation\\Application->make()\n#9 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Database\/Seeder.php(48): Illuminate\\Database\\Seeder->resolve()\n#10 \/var\/www\/rentapplicaiton\/backend\/database\/seeders\/DatabaseSeeder.php(14): Illuminate\\Database\\Seeder->call()\n#11 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/BoundMethod.php(36): Database\\Seeders\\DatabaseSeeder->run()\n#12 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/Util.php(43): Illuminate\\Container\\BoundMethod::Illuminate\\Container\\{closure}()\n#13 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/BoundMethod.php(96): Illuminate\\Container\\Util::unwrapIfClosure()\n#14 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/BoundMethod.php(35): Illuminate\\Container\\BoundMethod::callBoundMethod()\n#15 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/Container.php(836): Illuminate\\Container\\BoundMethod::call()\n#16 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Database\/Seeder.php(184): Illuminate\\Container\\Container->call()\n#17 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Database\/Seeder.php(193): Illuminate\\Database\\Seeder->Illuminate\\Database\\{closure}()\n#18 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Database\/Console\/Seeds\/SeedCommand.php(71): Illuminate\\Database\\Seeder->__invoke()\n#19 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Database\/Eloquent\/Concerns\/GuardsAttributes.php(157): Illuminate\\Database\\Console\\Seeds\\SeedCommand->Illuminate\\Database\\Console\\Seeds\\{closure}()\n#20 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Database\/Console\/Seeds\/SeedCommand.php(70): Illuminate\\Database\\Eloquent\\Model::unguarded()\n#21 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/BoundMethod.php(36): Illuminate\\Database\\Console\\Seeds\\SeedCommand->handle()\n#22 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/Util.php(43): Illuminate\\Container\\BoundMethod::Illuminate\\Container\\{closure}()\n#23 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/BoundMethod.php(96): Illuminate\\Container\\Util::unwrapIfClosure()\n#24 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/BoundMethod.php(35): Illuminate\\Container\\BoundMethod::callBoundMethod()\n#25 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Container\/Container.php(836): Illuminate\\Container\\BoundMethod::call()\n#26 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Console\/Command.php(211): Illuminate\\Container\\Container->call()\n#27 \/var\/www\/rentapplicaiton\/backend\/vendor\/symfony\/console\/Command\/Command.php(318): Illuminate\\Console\\Command->execute()\n#28 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Console\/Command.php(180): Symfony\\Component\\Console\\Command\\Command->run()\n#29 \/var\/www\/rentapplicaiton\/backend\/vendor\/symfony\/console\/Application.php(1073): Illuminate\\Console\\Command->run()\n#30 \/var\/www\/rentapplicaiton\/backend\/vendor\/symfony\/console\/Application.php(356): Symfony\\Component\\Console\\Application->doRunCommand()\n#31 \/var\/www\/rentapplicaiton\/backend\/vendor\/symfony\/console\/Application.php(195): Symfony\\Component\\Console\\Application->doRun()\n#32 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Foundation\/Console\/Kernel.php(197): Symfony\\Component\\Console\\Application->run()\n#33 \/var\/www\/rentapplicaiton\/backend\/vendor\/laravel\/framework\/src\/Illuminate\/Foundation\/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()\n#34 \/var\/www\/rentapplicaiton\/backend\/artisan(16): Illuminate\\Foundation\\Application->handleCommand()\n#35 {main}"
+    },
+    "server": {
+        "hostname": "racknerd-6e3833a",
+        "server_software": "Unknown",
+        "php_sapi": "cli",
+        "os": "Linux"
+    },
+    "php": {
+        "version": "8.3.28",
+        "sapi": "cli",
+        "memory_limit": "-1",
+        "max_execution_time": "0"
+    },
+    "memory": {
+        "usage": 29360128,
+        "peak": 29360128,
+        "limit": "-1"
+    },
+    "request": {
+        "note": "No active request"
+    },
+    "database": {
+        "connected": true,
+        "driver": "mysql"
+    },
+    "recent_logs": []
+}

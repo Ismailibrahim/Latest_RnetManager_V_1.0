@@ -1,0 +1,57 @@
+{
+    "timestamp": "2025-12-11T11:08:02+00:00",
+    "error_type": "CRITICAL_EXCEPTION",
+    "message": "Declaration of App\\Http\\Controllers\\Api\\V1\\PrintController::getLandlordId($document, string $type): ?int must be compatible with App\\Http\\Controllers\\Controller::getLandlordId(Illuminate\\Http\\Request $request): int",
+    "context": {
+        "exception": "Symfony\\Component\\ErrorHandler\\Error\\FatalError",
+        "file": "\/var\/www\/rentapplicaiton\/backend\/app\/Http\/Controllers\/Api\/V1\/PrintController.php",
+        "line": 166,
+        "trace": "#0 {main}"
+    },
+    "server": {
+        "hostname": "racknerd-6e3833a",
+        "server_software": "Unknown",
+        "php_sapi": "cli",
+        "os": "Linux"
+    },
+    "php": {
+        "version": "8.3.28",
+        "sapi": "cli",
+        "memory_limit": "-1",
+        "max_execution_time": "0"
+    },
+    "memory": {
+        "usage": 27262976,
+        "peak": 27262976,
+        "limit": "-1"
+    },
+    "request": {
+        "note": "No active request"
+    },
+    "database": {
+        "connected": true,
+        "driver": "mysql"
+    },
+    "recent_logs": [
+        {
+            "line": 527,
+            "message": "[2025-12-11 11:07:33] production.ERROR: syntax error, unexpected token \"->\" {\"exception\":\"[object] (ParseError(code: 0): syntax error, unexpected token \\\"->\\\" at \/var\/www\/rentapplicaiton\/backend\/app\/Http\/Controllers\/Api\/V1\/VendorController.php:27)"
+        },
+        {
+            "line": 558,
+            "message": "[2025-12-11 11:07:53] production.ERROR: Unhandled exception: Access level to App\\Http\\Controllers\\Api\\V1\\PrintController::getLandlordId() must be protected (as in class App\\Http\\Controllers\\Controller) or weaker {\"exception\":\"[object] (Symfony\\\\Component\\\\ErrorHandler\\\\Error\\\\FatalError(code: 0): Access level to App\\\\Http\\\\Controllers\\\\Api\\\\V1\\\\PrintController::getLandlordId() must be protected (as in class App\\\\Http\\\\Controllers\\\\Controller) or weaker at \/var\/www\/rentapplicaiton\/backend\/app\/Http\/Controllers\/Api\/V1\/PrintController.php:166)"
+        },
+        {
+            "line": 562,
+            "message": "[2025-12-11 11:07:53] production.CRITICAL: CRASH REPORTED: CRITICAL_EXCEPTION - Access level to App\\Http\\Controllers\\Api\\V1\\PrintController::getLandlordId() must be protected (as in class App\\Http\\Controllers\\Controller) or weaker {\"exception\":\"Symfony\\\\Component\\\\ErrorHandler\\\\Error\\\\FatalError\",\"file\":\"\/var\/www\/rentapplicaiton\/backend\/app\/Http\/Controllers\/Api\/V1\/PrintController.php\",\"line\":166,\"trace\":\"#0 {main}\"}"
+        },
+        {
+            "line": 563,
+            "message": "[2025-12-11 11:07:53] production.ERROR: Access level to App\\Http\\Controllers\\Api\\V1\\PrintController::getLandlordId() must be protected (as in class App\\Http\\Controllers\\Controller) or weaker {\"exception\":\"[object] (Symfony\\\\Component\\\\ErrorHandler\\\\Error\\\\FatalError(code: 0): Access level to App\\\\Http\\\\Controllers\\\\Api\\\\V1\\\\PrintController::getLandlordId() must be protected (as in class App\\\\Http\\\\Controllers\\\\Controller) or weaker at \/var\/www\/rentapplicaiton\/backend\/app\/Http\/Controllers\/Api\/V1\/PrintController.php:166)"
+        },
+        {
+            "line": 567,
+            "message": "[2025-12-11 11:08:02] production.ERROR: Unhandled exception: Declaration of App\\Http\\Controllers\\Api\\V1\\PrintController::getLandlordId($document, string $type): ?int must be compatible with App\\Http\\Controllers\\Controller::getLandlordId(Illuminate\\Http\\Request $request): int {\"exception\":\"[object] (Symfony\\\\Component\\\\ErrorHandler\\\\Error\\\\FatalError(code: 0): Declaration of App\\\\Http\\\\Controllers\\\\Api\\\\V1\\\\PrintController::getLandlordId($document, string $type): ?int must be compatible with App\\\\Http\\\\Controllers\\\\Controller::getLandlordId(Illuminate\\\\Http\\\\Request $request): int at \/var\/www\/rentapplicaiton\/backend\/app\/Http\/Controllers\/Api\/V1\/PrintController.php:166)"
+        }
+    ]
+}
