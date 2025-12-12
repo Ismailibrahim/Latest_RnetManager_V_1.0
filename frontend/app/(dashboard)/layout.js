@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
+import { HelpButton } from "@/components/HelpButton";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -46,6 +47,7 @@ export default function DashboardLayout({ children }) {
           <main className="flex-1 space-y-6 bg-background px-4 py-6 lg:px-8">
             {children}
           </main>
+          <HelpButton />
         </div>
       </div>
     </ErrorBoundary>

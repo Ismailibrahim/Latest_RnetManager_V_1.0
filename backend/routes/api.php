@@ -41,6 +41,7 @@ use App\Http\Controllers\Api\V1\Admin\AdminSignupController;
 use App\Http\Controllers\Api\V1\Admin\UserManagementController;
 use App\Http\Controllers\Api\V1\Admin\UserLoginLogController;
 use App\Http\Controllers\Api\V1\Admin\SubscriptionLimitsController;
+use App\Http\Controllers\Api\V1\HelpContentController;
 use App\Http\Middleware\EnsureCorsHeaders;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
@@ -318,6 +319,9 @@ Route::prefix('v1')->group(function (): void {
 
     Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
         Route::apiResource('landlords', LandlordController::class)->only(['store'])->names('api.v1.landlords');
+        Route::get("help-content", [HelpContentController::class, "index"])->name("api.v1.help-content.index");
+        Route::post("help-content", [HelpContentController::class, "store"])->name("api.v1.help-content.store");
+        Route::put("help-content/{helpContent}", [HelpContentController::class, "update"])->name("api.v1.help-content.update");
         Route::apiResource('properties', PropertyController::class)->names('api.v1.properties');
 
         Route::post('units/bulk-import', [UnitController::class, 'bulkImport'])->middleware('throttle:6,1')

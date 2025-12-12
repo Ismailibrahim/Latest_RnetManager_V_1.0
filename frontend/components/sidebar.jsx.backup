@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { HelpCircle, usePathname } from "next/navigation";
+import { HelpCircle, useEffect, useState } from "react";
 import { HelpCircle,
   ArrowLeftRight,
   Building2,
@@ -31,7 +31,7 @@ import { HelpCircle,
   LogIn,
 } from "lucide-react";
 import clsx from "clsx";
-import { API_BASE_URL } from "@/utils/api-config";
+import { HelpCircle, API_BASE_URL } from "@/utils/api-config";
 
 const navigation = [
   { name: "Overview", href: "/", icon: Home },
@@ -241,25 +241,6 @@ export function Sidebar({ onNavigate }) {
             </Link>
             <Link
               href="/admin/subscription-settings"
-              onClick={handleLinkClick}
-              className={clsx(
-                "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
-                pathname === "/admin/subscription-settings" || pathname.startsWith("/admin/subscription-settings")
-                  ? "bg-primary/15 text-primary"
-                  : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-              )}
-            >
-              <Settings2
-                size={18}
-                className={clsx(
-                  "transition-colors",
-                  pathname === "/admin/subscription-settings" || pathname.startsWith("/admin/subscription-settings")
-                    ? "text-primary"
-                    : "text-slate-400 group-hover:text-slate-900"
-                )}
-              />
-              Subscription Settings
-            </Link>
             {isSuperAdmin && (
               <Link
                 href="/admin/help-content"
@@ -283,10 +264,73 @@ export function Sidebar({ onNavigate }) {
                 Help Content
               </Link>
             )}
-
+              onClick={handleLinkClick}
+              className={clsx(
+                "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                pathname === "/admin/subscription-settings" || pathname.startsWith("/admin/subscription-settings")
+            {isSuperAdmin && (
+              <Link
+                href="/admin/help-content"
+                onClick={handleLinkClick}
+                className={clsx(
+                  "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                  pathname === "/admin/help-content" || pathname.startsWith("/admin/help-content")
+                    ? "bg-primary/15 text-primary"
+                    : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                )}
+              >
+                <HelpCircle
+                  size={18}
+                  className={clsx(
+                    "transition-colors",
+                    pathname === "/admin/help-content" || pathname.startsWith("/admin/help-content")
+                      ? "text-primary"
+                      : "text-slate-400 group-hover:text-slate-900"
+                  )}
+                />
+                Help Content
+              </Link>
+            )}
+                  ? "bg-primary/15 text-primary"
+                  : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+              )}
+            >
+              <Settings2
+                size={18}
+                className={clsx(
+                  "transition-colors",
+                  pathname === "/admin/subscription-settings" || pathname.startsWith("/admin/subscription-settings")
+            {isSuperAdmin && (
+              <Link
+                href="/admin/help-content"
+                onClick={handleLinkClick}
+                className={clsx(
+                  "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                  pathname === "/admin/help-content" || pathname.startsWith("/admin/help-content")
+                    ? "bg-primary/15 text-primary"
+                    : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                )}
+              >
+                <HelpCircle
+                  size={18}
+                  className={clsx(
+                    "transition-colors",
+                    pathname === "/admin/help-content" || pathname.startsWith("/admin/help-content")
+                      ? "text-primary"
+                      : "text-slate-400 group-hover:text-slate-900"
+                  )}
+                />
+                Help Content
+              </Link>
+            )}
+                    ? "text-primary"
+                    : "text-slate-400 group-hover:text-slate-900"
+                )}
+              />
+              Subscription Settings
+            </Link>
           </>
         )}
-
       </nav>
 
       <div className="mt-auto rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-600">
@@ -306,3 +350,4 @@ export function Sidebar({ onNavigate }) {
     </aside>
   );
 }
+
