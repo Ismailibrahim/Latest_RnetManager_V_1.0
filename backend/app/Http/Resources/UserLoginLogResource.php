@@ -17,24 +17,31 @@ class UserLoginLogResource extends JsonResource
         return [
             'id' => $this->id,
             'user_id' => $this->user_id,
-            'user' => $this->whenLoaded('user', function () {
-                return [
-                    'id' => $this->user->id,
-                    'first_name' => $this->user->first_name,
-                    'last_name' => $this->user->last_name,
-                    'full_name' => $this->user->full_name,
-                    'email' => $this->user->email,
-                    'role' => $this->user->role,
-                    'landlord' => $this->whenLoaded('user.landlord', function () {
-                        return [
-                            'id' => $this->user->landlord->id,
-                            'company_name' => $this->user->landlord->company_name,
-                        ];
-                    }),
-                ];
-            }),
-            'logged_in_at' => $this->logged_in_at->toIso8601String(),
-            'logged_in_at_formatted' => $this->logged_in_at->format('Y-m-d H:i:s'),
+            'user' => $this->when(
+                $this->relationLoaded('user') && $this->user !== null,
+                function () {
+                    $user = $this->user;
+                    return [
+                        'id' => $user->id ?? null,
+                        'first_name' => $user->first_name ?? null,
+                        'last_name' => $user->last_name ?? null,
+                        'full_name' => $user->full_name ?? 'Unknown User',
+                        'email' => $user->email ?? null,
+                        'role' => $user->role ?? null,
+                        'landlord' => $this->when(
+                            $user->relationLoaded('landlord') && $user->landlord !== null,
+                            function () use ($user) {
+                                return [
+                                    'id' => $user->landlord->id ?? null,
+                                    'company_name' => $user->landlord->company_name ?? null,
+                                ];
+                            }
+                        ),
+                    ];
+                }
+            ),
+            'logged_in_at' => $this->logged_in_at?->toIso8601String() ?? null,
+            'logged_in_at_formatted' => $this->logged_in_at?->format('Y-m-d H:i:s') ?? null,
             'ip_address' => $this->ip_address,
             'user_agent' => $this->user_agent,
             'device_info' => $this->parseUserAgent(),

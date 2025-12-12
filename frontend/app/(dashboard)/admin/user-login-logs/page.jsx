@@ -43,6 +43,10 @@ export default function UserLoginLogsPage() {
         throw new Error("Not authenticated");
       }
 
+      if (!API_BASE_URL) {
+        throw new Error("API configuration error. Please check your environment settings.");
+      }
+
       const params = new URLSearchParams({
         page: currentPage.toString(),
         per_page: "50",
@@ -64,7 +68,44 @@ export default function UserLoginLogsPage() {
       );
 
       if (!response.ok) {
-        throw new Error("Failed to fetch login logs");
+        // Try to extract error message from response
+        let errorMessage = "Failed to fetch login logs";
+        let errorDetails = null;
+        
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+          errorDetails = errorData;
+        } catch {
+          // If response is not JSON, use status text
+          errorMessage = response.statusText || errorMessage;
+        }
+        
+        // Provide more specific error messages based on status code
+        if (response.status === 401) {
+          errorMessage = "Authentication failed. Please log in again.";
+        } else if (response.status === 403) {
+          errorMessage = "You don't have permission to view login logs.";
+        } else if (response.status === 404) {
+          errorMessage = "Login logs endpoint not found.";
+        } else if (response.status >= 500) {
+          // For server errors, try to show more details if available
+          if (errorDetails?.message) {
+            errorMessage = `Server error: ${errorDetails.message}`;
+          } else {
+            errorMessage = "Server error. Please try again later.";
+          }
+        }
+        
+        // Log full error details for debugging
+        console.error("API Error Details:", {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorDetails,
+          url: `${API_BASE_URL}/admin/user-login-logs?${params.toString()}`,
+        });
+        
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -76,7 +117,12 @@ export default function UserLoginLogsPage() {
         total: data.total || 0,
       });
     } catch (err) {
-      setError(err.message || "Failed to load login logs");
+      // Handle network errors
+      if (err instanceof TypeError && err.message.includes("fetch")) {
+        setError("Network error. Please check your connection and try again.");
+      } else {
+        setError(err.message || "Failed to load login logs");
+      }
       console.error("Error fetching login logs:", err);
     } finally {
       setLoading(false);
@@ -88,6 +134,11 @@ export default function UserLoginLogsPage() {
     try {
       const token = localStorage.getItem("auth_token");
       if (!token) return;
+
+      if (!API_BASE_URL) {
+        console.error("API configuration error. Statistics will not be loaded.");
+        return;
+      }
 
       const params = new URLSearchParams();
       if (dateFrom) params.append("date_from", dateFrom);
@@ -106,8 +157,12 @@ export default function UserLoginLogsPage() {
       if (response.ok) {
         const data = await response.json();
         setStatistics(data);
+      } else {
+        // Log error but don't show to user since statistics are non-critical
+        console.warn("Failed to fetch statistics:", response.status, response.statusText);
       }
     } catch (err) {
+      // Log error but don't show to user since statistics are non-critical
       console.error("Error fetching statistics:", err);
     } finally {
       setStatsLoading(false);

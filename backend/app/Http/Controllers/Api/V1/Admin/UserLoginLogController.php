@@ -30,42 +30,56 @@ class UserLoginLogController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $perPage = $request->input('per_page', 50);
-        $search = $request->input('search');
-        $userId = $request->input('user_id');
-        $dateFrom = $request->input('date_from');
-        $dateTo = $request->input('date_to');
+        try {
+            $perPage = $request->input('per_page', 50);
+            $search = $request->input('search');
+            $userId = $request->input('user_id');
+            $dateFrom = $request->input('date_from');
+            $dateTo = $request->input('date_to');
 
-        $query = UserLoginLog::with(['user:id,first_name,last_name,email,role,landlord_id'])
-            ->with('user.landlord:id,company_name')
-            ->latest('logged_in_at');
+            $query = UserLoginLog::with([
+                    'user:id,first_name,last_name,email,role,landlord_id',
+                    'user.landlord:id,company_name'
+                ])
+                ->latest('logged_in_at');
 
-        // Filter by user
-        if ($userId) {
-            $query->where('user_id', $userId);
+            // Filter by user
+            if ($userId) {
+                $query->where('user_id', $userId);
+            }
+
+            // Search by user name or email
+            if ($search) {
+                $query->whereHas('user', function ($q) use ($search) {
+                    $q->where('first_name', 'like', "%{$search}%")
+                        ->orWhere('last_name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%");
+                });
+            }
+
+            // Filter by date range
+            if ($dateFrom) {
+                $query->whereDate('logged_in_at', '>=', $dateFrom);
+            }
+
+            if ($dateTo) {
+                $query->whereDate('logged_in_at', '<=', $dateTo);
+            }
+
+            $logs = $query->paginate($perPage);
+
+            return UserLoginLogResource::collection($logs)->response();
+        } catch (\Exception $e) {
+            \Log::error('Error fetching user login logs: ' . $e->getMessage(), [
+                'exception' => $e,
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'message' => 'An error occurred while fetching login logs.',
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
+            ], 500);
         }
-
-        // Search by user name or email
-        if ($search) {
-            $query->whereHas('user', function ($q) use ($search) {
-                $q->where('first_name', 'like', "%{$search}%")
-                    ->orWhere('last_name', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%");
-            });
-        }
-
-        // Filter by date range
-        if ($dateFrom) {
-            $query->whereDate('logged_in_at', '>=', $dateFrom);
-        }
-
-        if ($dateTo) {
-            $query->whereDate('logged_in_at', '<=', $dateTo);
-        }
-
-        $logs = $query->paginate($perPage);
-
-        return UserLoginLogResource::collection($logs)->response();
     }
 
     /**

@@ -27,28 +27,43 @@ class RequestDiagnosticsMiddleware
 
         $start = microtime(true);
 
-        Log::channel('probe')->info('request.start', SystemProbe::context([
-            'route' => $request->route()?->getName(),
-            'method' => $request->getMethod(),
-            'uri' => $request->fullUrl(),
-            'payload_size' => $request->headers->get('Content-Length'),
-        ]));
+        // Gracefully handle logging failures - don't break requests if logging fails
+        try {
+            Log::channel('probe')->info('request.start', SystemProbe::context([
+                'route' => $request->route()?->getName(),
+                'method' => $request->getMethod(),
+                'uri' => $request->fullUrl(),
+                'payload_size' => $request->headers->get('Content-Length'),
+            ]));
+        } catch (\Throwable $logError) {
+            // Log to default channel instead, but don't break the request
+            \Log::warning('Probe logging failed (request.start): ' . $logError->getMessage());
+        }
 
         try {
             $response = $next($request);
             
             // Ensure response is not null
             if ($response === null) {
-                Log::channel('probe')->error('request.null_response', SystemProbe::context([
-                    'message' => 'Middleware returned null response',
-                ]));
+                try {
+                    Log::channel('probe')->error('request.null_response', SystemProbe::context([
+                        'message' => 'Middleware returned null response',
+                    ]));
+                } catch (\Throwable $logError) {
+                    \Log::warning('Probe logging failed (request.null_response): ' . $logError->getMessage());
+                }
                 $response = response()->json(['error' => 'Internal server error'], 500);
             }
         } catch (Throwable $exception) {
-            Log::channel('probe')->error('request.exception', SystemProbe::context([
-                'exception' => $exception::class,
-                'message' => $exception->getMessage(),
-            ]));
+            // Try to log the exception, but don't let logging failures mask the original exception
+            try {
+                Log::channel('probe')->error('request.exception', SystemProbe::context([
+                    'exception' => $exception::class,
+                    'message' => $exception->getMessage(),
+                ]));
+            } catch (\Throwable $logError) {
+                \Log::warning('Probe logging failed (request.exception): ' . $logError->getMessage());
+            }
 
             throw $exception;
         }
@@ -62,9 +77,13 @@ class RequestDiagnosticsMiddleware
 
         // Ensure response exists before accessing it
         if ($response === null) {
-            Log::channel('probe')->error('request.null_response_finish', SystemProbe::context([
-                'duration_ms' => round($durationMs, 2),
-            ]));
+            try {
+                Log::channel('probe')->error('request.null_response_finish', SystemProbe::context([
+                    'duration_ms' => round($durationMs, 2),
+                ]));
+            } catch (\Throwable $logError) {
+                \Log::warning('Probe logging failed (request.null_response_finish): ' . $logError->getMessage());
+            }
             return response()->json(['error' => 'Internal server error'], 500);
         }
 
@@ -74,14 +93,23 @@ class RequestDiagnosticsMiddleware
             'memory_peak' => memory_get_peak_usage(true),
         ];
 
-        Log::channel('probe')->info('request.finish', SystemProbe::context($context));
+        // Gracefully handle logging failures
+        try {
+            Log::channel('probe')->info('request.finish', SystemProbe::context($context));
+        } catch (\Throwable $logError) {
+            \Log::warning('Probe logging failed (request.finish): ' . $logError->getMessage());
+        }
 
         $threshold = (float) env('PROBE_SLOW_REQUEST_THRESHOLD_MS', 1500);
 
         if ($durationMs > $threshold) {
-            Log::channel('probe')->warning('request.slow', SystemProbe::context($context + [
-                'threshold_ms' => $threshold,
-            ]));
+            try {
+                Log::channel('probe')->warning('request.slow', SystemProbe::context($context + [
+                    'threshold_ms' => $threshold,
+                ]));
+            } catch (\Throwable $logError) {
+                \Log::warning('Probe logging failed (request.slow): ' . $logError->getMessage());
+            }
         }
 
         return $response;
