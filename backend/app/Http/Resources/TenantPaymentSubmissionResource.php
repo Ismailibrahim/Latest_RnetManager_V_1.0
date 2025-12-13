@@ -29,6 +29,51 @@ class TenantPaymentSubmissionResource extends JsonResource
             'notes' => $this->notes,
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
+            'tenant_unit' => $this->whenLoaded('tenantUnit', function () {
+                $tenantUnit = $this->tenantUnit;
+                return [
+                    'id' => $tenantUnit->id,
+                    'currency' => $tenantUnit->currency ?? 'MVR',
+                    'tenant' => $tenantUnit->relationLoaded('tenant') && $tenantUnit->tenant
+                        ? [
+                            'id' => $tenantUnit->tenant->id,
+                            'full_name' => $tenantUnit->tenant->full_name,
+                            'email' => $tenantUnit->tenant->email,
+                            'phone' => $tenantUnit->tenant->phone,
+                        ]
+                        : null,
+                    'unit' => $tenantUnit->relationLoaded('unit') && $tenantUnit->unit
+                        ? [
+                            'id' => $tenantUnit->unit->id,
+                            'unit_number' => $tenantUnit->unit->unit_number,
+                            'property' => ($tenantUnit->unit->relationLoaded('property') && $tenantUnit->unit->property)
+                                ? [
+                                    'id' => $tenantUnit->unit->property->id,
+                                    'name' => $tenantUnit->unit->property->name,
+                                ]
+                                : null,
+                        ]
+                        : null,
+                ];
+            }),
+            'rent_invoice' => $this->whenLoaded('rentInvoice', function () {
+                return [
+                    'id' => $this->rentInvoice->id,
+                    'invoice_number' => $this->rentInvoice->invoice_number,
+                    'invoice_date' => $this->rentInvoice->invoice_date?->toDateString(),
+                    'due_date' => $this->rentInvoice->due_date?->toDateString(),
+                    'rent_amount' => (float) $this->rentInvoice->rent_amount,
+                    'late_fee' => (float) $this->rentInvoice->late_fee,
+                ];
+            }),
+            'confirmed_by_user' => $this->whenLoaded('confirmedBy', function () {
+                return [
+                    'id' => $this->confirmedBy->id,
+                    'first_name' => $this->confirmedBy->first_name,
+                    'last_name' => $this->confirmedBy->last_name,
+                    'email' => $this->confirmedBy->email,
+                ];
+            }),
         ];
     }
 }

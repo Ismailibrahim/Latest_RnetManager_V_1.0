@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Loader2, Receipt, ShieldX } from "lucide-react";
 import { API_BASE_URL } from "@/utils/api-config";
@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import UnitSelector from "@/components/tenant-payments/UnitSelector";
 import InvoiceList from "@/components/tenant-payments/InvoiceList";
 import PaymentForm from "@/components/tenant-payments/PaymentForm";
+import PaymentSubmissionStatus from "@/components/tenant-payments/PaymentSubmissionStatus";
 
 export default function TenantPaymentsPage() {
   const router = useRouter();
@@ -26,6 +27,8 @@ export default function TenantPaymentsPage() {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [submissionSuccess, setSubmissionSuccess] = useState(false);
+  const [hasPendingSubmission, setHasPendingSubmission] = useState(false);
+  const [submissions, setSubmissions] = useState([]);
 
   // Check if user should have access (not a landlord/admin)
   useEffect(() => {
@@ -179,6 +182,11 @@ export default function TenantPaymentsPage() {
     setSubmissionSuccess(false);
   };
 
+  const handleSubmissionChange = useCallback((hasPending, submissionData) => {
+    setHasPendingSubmission(hasPending);
+    setSubmissions(submissionData || []);
+  }, []);
+
   const handlePaymentSubmit = async (paymentData) => {
     try {
       const token = localStorage.getItem("auth_token");
@@ -209,6 +217,14 @@ export default function TenantPaymentsPage() {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
+        
+        // Handle duplicate submission error
+        if (response.status === 409 && payload?.existing_submission) {
+          throw new Error(
+            payload?.message ?? "You already have a pending payment submission for this invoice."
+          );
+        }
+        
         throw new Error(
           payload?.message ?? `Failed to submit payment (HTTP ${response.status}).`
         );
@@ -217,6 +233,7 @@ export default function TenantPaymentsPage() {
       setSubmissionSuccess(true);
       setShowPaymentForm(false);
       setSelectedInvoice(null);
+      setHasPendingSubmission(true);
       
       // Refresh invoices to show updated status
       const invoicesResponse = await fetch(
@@ -354,12 +371,25 @@ export default function TenantPaymentsPage() {
               </p>
             </div>
           ) : (
-            <InvoiceList
-              invoices={invoices}
-              selectedInvoice={selectedInvoice}
-              onSelect={handleInvoiceSelect}
-              currency={selectedUnit?.currency ?? "MVR"}
-            />
+            <>
+              <InvoiceList
+                invoices={invoices}
+                selectedInvoice={selectedInvoice}
+                onSelect={handleInvoiceSelect}
+                currency={selectedUnit?.currency ?? "MVR"}
+              />
+              
+              {/* Show payment submission status for selected invoice */}
+              {selectedInvoice && (
+                <div className="mt-4">
+                  <PaymentSubmissionStatus
+                    invoiceId={selectedInvoice.id}
+                    currency={selectedUnit?.currency ?? "MVR"}
+                    onSubmissionChange={handleSubmissionChange}
+                  />
+                </div>
+              )}
+            </>
           )}
         </section>
       )}
@@ -368,15 +398,41 @@ export default function TenantPaymentsPage() {
         <section className="rounded-2xl border border-slate-200 bg-white/80 p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold text-slate-900">Step 3: Enter Payment Details</h2>
           
-          <PaymentForm
-            invoice={selectedInvoice}
-            currency={selectedUnit?.currency ?? "MVR"}
-            onSubmit={handlePaymentSubmit}
-            onCancel={() => {
-              setShowPaymentForm(false);
-              setSelectedInvoice(null);
-            }}
-          />
+          {hasPendingSubmission ? (
+            <div className="rounded-lg border-2 border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="font-semibold text-amber-900">
+                    Payment Already Submitted
+                  </h3>
+                  <p className="mt-1 text-sm text-amber-700">
+                    You already have a pending payment submission for this invoice. Please wait for the owner to confirm or reject it before submitting another payment.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPaymentForm(false);
+                      setSelectedInvoice(null);
+                    }}
+                    className="mt-3 inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <PaymentForm
+              invoice={selectedInvoice}
+              currency={selectedUnit?.currency ?? "MVR"}
+              onSubmit={handlePaymentSubmit}
+              onCancel={() => {
+                setShowPaymentForm(false);
+                setSelectedInvoice(null);
+              }}
+            />
+          )}
         </section>
       )}
     </div>

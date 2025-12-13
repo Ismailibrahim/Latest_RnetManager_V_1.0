@@ -442,6 +442,39 @@ class TenantController extends Controller
     }
 
     /**
+     * Check if a tenant has a user account
+     */
+    public function checkUserAccount(Request $request, Tenant $tenant): JsonResponse
+    {
+        $this->authorize('view', $tenant);
+
+        $user = $request->user();
+
+        // Ensure tenant belongs to authenticated user's landlord
+        if (!$user->isSuperAdmin() && $tenant->landlord_id !== $user->landlord_id) {
+            abort(403, 'Unauthorized access to this tenant.');
+        }
+
+        if (!$tenant->email) {
+            return response()->json([
+                'has_account' => false,
+                'message' => 'Tenant does not have an email address.',
+            ]);
+        }
+
+        // Check if user account exists
+        $existingUser = \App\Models\User::where('email', $tenant->email)
+            ->orWhere('mobile', $tenant->phone)
+            ->first();
+
+        return response()->json([
+            'has_account' => $existingUser !== null,
+            'user_id' => $existingUser?->id,
+            'email' => $existingUser?->email,
+        ]);
+    }
+
+    /**
      * Create a user account for a tenant
      */
     public function createUserAccount(Request $request, Tenant $tenant): JsonResponse

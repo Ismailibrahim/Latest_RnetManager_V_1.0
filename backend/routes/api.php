@@ -27,6 +27,7 @@ use App\Http\Controllers\Api\V1\SystemSettingsController;
 use App\Http\Controllers\Api\V1\TenantController;
 use App\Http\Controllers\Api\V1\TenantDocumentController;
 use App\Http\Controllers\Api\V1\TenantPaymentController;
+use App\Http\Controllers\Api\V1\TenantPaymentSubmissionController;
 use App\Http\Controllers\Api\V1\TenantUnitController;
 use App\Http\Controllers\Api\V1\TenantUnitPendingChargeController;
 use App\Http\Controllers\Api\V1\UnitController;
@@ -345,6 +346,8 @@ Route::prefix('v1')->group(function (): void {
             ->name('api.v1.tenants.bulk-import');
         Route::get('tenants/import-template', [TenantController::class, 'downloadTemplate'])
             ->name('api.v1.tenants.import-template');
+        Route::get('tenants/{tenant}/check-user-account', [TenantController::class, 'checkUserAccount'])
+            ->name('api.v1.tenants.check-user-account');
         Route::post('tenants/{tenant}/create-user-account', [TenantController::class, 'createUserAccount'])
             ->name('api.v1.tenants.create-user-account');
         Route::apiResource('tenants', TenantController::class)->names('api.v1.tenants');
@@ -367,6 +370,9 @@ Route::prefix('v1')->group(function (): void {
         Route::get('tenant/units/{tenant_unit_id}/invoices', [TenantPaymentController::class, 'getInvoices'])
             ->where(['tenant_unit_id' => '[0-9]+'])
             ->name('api.v1.tenant.units.invoices');
+        Route::get('tenant/invoices/{rent_invoice_id}/submissions', [TenantPaymentController::class, 'getPaymentSubmissions'])
+            ->where(['rent_invoice_id' => '[0-9]+'])
+            ->name('api.v1.tenant.invoices.submissions');
         Route::post('tenant/payments', [TenantPaymentController::class, 'store'])
             ->name('api.v1.tenant.payments.store');
 
@@ -511,6 +517,20 @@ Route::prefix('v1')->group(function (): void {
             ->name('api.v1.payments.capture');
         Route::post('payments/{payment}/void', [UnifiedPaymentController::class, 'void'])->middleware('throttle:30,1')
             ->name('api.v1.payments.void');
+        
+        // Tenant payment submissions (for owners to review)
+        Route::get('tenant-payment-submissions', [TenantPaymentSubmissionController::class, 'index'])
+            ->name('api.v1.tenant-payment-submissions.index');
+        Route::get('tenant-payment-submissions/{submission}', [TenantPaymentSubmissionController::class, 'show'])
+            ->name('api.v1.tenant-payment-submissions.show');
+        Route::post('tenant-payment-submissions/{submission}/confirm', [TenantPaymentSubmissionController::class, 'confirm'])
+            ->name('api.v1.tenant-payment-submissions.confirm');
+        Route::post('tenant-payment-submissions/{submission}/reject', [TenantPaymentSubmissionController::class, 'reject'])
+            ->name('api.v1.tenant-payment-submissions.reject');
+        Route::get('tenant-payment-submissions/{submission}/receipt', [TenantPaymentSubmissionController::class, 'downloadReceipt'])
+            ->name('api.v1.tenant-payment-submissions.receipt');
+        Route::get('tenant-payment-submissions/{submission}/receipt/view', [TenantPaymentSubmissionController::class, 'viewReceipt'])
+            ->name('api.v1.tenant-payment-submissions.receipt.view');
 
         Route::prefix('reports')->group(function (): void {
             Route::get('unified-payments', [UnifiedPaymentController::class, 'index'])->name('api.v1.reports.unified-payments');

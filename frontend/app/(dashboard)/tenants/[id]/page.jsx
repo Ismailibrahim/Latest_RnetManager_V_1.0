@@ -112,7 +112,7 @@ export default function TenantDetailsPage({ params }) {
 
   // Check if tenant has a user account
   useEffect(() => {
-    if (!tenant?.email) {
+    if (!tenant?.id) {
       setHasUserAccount(false);
       return;
     }
@@ -120,14 +120,12 @@ export default function TenantDetailsPage({ params }) {
     async function checkUserAccount() {
       setCheckingUserAccount(true);
       try {
-        // Try to find user by email
         const response = await authFetch(
-          `${API_BASE_URL}/users?email=${encodeURIComponent(tenant.email)}&per_page=1`
+          `${API_BASE_URL}/tenants/${tenant.id}/check-user-account`
         );
         if (response.ok) {
           const payload = await response.json();
-          const users = Array.isArray(payload?.data) ? payload.data : [];
-          setHasUserAccount(users.length > 0);
+          setHasUserAccount(payload?.has_account ?? false);
         } else {
           setHasUserAccount(false);
         }
@@ -139,7 +137,7 @@ export default function TenantDetailsPage({ params }) {
     }
 
     checkUserAccount();
-  }, [tenant?.email, authFetch]);
+  }, [tenant?.id, authFetch]);
 
   useEffect(() => {
     if (!tenantId) {

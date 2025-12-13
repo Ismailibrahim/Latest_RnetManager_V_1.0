@@ -149,6 +149,74 @@ class TenantPaymentController extends Controller
     }
 
     /**
+     * Get payment submissions for a specific invoice
+     */
+    public function getPaymentSubmissions(Request $request, int $rent_invoice_id): JsonResponse
+    {
+        $user = $this->getAuthenticatedUser($request);
+        
+        // Only allow access if user is not a landlord/admin
+        if ($user->isSuperAdmin()) {
+            return response()->json([
+                'message' => 'Access denied. This feature is only available to tenants.',
+            ], 403);
+        }
+
+        // Verify tenant
+        $tenant = \App\Models\Tenant::where(function ($query) use ($user) {
+            $query->where('email', $user->email)
+                  ->orWhere('phone', $user->mobile ?? $user->phone ?? '');
+        })->first();
+
+        if (!$tenant) {
+            return response()->json([
+                'message' => 'Access denied. No tenant account found for this user.',
+            ], 403);
+        }
+
+        // Additional security check
+        if ($user->landlord_id && $user->landlord_id !== $tenant->landlord_id) {
+            return response()->json([
+                'message' => 'Access denied. This feature is only available to tenants.',
+            ], 403);
+        }
+
+        // Verify invoice belongs to tenant
+        $invoice = RentInvoice::where('id', $rent_invoice_id)
+            ->whereHas('tenantUnit', function ($query) use ($tenant) {
+                $query->where('tenant_id', $tenant->id);
+            })
+            ->first();
+
+        if (!$invoice) {
+            return response()->json([
+                'message' => 'Invoice not found or you do not have access to this invoice.',
+            ], 404);
+        }
+
+        // Get payment submissions for this invoice
+        $submissions = TenantPaymentSubmission::where('rent_invoice_id', $rent_invoice_id)
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($submission) {
+                return [
+                    'id' => $submission->id,
+                    'payment_amount' => (float) $submission->payment_amount,
+                    'payment_date' => $submission->payment_date?->format('Y-m-d'),
+                    'payment_method' => $submission->payment_method,
+                    'status' => $submission->status,
+                    'notes' => $submission->notes,
+                    'created_at' => $submission->created_at?->toISOString(),
+                    'confirmed_at' => $submission->confirmed_at?->toISOString(),
+                ];
+            });
+
+        return response()->json([
+            'data' => $submissions,
+        ]);
+    }
+
+    /**
      * Submit a payment
      */
     public function store(Request $request): JsonResponse
@@ -211,6 +279,24 @@ class TenantPaymentController extends Controller
             return response()->json([
                 'message' => 'Invoice not found or does not belong to this unit.',
             ], 404);
+        }
+
+        // Check for existing pending submission for this invoice
+        $existingPending = TenantPaymentSubmission::where('rent_invoice_id', $validated['rent_invoice_id'])
+            ->where('status', 'pending')
+            ->first();
+
+        if ($existingPending) {
+            return response()->json([
+                'message' => 'You already have a pending payment submission for this invoice. Please wait for the owner to confirm or reject it before submitting another payment.',
+                'existing_submission' => [
+                    'id' => $existingPending->id,
+                    'payment_amount' => (float) $existingPending->payment_amount,
+                    'payment_date' => $existingPending->payment_date?->format('Y-m-d'),
+                    'status' => $existingPending->status,
+                    'created_at' => $existingPending->created_at?->toISOString(),
+                ],
+            ], 409);
         }
 
         // Validate receipt is required for deposit/transfer
