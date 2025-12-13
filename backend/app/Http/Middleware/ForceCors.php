@@ -150,17 +150,28 @@ class ForceCors
     {
         $origin = $this->getAllowedOrigin($request);
         $requestedHeaders = $request->headers->get('Access-Control-Request-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+        
+        // For file uploads, ensure all necessary headers are allowed
+        $allowedHeaders = 'Content-Type, Authorization, X-Requested-With, Accept, X-CSRF-TOKEN, Origin';
+        if ($requestedHeaders) {
+            // Merge requested headers with standard ones
+            $requestedArray = array_map('trim', explode(',', $requestedHeaders));
+            $standardArray = array_map('trim', explode(',', $allowedHeaders));
+            $mergedHeaders = array_unique(array_merge($standardArray, $requestedArray));
+            $allowedHeaders = implode(', ', $mergedHeaders);
+        }
 
         \Illuminate\Support\Facades\Log::info('ForceCors: Handling OPTIONS preflight', [
             'origin' => $origin,
             'requested_headers' => $requestedHeaders,
+            'allowed_headers' => $allowedHeaders,
             'path' => $request->path(),
         ]);
 
         $response = response('', 204);
         $response->header('Access-Control-Allow-Origin', $origin);
         $response->header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-        $response->header('Access-Control-Allow-Headers', $requestedHeaders);
+        $response->header('Access-Control-Allow-Headers', $allowedHeaders);
         $response->header('Access-Control-Allow-Credentials', 'true');
         $response->header('Access-Control-Max-Age', '86400');
         
@@ -188,7 +199,8 @@ class ForceCors
         // Use header() method which is more reliable than headers->set()
         $response->header('Access-Control-Allow-Origin', $origin);
         $response->header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-        $response->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+        // Include all necessary headers for file uploads and mobile apps
+        $response->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, X-CSRF-TOKEN, Origin');
         $response->header('Access-Control-Allow-Credentials', 'true');
         $response->header('Access-Control-Expose-Headers', 'Content-Length, X-Total-Count, X-Page, X-Per-Page');
         $response->header('Access-Control-Max-Age', '86400');

@@ -34,28 +34,29 @@ import clsx from "clsx";
 import { API_BASE_URL } from "@/utils/api-config";
 
 const navigation = [
-  { name: "Overview", href: "/", icon: Home },
-  { name: "Snapshot", href: "/snapshot", icon: LineChart },
-  { name: "Properties", href: "/properties", icon: Building2 },
-  { name: "Units", href: "/units", icon: Layers },
-  { name: "Owners", href: "/owners", icon: Users2 },
-  { name: "Tenants", href: "/tenants", icon: Users2 },
-  { name: "Tenant Assignments", href: "/tenant-units", icon: FileText },
-  { name: "Finances", href: "/finances", icon: Wallet },
-  { name: "Collect Payment", href: "/payments/collect", icon: CircleDollarSign },
-  { name: "Unified Payments", href: "/unified-payments", icon: ArrowLeftRight },
-  { name: "Rent Invoices", href: "/rent-invoices", icon: Receipt },
-  { name: "Advance Rent", href: "/advance-rent", icon: Banknote },
-  { name: "Deposit Refunds", href: "/security-deposit-refunds", icon: ShieldCheck },
-  { name: "Payment Methods", href: "/payment-methods", icon: CreditCard },
-  { name: "Maintenance Expenses", href: "/maintenance", icon: Wrench },
-  { name: "Maintenance Invoices", href: "/maintenance-invoices", icon: ClipboardPlus },
-  { name: "Assets", href: "/assets", icon: Boxes },
-  { name: "Asset Types", href: "/asset-types", icon: Layers3 },
-  { name: "Vendors", href: "/vendors", icon: ShieldCheck },
-  { name: "Reports", href: "/reports", icon: BarChart },
-  { name: "Notifications", href: "/notifications", icon: Bell },
-  { name: "Settings", href: "/settings", icon: Settings },
+  { name: "Overview", href: "/", icon: Home, tenantVisible: true },
+  { name: "Snapshot", href: "/snapshot", icon: LineChart, landlordOnly: true },
+  { name: "Properties", href: "/properties", icon: Building2, landlordOnly: true },
+  { name: "Units", href: "/units", icon: Layers, landlordOnly: true },
+  { name: "Owners", href: "/owners", icon: Users2, landlordOnly: true },
+  { name: "Tenants", href: "/tenants", icon: Users2, landlordOnly: true },
+  { name: "Tenant Assignments", href: "/tenant-units", icon: FileText, landlordOnly: true },
+  { name: "Finances", href: "/finances", icon: Wallet, landlordOnly: true },
+  { name: "Collect Payment", href: "/payments/collect", icon: CircleDollarSign, landlordOnly: true },
+  { name: "Unified Payments", href: "/unified-payments", icon: ArrowLeftRight, landlordOnly: true },
+  { name: "Rent Invoices", href: "/rent-invoices", icon: Receipt, landlordOnly: true },
+  { name: "My Payments", href: "/tenant-payments", icon: CreditCard, tenantOnly: true },
+  { name: "Advance Rent", href: "/advance-rent", icon: Banknote, landlordOnly: true },
+  { name: "Deposit Refunds", href: "/security-deposit-refunds", icon: ShieldCheck, landlordOnly: true },
+  { name: "Payment Methods", href: "/payment-methods", icon: CreditCard, landlordOnly: true },
+  { name: "Maintenance Expenses", href: "/maintenance", icon: Wrench, landlordOnly: true },
+  { name: "Maintenance Invoices", href: "/maintenance-invoices", icon: ClipboardPlus, landlordOnly: true },
+  { name: "Assets", href: "/assets", icon: Boxes, landlordOnly: true },
+  { name: "Asset Types", href: "/asset-types", icon: Layers3, landlordOnly: true },
+  { name: "Vendors", href: "/vendors", icon: ShieldCheck, landlordOnly: true },
+  { name: "Reports", href: "/reports", icon: BarChart, landlordOnly: true },
+  { name: "Notifications", href: "/notifications", icon: Bell, tenantVisible: true },
+  { name: "Settings", href: "/settings", icon: Settings, tenantVisible: true },
 ];
 
 export function Sidebar({ onNavigate }) {
@@ -95,6 +96,9 @@ export function Sidebar({ onNavigate }) {
 
   const isSuperAdmin = userRole === "super_admin";
   const isAdmin = userRole === "admin" || isSuperAdmin;
+  // Tenant-only items should only show for non-admin roles (agent, or no role)
+  const restrictedRoles = ['super_admin', 'admin', 'owner', 'manager'];
+  const isTenant = userRole && !restrictedRoles.includes(userRole);
 
   return (
     <aside className="flex min-h-screen flex-col border-r border-slate-200 bg-white px-5 py-6 text-slate-700 shadow-sm lg:overflow-y-auto">
@@ -114,6 +118,29 @@ export function Sidebar({ onNavigate }) {
 
       <nav className="space-y-2">
         {navigation.map((item) => {
+          // If user is a tenant, only show tenant-visible items
+          if (isTenant) {
+            // Show tenant-only items and tenant-visible items
+            if (item.landlordOnly) {
+              return null; // Hide landlord-only items
+            }
+            if (item.tenantOnly || item.tenantVisible) {
+              // Show tenant items - continue to render
+            } else {
+              return null; // Hide items not marked for tenants
+            }
+          } else {
+            // For landlords/admins: hide tenant-only items
+            if (item.tenantOnly) {
+              return null;
+            }
+            // Show all other items (landlord-only and general items)
+          }
+          
+          // Skip admin-only items if user is not admin (for future use)
+          if (item.adminOnly && !isAdmin) {
+            return null;
+          }
           const Icon = item.icon;
           // For home route, use exact match; for others, check if pathname starts with href
           const active = item.href === "/" 

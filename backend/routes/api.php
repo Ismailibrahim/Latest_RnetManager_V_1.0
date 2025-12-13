@@ -26,6 +26,7 @@ use App\Http\Controllers\Api\V1\SmsTemplateController;
 use App\Http\Controllers\Api\V1\SystemSettingsController;
 use App\Http\Controllers\Api\V1\TenantController;
 use App\Http\Controllers\Api\V1\TenantDocumentController;
+use App\Http\Controllers\Api\V1\TenantPaymentController;
 use App\Http\Controllers\Api\V1\TenantUnitController;
 use App\Http\Controllers\Api\V1\TenantUnitPendingChargeController;
 use App\Http\Controllers\Api\V1\UnitController;
@@ -344,6 +345,8 @@ Route::prefix('v1')->group(function (): void {
             ->name('api.v1.tenants.bulk-import');
         Route::get('tenants/import-template', [TenantController::class, 'downloadTemplate'])
             ->name('api.v1.tenants.import-template');
+        Route::post('tenants/{tenant}/create-user-account', [TenantController::class, 'createUserAccount'])
+            ->name('api.v1.tenants.create-user-account');
         Route::apiResource('tenants', TenantController::class)->names('api.v1.tenants');
 
         Route::post('tenant-units/{tenant_unit}/end-lease', [TenantUnitController::class, 'endLease'])
@@ -357,6 +360,15 @@ Route::prefix('v1')->group(function (): void {
         ])->names('api.v1.tenant-units');
         Route::get('tenant-units/{tenant_unit}/pending-charges', TenantUnitPendingChargeController::class)
             ->name('api.v1.tenant-units.pending-charges');
+
+        // Tenant payment routes
+        Route::get('tenant/units', [TenantPaymentController::class, 'getUnits'])
+            ->name('api.v1.tenant.units');
+        Route::get('tenant/units/{tenant_unit_id}/invoices', [TenantPaymentController::class, 'getInvoices'])
+            ->where(['tenant_unit_id' => '[0-9]+'])
+            ->name('api.v1.tenant.units.invoices');
+        Route::post('tenant/payments', [TenantPaymentController::class, 'store'])
+            ->name('api.v1.tenant.payments.store');
 
         Route::apiResource('financial-records', FinancialRecordController::class)->parameters([
             'financial-records' => 'financial_record',

@@ -102,10 +102,65 @@ class TenantController extends Controller
         $data['status'] = $data['status'] ?? 'active';
 
         $tenant = Tenant::create($data);
+        $tenant->load(['nationality', 'documents', 'idProofDocument']);
 
-        return TenantResource::make(
-            $tenant->fresh(['nationality', 'documents', 'idProofDocument'])
-        )
+        // Create user account if requested
+        $createUserAccount = $request->boolean('create_user_account', false);
+        $userPassword = $request->input('user_password');
+        $autoGeneratePassword = $request->boolean('auto_generate_password', true);
+
+        if ($createUserAccount && $tenant->email) {
+            try {
+                // Check if user already exists
+                $existingUser = \App\Models\User::where('email', $tenant->email)
+                    ->orWhere('mobile', $tenant->phone)
+                    ->first();
+
+                if (!$existingUser) {
+                    $password = $userPassword ?? ($autoGeneratePassword ? \Illuminate\Support\Str::random(12) : null);
+                    
+                    if (!$password) {
+                        // Rollback tenant creation if password is required but not provided
+                        $tenant->delete();
+                        return response()->json([
+                            'message' => 'Password is required when creating user account.',
+                            'errors' => ['user_password' => ['Password is required when auto-generate is disabled.']],
+                        ], 422);
+                    }
+
+                    $nameParts = explode(' ', trim($tenant->full_name), 2);
+                    $firstName = $nameParts[0];
+                    $lastName = $nameParts[1] ?? '';
+
+                    \App\Models\User::create([
+                        'email' => $tenant->email,
+                        'mobile' => $tenant->phone,
+                        'first_name' => $firstName,
+                        'last_name' => $lastName,
+                        'password_hash' => \Illuminate\Support\Facades\Hash::make($password),
+                        'role' => 'agent',
+                        'landlord_id' => $tenant->landlord_id,
+                        'is_active' => true,
+                        'approval_status' => 'approved',
+                        'approved_at' => now(),
+                    ]);
+
+                    // TODO: Send credentials to tenant via email/SMS
+                    Log::info('User account created for tenant during tenant creation', [
+                        'tenant_id' => $tenant->id,
+                        'email' => $tenant->email,
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::error('Failed to create user account during tenant creation', [
+                    'tenant_id' => $tenant->id,
+                    'error' => $e->getMessage(),
+                ]);
+                // Don't fail tenant creation if user account creation fails
+            }
+        }
+
+        return TenantResource::make($tenant)
             ->response()
             ->setStatusCode(201);
     }
@@ -384,6 +439,110 @@ class TenantController extends Controller
             'Content-Type' => 'text/csv',
             'Content-Disposition' => 'attachment; filename="tenants_import_template.csv"',
         ]);
+    }
+
+    /**
+     * Create a user account for a tenant
+     */
+    public function createUserAccount(Request $request, Tenant $tenant): JsonResponse
+    {
+        $this->authorize('update', $tenant);
+
+        $user = $request->user();
+
+        // Ensure tenant belongs to authenticated user's landlord
+        if (!$user->isSuperAdmin() && $tenant->landlord_id !== $user->landlord_id) {
+            abort(403, 'Unauthorized access to this tenant.');
+        }
+
+        // Check if tenant has email (required for login)
+        if (!$tenant->email) {
+            return response()->json([
+                'message' => 'Tenant must have an email address to create a login account.',
+                'errors' => ['email' => ['Email is required for login account creation.']],
+            ], 422);
+        }
+
+        // Check if user account already exists
+        $existingUser = \App\Models\User::where('email', $tenant->email)
+            ->orWhere('mobile', $tenant->phone)
+            ->first();
+
+        if ($existingUser) {
+            return response()->json([
+                'message' => 'User account already exists for this tenant.',
+                'data' => [
+                    'user_id' => $existingUser->id,
+                    'email' => $existingUser->email,
+                ],
+            ], 409);
+        }
+
+        $validated = $request->validate([
+            'password' => 'nullable|string|min:8',
+            'auto_generate_password' => 'boolean',
+        ]);
+
+        // Generate password if not provided
+        $password = $validated['password'] ?? null;
+        $autoGenerated = false;
+        
+        if (!$password || ($validated['auto_generate_password'] ?? true)) {
+            $password = \Illuminate\Support\Str::random(12);
+            $autoGenerated = true;
+        }
+
+        try {
+            // Split tenant name for first/last name
+            $nameParts = explode(' ', trim($tenant->full_name), 2);
+            $firstName = $nameParts[0];
+            $lastName = $nameParts[1] ?? '';
+
+            // Create user account
+            $userAccount = \App\Models\User::create([
+                'email' => $tenant->email,
+                'mobile' => $tenant->phone,
+                'first_name' => $firstName,
+                'last_name' => $lastName,
+                'password_hash' => \Illuminate\Support\Facades\Hash::make($password),
+                'role' => 'agent', // Lowest privilege role
+                'landlord_id' => $tenant->landlord_id,
+                'is_active' => true,
+                'approval_status' => 'approved',
+                'approved_at' => now(),
+            ]);
+
+            Log::info('User account created for tenant', [
+                'tenant_id' => $tenant->id,
+                'user_id' => $userAccount->id,
+                'email' => $userAccount->email,
+            ]);
+
+            // TODO: Send email/SMS to tenant with login credentials
+            // You can use your notification service here
+
+            return response()->json([
+                'message' => 'User account created successfully.',
+                'data' => [
+                    'user_id' => $userAccount->id,
+                    'email' => $userAccount->email,
+                    'password' => $password, // Only return if auto-generated
+                    'auto_generated' => $autoGenerated,
+                ],
+            ], 201);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to create tenant user account', [
+                'tenant_id' => $tenant->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to create user account. Please try again.',
+                'error' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
     }
 
     /**

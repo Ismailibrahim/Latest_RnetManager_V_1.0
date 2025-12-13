@@ -66,6 +66,9 @@ export default function NewTenantPage() {
   const [newNationalityName, setNewNationalityName] = useState("");
   const [addingNationality, setAddingNationality] = useState(false);
   const [addNationalityError, setAddNationalityError] = useState(null);
+  const [createUserAccount, setCreateUserAccount] = useState(false);
+  const [passwordOption, setPasswordOption] = useState("auto"); // "auto" or "custom"
+  const [customPassword, setCustomPassword] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -274,6 +277,15 @@ export default function NewTenantPage() {
 
       if (form.nationalityId) {
         payload.nationality_id = Number(form.nationalityId);
+      }
+
+      // Add user account creation fields if requested
+      if (createUserAccount) {
+        payload.create_user_account = true;
+        payload.auto_generate_password = passwordOption === "auto";
+        if (passwordOption === "custom" && customPassword) {
+          payload.user_password = customPassword;
+        }
       }
 
       if (!payload.id_proof_type) {
@@ -681,6 +693,115 @@ export default function NewTenantPage() {
               </FieldError>
             )}
           </Fieldset>
+
+          {/* Create Login Account Section */}
+          <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="createUserAccount"
+                checked={createUserAccount}
+                onChange={(e) => {
+                  setCreateUserAccount(e.target.checked);
+                  if (!e.target.checked) {
+                    setPasswordOption("auto");
+                    setCustomPassword("");
+                  }
+                }}
+                disabled={submitting || !form.email}
+                className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              <label
+                htmlFor="createUserAccount"
+                className={`text-sm font-semibold ${
+                  !form.email ? "text-slate-400" : "text-slate-900"
+                }`}
+              >
+                Create login account for this tenant
+              </label>
+            </div>
+
+            {!form.email && (
+              <p className="ml-7 text-xs text-amber-600">
+                Email address is required to create a login account.
+              </p>
+            )}
+
+            {createUserAccount && form.email && (
+              <div className="ml-7 space-y-3">
+                <p className="text-xs text-slate-600">
+                  The tenant will be able to log in and access their payment portal.
+                </p>
+
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="passwordOption"
+                      value="auto"
+                      checked={passwordOption === "auto"}
+                      onChange={(e) => setPasswordOption(e.target.value)}
+                      disabled={submitting}
+                      className="h-4 w-4 border-slate-300 text-primary focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                    <span className="text-sm text-slate-700">
+                      Generate password automatically
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="passwordOption"
+                      value="custom"
+                      checked={passwordOption === "custom"}
+                      onChange={(e) => setPasswordOption(e.target.value)}
+                      disabled={submitting}
+                      className="h-4 w-4 border-slate-300 text-primary focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                    <span className="text-sm text-slate-700">Set custom password</span>
+                  </label>
+                </div>
+
+                {passwordOption === "custom" && (
+                  <div>
+                    <label
+                      htmlFor="customPassword"
+                      className="mb-1 block text-xs font-medium text-slate-700"
+                    >
+                      Password *
+                    </label>
+                    <input
+                      type="password"
+                      id="customPassword"
+                      value={customPassword}
+                      onChange={(e) => setCustomPassword(e.target.value)}
+                      placeholder="Enter password (min 8 characters)"
+                      minLength={8}
+                      disabled={submitting}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Minimum 8 characters. The tenant will receive this password via email.
+                    </p>
+                    {validationErrors.user_password && (
+                      <p className="mt-1 text-xs text-red-600">
+                        {validationErrors.user_password[0]}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {passwordOption === "auto" && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-xs text-amber-800">
+                      A secure password will be automatically generated and sent to the
+                      tenant's email address ({form.email}).
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           <div className="flex items-center justify-end gap-3 pt-2">
             <Link

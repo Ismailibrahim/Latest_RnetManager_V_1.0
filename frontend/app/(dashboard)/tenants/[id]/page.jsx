@@ -20,8 +20,11 @@ import {
   Users,
   Pencil,
   Trash2,
+  UserPlus,
+  CheckCircle2,
 } from "lucide-react";
 import DocumentsPanel from "@/components/tenant/DocumentsPanel";
+import { CreateLoginAccountModal } from "@/components/tenant/CreateLoginAccountModal";
 import { formatMVR } from "@/lib/currency";
 import { API_BASE_URL } from "@/utils/api-config";
 import { useAuthFetch } from "@/hooks/useAuthFetch";
@@ -57,6 +60,9 @@ export default function TenantDetailsPage({ params }) {
   const [propertyNames, setPropertyNames] = useState({});
   const [deleteError, setDeleteError] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [hasUserAccount, setHasUserAccount] = useState(null);
+  const [checkingUserAccount, setCheckingUserAccount] = useState(false);
+  const [showCreateAccountModal, setShowCreateAccountModal] = useState(false);
 
   useEffect(() => {
     if (!tenantId) {
@@ -103,6 +109,37 @@ export default function TenantDetailsPage({ params }) {
 
     return () => controller.abort();
   }, [tenantId, refreshKey]);
+
+  // Check if tenant has a user account
+  useEffect(() => {
+    if (!tenant?.email) {
+      setHasUserAccount(false);
+      return;
+    }
+
+    async function checkUserAccount() {
+      setCheckingUserAccount(true);
+      try {
+        // Try to find user by email
+        const response = await authFetch(
+          `${API_BASE_URL}/users?email=${encodeURIComponent(tenant.email)}&per_page=1`
+        );
+        if (response.ok) {
+          const payload = await response.json();
+          const users = Array.isArray(payload?.data) ? payload.data : [];
+          setHasUserAccount(users.length > 0);
+        } else {
+          setHasUserAccount(false);
+        }
+      } catch (err) {
+        setHasUserAccount(false);
+      } finally {
+        setCheckingUserAccount(false);
+      }
+    }
+
+    checkUserAccount();
+  }, [tenant?.email, authFetch]);
 
   useEffect(() => {
     if (!tenantId) {
@@ -344,6 +381,21 @@ export default function TenantDetailsPage({ params }) {
     }
   };
 
+  const handleCreateUserAccountClick = () => {
+    if (!tenant?.email) {
+      alert("This tenant must have an email address to create a login account.");
+      return;
+    }
+    setShowCreateAccountModal(true);
+  };
+
+  const handleAccountCreated = () => {
+    setHasUserAccount(true);
+    setShowCreateAccountModal(false);
+    // Refresh tenant data
+    setRefreshKey((value) => value + 1);
+  };
+
   const handleDeleteTenant = async () => {
     if (!tenantId || !canDeleteTenant || deleting) {
       return;
@@ -421,6 +473,29 @@ export default function TenantDetailsPage({ params }) {
               <Pencil size={16} />
               Edit tenant
             </Link>
+            {tenant?.email && (
+              checkingUserAccount ? (
+                <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-400">
+                  <Loader2 size={16} className="animate-spin" />
+                  Checking…
+                </div>
+              ) : hasUserAccount ? (
+                <div className="inline-flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2 text-sm font-semibold text-green-700">
+                  <CheckCircle2 size={16} />
+                  Login account exists
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleCreateUserAccountClick}
+                  disabled={!tenant?.email}
+                  className="inline-flex items-center gap-2 rounded-xl border border-primary bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <UserPlus size={16} />
+                  Create login account
+                </button>
+              )
+            )}
             {canDeleteTenant ? (
               <button
                 type="button"
@@ -846,6 +921,16 @@ export default function TenantDetailsPage({ params }) {
           <ErrorState message="Tenant data is missing." onRetry={handleRetry} />
         )}
       </section>
+
+      {/* Create Login Account Modal */}
+      {tenant && (
+        <CreateLoginAccountModal
+          tenant={tenant}
+          isOpen={showCreateAccountModal}
+          onClose={() => setShowCreateAccountModal(false)}
+          onSuccess={handleAccountCreated}
+        />
+      )}
     </div>
   );
 }

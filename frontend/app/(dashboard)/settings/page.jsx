@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   CreditCard,
@@ -12,6 +13,7 @@ import {
   Upload,
   FileText,
 } from "lucide-react";
+import { API_BASE_URL } from "@/utils/api-config";
 
 const sections = [
   {
@@ -21,6 +23,7 @@ const sections = [
       "Update your personal information, manage delegates, and secure your login.",
     icon: UserRound,
     badge: "Profile",
+    tenantVisible: true,
   },
   {
     href: "/settings/billing",
@@ -29,6 +32,7 @@ const sections = [
       "Review your subscription plan, usage, invoices, and billing contacts.",
     icon: CreditCard,
     badge: "Subscription",
+    landlordOnly: true,
   },
   {
     href: "/settings/system",
@@ -37,6 +41,7 @@ const sections = [
       "Configure company information, currency, invoice numbering, and system preferences.",
     icon: Settings2,
     badge: "Business",
+    landlordOnly: true,
   },
   {
     href: "/settings/email",
@@ -45,6 +50,7 @@ const sections = [
       "Configure email provider settings (Gmail/Office 365) and manage email templates.",
     icon: Mail,
     badge: "Notifications",
+    landlordOnly: true,
   },
   {
     href: "/settings/sms",
@@ -53,6 +59,7 @@ const sections = [
       "Configure Message Owl SMS settings and manage SMS notification templates.",
     icon: MessageSquare,
     badge: "Notifications",
+    landlordOnly: true,
   },
   {
     href: "/settings/telegram",
@@ -61,6 +68,7 @@ const sections = [
       "Configure Telegram Bot API settings and manage Telegram notification templates.",
     icon: MessageCircle,
     badge: "Notifications",
+    landlordOnly: true,
   },
   {
     href: "/settings/import",
@@ -69,6 +77,7 @@ const sections = [
       "Import units, tenants, and other data in bulk using CSV files. Download templates to get started.",
     icon: Upload,
     badge: "Data",
+    landlordOnly: true,
   },
   {
     href: "/settings/templates",
@@ -77,6 +86,7 @@ const sections = [
       "Customize HTML templates for invoices, receipts, and vouchers. Use placeholders for dynamic content.",
     icon: FileText,
     badge: "Templates",
+    landlordOnly: true,
   },
 ];
 
@@ -84,18 +94,83 @@ const quickActions = [
   {
     label: "Update password",
     href: "/settings/account#security",
+    tenantVisible: true,
   },
   {
     label: "Invite a delegate",
     href: "/settings/account#delegates",
+    landlordOnly: true,
   },
   {
     label: "View latest invoice",
     href: "/settings/billing#history",
+    landlordOnly: true,
   },
 ];
 
 export default function SettingsIndexPage() {
+  const [userRole, setUserRole] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchUserRole() {
+      try {
+        const token = localStorage.getItem("auth_token");
+        if (!token) {
+          setIsLoading(false);
+          return;
+        }
+
+        const response = await fetch(`${API_BASE_URL}/account`, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const payload = await response.json();
+          setUserRole(payload?.user?.role);
+        }
+      } catch {
+        // Ignore errors
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchUserRole();
+  }, []);
+
+  const restrictedRoles = ['super_admin', 'admin', 'owner', 'manager'];
+  const isTenant = userRole && !restrictedRoles.includes(userRole);
+
+  // Filter sections based on user role
+  const visibleSections = sections.filter((section) => {
+    if (isTenant) {
+      return section.tenantVisible && !section.landlordOnly;
+    }
+    return !section.tenantOnly;
+  });
+
+  // Filter quick actions based on user role
+  const visibleQuickActions = quickActions.filter((action) => {
+    if (isTenant) {
+      return action.tenantVisible && !action.landlordOnly;
+    }
+    return !action.tenantOnly;
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+          <p className="mt-4 text-sm text-slate-600">Loading settings...</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="space-y-6">
       <section className="card flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
@@ -105,12 +180,12 @@ export default function SettingsIndexPage() {
             Settings
           </div>
           <h1 className="text-2xl font-semibold text-slate-900">
-            Control Center
+            {isTenant ? "Account Settings" : "Control Center"}
           </h1>
           <p className="max-w-2xl text-sm text-slate-500">
-            Manage your RentApplicaiton workspace — keep your account details up
-            to date, invite team members, configure system settings, and stay on top of subscription
-            billing.
+            {isTenant
+              ? "Manage your account details, update your profile information, and secure your login."
+              : "Manage your RentApplicaiton workspace — keep your account details up to date, invite team members, configure system settings, and stay on top of subscription billing."}
           </p>
         </div>
         <div className="flex flex-col gap-2 text-sm text-slate-600">
@@ -126,7 +201,7 @@ export default function SettingsIndexPage() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        {sections.map((section) => {
+        {visibleSections.map((section) => {
           const Icon = section.icon;
           return (
             <Link
@@ -164,7 +239,7 @@ export default function SettingsIndexPage() {
           </p>
         </header>
         <div className="flex flex-wrap gap-2 text-sm">
-          {quickActions.map((action) => (
+          {visibleQuickActions.map((action) => (
             <Link
               key={action.label}
               href={action.href}
